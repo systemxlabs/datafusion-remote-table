@@ -57,6 +57,12 @@ impl MysqlConnectionOptions {
     }
 }
 
+impl From<MysqlConnectionOptions> for ConnectionOptions {
+    fn from(options: MysqlConnectionOptions) -> Self {
+        ConnectionOptions::Mysql(options)
+    }
+}
+
 #[derive(Debug)]
 pub struct MysqlPool {
     pool: mysql_async::Pool,

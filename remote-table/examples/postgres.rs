@@ -1,15 +1,10 @@
 use datafusion::prelude::SessionContext;
-use datafusion_remote_table::{ConnectionOptions, PostgresConnectionOptions, RemoteTable};
+use datafusion_remote_table::{PostgresConnectionOptions, RemoteTable};
 use std::sync::Arc;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let options = ConnectionOptions::Postgres(PostgresConnectionOptions::new(
-        "localhost",
-        5432,
-        "user",
-        "password",
-    ));
+    let options = PostgresConnectionOptions::new("localhost", 5432, "user", "password");
     let remote_table = RemoteTable::try_new(options, "select * from supported_data_types").await?;
 
     let ctx = SessionContext::new();

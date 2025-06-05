@@ -36,6 +36,12 @@ impl SqliteConnectionOptions {
     }
 }
 
+impl From<SqliteConnectionOptions> for ConnectionOptions {
+    fn from(options: SqliteConnectionOptions) -> Self {
+        ConnectionOptions::Sqlite(options)
+    }
+}
+
 #[derive(Debug)]
 pub struct SqlitePool {
     pool: tokio_rusqlite::Connection,

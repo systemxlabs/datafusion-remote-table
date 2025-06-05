@@ -56,6 +56,12 @@ impl DmConnectionOptions {
     }
 }
 
+impl From<DmConnectionOptions> for ConnectionOptions {
+    fn from(options: DmConnectionOptions) -> Self {
+        ConnectionOptions::Dm(options)
+    }
+}
+
 #[derive(Debug)]
 pub struct DmPool {
     options: DmConnectionOptions,

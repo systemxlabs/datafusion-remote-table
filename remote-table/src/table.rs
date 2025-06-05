@@ -29,7 +29,7 @@ pub struct RemoteTable {
 
 impl RemoteTable {
     pub async fn try_new(
-        conn_options: ConnectionOptions,
+        conn_options: impl Into<ConnectionOptions>,
         sql: impl Into<String>,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
@@ -43,7 +43,7 @@ impl RemoteTable {
     }
 
     pub async fn try_new_with_schema(
-        conn_options: ConnectionOptions,
+        conn_options: impl Into<ConnectionOptions>,
         sql: impl Into<String>,
         table_schema: SchemaRef,
     ) -> DFResult<Self> {
@@ -58,7 +58,7 @@ impl RemoteTable {
     }
 
     pub async fn try_new_with_transform(
-        conn_options: ConnectionOptions,
+        conn_options: impl Into<ConnectionOptions>,
         sql: impl Into<String>,
         transform: Arc<dyn Transform>,
     ) -> DFResult<Self> {
@@ -73,12 +73,13 @@ impl RemoteTable {
     }
 
     pub async fn try_new_with_schema_transform_unparser(
-        conn_options: ConnectionOptions,
+        conn_options: impl Into<ConnectionOptions>,
         sql: impl Into<String>,
         table_schema: Option<SchemaRef>,
         transform: Arc<dyn Transform>,
         unparser: Arc<dyn Unparse>,
     ) -> DFResult<Self> {
+        let conn_options = conn_options.into();
         let sql = sql.into();
         let pool = connect(&conn_options).await?;
 

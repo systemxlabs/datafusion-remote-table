@@ -62,6 +62,12 @@ impl PostgresConnectionOptions {
     }
 }
 
+impl From<PostgresConnectionOptions> for ConnectionOptions {
+    fn from(options: PostgresConnectionOptions) -> Self {
+        ConnectionOptions::Postgres(options)
+    }
+}
+
 #[derive(Debug)]
 pub struct PostgresPool {
     pool: bb8::Pool<PostgresConnectionManager<NoTls>>,

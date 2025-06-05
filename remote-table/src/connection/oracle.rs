@@ -53,6 +53,12 @@ impl OracleConnectionOptions {
     }
 }
 
+impl From<OracleConnectionOptions> for ConnectionOptions {
+    fn from(options: OracleConnectionOptions) -> Self {
+        ConnectionOptions::Oracle(options)
+    }
+}
+
 #[derive(Debug)]
 pub struct OraclePool {
     pool: bb8::Pool<OracleConnectionManager>,
