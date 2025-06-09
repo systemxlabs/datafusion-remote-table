@@ -28,6 +28,7 @@ use derive_with::With;
 use futures::StreamExt;
 use log::debug;
 use num_bigint::{BigInt, Sign};
+use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -116,6 +117,10 @@ pub(crate) struct PostgresConnection {
 
 #[async_trait::async_trait]
 impl Connection for PostgresConnection {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Postgres.query_limit_1(sql);
         let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {

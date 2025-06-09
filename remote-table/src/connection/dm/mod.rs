@@ -20,6 +20,7 @@ use log::debug;
 use odbc_api::buffers::ColumnarAnyBuffer;
 use odbc_api::handles::StatementImpl;
 use odbc_api::{Cursor, CursorImpl, Environment, ResultSetMetadata};
+use std::any::Any;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
@@ -106,6 +107,10 @@ pub struct DmConnection {
 
 #[async_trait::async_trait]
 impl Connection for DmConnection {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Dm.query_limit_1(sql);
         let conn = self.conn.lock().await;

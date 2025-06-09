@@ -27,7 +27,7 @@ pub struct RemoteTableExec {
     pub(crate) unparsed_filters: Vec<String>,
     pub(crate) limit: Option<usize>,
     pub(crate) transform: Arc<dyn Transform>,
-    conn: Arc<dyn Connection>,
+    pub(crate) conn: Arc<dyn Connection>,
     plan_properties: PlanProperties,
 }
 

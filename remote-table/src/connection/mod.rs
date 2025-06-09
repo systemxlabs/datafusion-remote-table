@@ -19,6 +19,7 @@ pub use oracle::*;
 pub use postgres::*;
 #[cfg(feature = "sqlite")]
 pub use sqlite::*;
+use std::any::Any;
 
 use crate::{DFResult, RemoteSchemaRef, extract_primitive_array};
 use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
@@ -40,6 +41,8 @@ pub trait Pool: Debug + Send + Sync {
 
 #[async_trait::async_trait]
 pub trait Connection: Debug + Send + Sync {
+    fn as_any(&self) -> &dyn Any;
+
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef>;
 
     async fn query(

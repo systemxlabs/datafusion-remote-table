@@ -17,6 +17,7 @@ use itertools::Itertools;
 use log::debug;
 use rusqlite::types::ValueRef;
 use rusqlite::{Column, Row, Rows};
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,6 +72,10 @@ pub struct SqliteConnection {
 
 #[async_trait::async_trait]
 impl Connection for SqliteConnection {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Sqlite.query_limit_1(sql);
         self.conn

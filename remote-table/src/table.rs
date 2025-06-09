@@ -81,22 +81,39 @@ impl RemoteTable {
     ) -> DFResult<Self> {
         let conn_options = conn_options.into();
         let sql = sql.into();
+
+        let now = std::time::Instant::now();
         let pool = connect(&conn_options).await?;
+        debug!(
+            "[remote-table] Creating connection pool cost: {}ms",
+            now.elapsed().as_millis()
+        );
 
         let (table_schema, remote_schema) = if let Some(table_schema) = table_schema {
             let remote_schema = if transform.as_any().is::<DefaultTransform>() {
                 None
             } else {
                 // Infer remote schema
+                let now = std::time::Instant::now();
                 let conn = pool.get().await?;
-                conn.infer_schema(&sql).await.ok()
+                let remote_schema_opt = conn.infer_schema(&sql).await.ok();
+                debug!(
+                    "[remote-table] Inferring remote schema cost: {}ms",
+                    now.elapsed().as_millis()
+                );
+                remote_schema_opt
             };
             (table_schema, remote_schema)
         } else {
             // Infer table schema
+            let now = std::time::Instant::now();
             let conn = pool.get().await?;
             match conn.infer_schema(&sql).await {
                 Ok(remote_schema) => {
+                    debug!(
+                        "[remote-table] Inferring table schema cost: {}ms",
+                        now.elapsed().as_millis()
+                    );
                     let inferred_table_schema = Arc::new(remote_schema.to_arrow_schema());
                     (inferred_table_schema, Some(remote_schema))
                 }
@@ -170,6 +187,13 @@ impl TableProvider for RemoteTable {
             );
         }
 
+        let now = std::time::Instant::now();
+        let conn = self.pool.get().await?;
+        debug!(
+            "[remote-table] Getting connection from pool cost: {}ms",
+            now.elapsed().as_millis()
+        );
+
         Ok(Arc::new(RemoteTableExec::try_new(
             self.conn_options.clone(),
             self.sql.clone(),
@@ -179,7 +203,7 @@ impl TableProvider for RemoteTable {
             unparsed_filters,
             limit,
             self.transform.clone(),
-            self.pool.get().await?,
+            conn,
         )?))
     }
 

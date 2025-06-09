@@ -25,6 +25,7 @@ use log::debug;
 use mysql_async::consts::{ColumnFlags, ColumnType};
 use mysql_async::prelude::Queryable;
 use mysql_async::{Column, FromValueError, Row, Value};
+use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, With, Getters)]
@@ -104,6 +105,10 @@ pub struct MysqlConnection {
 
 #[async_trait::async_trait]
 impl Connection for MysqlConnection {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Mysql.query_limit_1(sql);
         let mut conn = self.conn.lock().await;
