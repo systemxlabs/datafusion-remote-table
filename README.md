@@ -1,6 +1,7 @@
 # datafusion-remote-table
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 [![Crates.io](https://img.shields.io/crates/v/datafusion-remote-table.svg)](https://crates.io/crates/datafusion-remote-table)
+[![Docs](https://docs.rs/datafusion-remote-table/badge.svg)](https://docs.rs/datafusion-remote-table/latest/datafusion_remote_table/)
 
 ## Features
 1. Execute SQL queries on remote databases and stream results as datafusion table provider
