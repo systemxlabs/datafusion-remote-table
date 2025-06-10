@@ -40,3 +40,8 @@ CREATE TABLE simple_table (
 INSERT INTO simple_table VALUES (1, 'Tom');
 INSERT INTO simple_table VALUES (2, 'Jerry');
 INSERT INTO simple_table VALUES (3, 'Spike');
+
+CREATE TABLE empty_table (
+    id INTEGER,
+    name VARCHAR2(255)
+);

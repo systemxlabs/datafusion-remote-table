@@ -110,10 +110,10 @@ impl Connection for OracleConnection {
 
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Oracle.query_limit_1(sql);
-        let row = self.conn.query_row(&sql, &[]).map_err(|e| {
+        let result_set = self.conn.query(&sql, &[]).map_err(|e| {
             DataFusionError::Execution(format!("Failed to execute query {sql} on oracle: {e:?}"))
         })?;
-        let remote_schema = Arc::new(build_remote_schema(&row)?);
+        let remote_schema = Arc::new(build_remote_schema(&result_set)?);
         Ok(remote_schema)
     }
 
@@ -187,9 +187,9 @@ fn oracle_type_to_remote_type(oracle_type: &ColumnType) -> DFResult<OracleType> 
     }
 }
 
-fn build_remote_schema(row: &Row) -> DFResult<RemoteSchema> {
+fn build_remote_schema(result_set: &oracle::ResultSet<Row>) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
-    for col in row.column_info() {
+    for col in result_set.column_info() {
         let remote_type = RemoteType::Oracle(oracle_type_to_remote_type(col.oracle_type())?);
         remote_fields.push(RemoteField::new(col.name(), remote_type, col.nullable()));
     }

@@ -215,7 +215,7 @@ async fn empty_table() {
         RemoteDbType::Mysql,
         "select * from empty_table",
         "SELECT * FROM remote_table",
-        r#""#,
+        "++\n++",
     )
     .await;
 }
