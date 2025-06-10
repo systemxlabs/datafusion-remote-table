@@ -48,3 +48,8 @@ CREATE TABLE simple_table (
 );
 
 INSERT INTO simple_table VALUES (1, 'Tom'), (2, 'Jerry'), (3, 'Spike');
+
+CREATE TABLE empty_table (
+    id INT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);

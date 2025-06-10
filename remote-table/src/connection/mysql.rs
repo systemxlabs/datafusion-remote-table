@@ -113,15 +113,10 @@ impl Connection for MysqlConnection {
         let sql = RemoteDbType::Mysql.query_limit_1(sql);
         let mut conn = self.conn.lock().await;
         let conn = &mut *conn;
-        let row: Option<Row> = conn.query_first(&sql).await.map_err(|e| {
-            DataFusionError::Execution(format!("Failed to execute query {sql} on mysql: {e:?}",))
+        let stmt = conn.prep(&sql).await.map_err(|e| {
+            DataFusionError::Execution(format!("Failed to prepare query {sql} on mysql: {e:?}"))
         })?;
-        let Some(row) = row else {
-            return Err(DataFusionError::Execution(
-                "No rows returned to infer schema".to_string(),
-            ));
-        };
-        let remote_schema = Arc::new(build_remote_schema(&row)?);
+        let remote_schema = Arc::new(build_remote_schema(&stmt)?);
         Ok(remote_schema)
     }
 
@@ -274,9 +269,9 @@ fn mysql_type_to_remote_type(mysql_col: &Column) -> DFResult<MysqlType> {
     }
 }
 
-fn build_remote_schema(row: &Row) -> DFResult<RemoteSchema> {
+fn build_remote_schema(stmt: &mysql_async::Statement) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
-    for col in row.columns_ref() {
+    for col in stmt.columns() {
         remote_fields.push(RemoteField::new(
             col.name_str().to_string(),
             RemoteType::Mysql(mysql_type_to_remote_type(col)?),

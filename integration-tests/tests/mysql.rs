@@ -204,3 +204,18 @@ async fn empty_projection() {
     assert_eq!(batch.num_columns(), 0);
     assert_eq!(batch.num_rows(), 3);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn empty_table() {
+    setup_shared_containers();
+    // Wait for the database to be ready to connect
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+
+    assert_result(
+        RemoteDbType::Mysql,
+        "select * from empty_table",
+        "SELECT * FROM remote_table",
+        r#""#,
+    )
+    .await;
+}
