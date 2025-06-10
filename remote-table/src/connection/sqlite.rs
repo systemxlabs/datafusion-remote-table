@@ -201,6 +201,7 @@ fn build_remote_schema(columns: &[OwnedColumn], mut rows: Rows) -> DFResult<Remo
                 RemoteType::Sqlite(decl_type_to_remote_type(&decl_type.to_ascii_lowercase())?);
             remote_field_map.insert(col_idx, RemoteField::new(&col.name, remote_type, true));
         } else {
+            // None for expressions
             unknown_cols.push(col_idx);
         }
     }
