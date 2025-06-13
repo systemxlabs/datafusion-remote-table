@@ -130,8 +130,8 @@ pub fn extract_byte_array<T: ByteArrayType>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{extract_byte_array, extract_primitive_array};
-    use datafusion::arrow::array::{Int32Array, RecordBatch, StringArray};
+    use crate::{extract_boolean_array, extract_byte_array, extract_primitive_array};
+    use datafusion::arrow::array::{BooleanArray, Int32Array, RecordBatch, StringArray};
     use datafusion::arrow::datatypes::{DataType, Field, Int32Type, Schema, Utf8Type};
     use std::sync::Arc;
 
@@ -146,6 +146,20 @@ mod tests {
             .unwrap(),
         ];
         let result: Vec<Option<i32>> = extract_primitive_array::<Int32Type>(&batches, 0).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn test_extract_bool_array() {
+        let expected = vec![Some(true), Some(false), None];
+        let batches = vec![
+            RecordBatch::try_new(
+                Arc::new(Schema::new(vec![Field::new("a", DataType::Boolean, true)])),
+                vec![Arc::new(BooleanArray::from(expected.clone()))],
+            )
+            .unwrap(),
+        ];
+        let result: Vec<Option<bool>> = extract_boolean_array(&batches, 0).unwrap();
         assert_eq!(result, expected);
     }
 
