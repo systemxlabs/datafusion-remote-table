@@ -1,7 +1,10 @@
 use crate::{ConnectionOptions, DFResult, RemoteTable};
-use datafusion::arrow::array::{Array, GenericByteArray, PrimitiveArray, RecordBatch};
+use datafusion::arrow::array::{
+    Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch,
+};
 use datafusion::arrow::datatypes::{
-    ArrowPrimitiveType, BinaryType, ByteArrayType, LargeBinaryType, LargeUtf8Type, Utf8Type,
+    ArrowPrimitiveType, BinaryType, BooleanType, ByteArrayType, LargeBinaryType, LargeUtf8Type,
+    Utf8Type,
 };
 use datafusion::error::DataFusionError;
 use datafusion::prelude::SessionContext;
@@ -78,6 +81,26 @@ pub fn extract_primitive_array<T: ArrowPrimitiveType>(
             return Err(DataFusionError::Execution(format!(
                 "Column at index {col_idx} is not {} instead of {}",
                 T::DATA_TYPE,
+                column.data_type(),
+            )));
+        }
+    }
+    Ok(result)
+}
+
+pub fn extract_boolean_array(
+    batches: &[RecordBatch],
+    col_idx: usize,
+) -> DFResult<Vec<Option<bool>>> {
+    let mut result = Vec::new();
+    for batch in batches {
+        let column = batch.column(col_idx);
+        if let Some(array) = column.as_any().downcast_ref::<BooleanArray>() {
+            result.extend(array.iter().collect::<Vec<_>>())
+        } else {
+            return Err(DataFusionError::Execution(format!(
+                "Column at index {col_idx} is not {} instead of {}",
+                BooleanType::DATA_TYPE,
                 column.data_type(),
             )));
         }
