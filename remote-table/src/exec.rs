@@ -5,6 +5,7 @@ use crate::{
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Statistics;
 use datafusion::common::stats::Precision;
+use datafusion::error::DataFusionError;
 use datafusion::execution::{SendableRecordBatchStream, TaskContext};
 use datafusion::physical_expr::{EquivalenceProperties, Partitioning};
 use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
@@ -117,7 +118,14 @@ impl ExecutionPlan for RemoteTableExec {
         Ok(Box::pin(RecordBatchStreamAdapter::new(schema, stream)))
     }
 
-    fn statistics(&self) -> DFResult<Statistics> {
+    fn partition_statistics(&self, partition: Option<usize>) -> DFResult<Statistics> {
+        if let Some(partition) = partition {
+            if partition != 0 {
+                return Err(DataFusionError::Plan(format!(
+                    "Invalid partition index: {partition}"
+                )));
+            }
+        }
         let db_type = self.conn_options.db_type();
         let limit = if db_type.support_rewrite_with_filters_limit(&self.sql) {
             self.limit
