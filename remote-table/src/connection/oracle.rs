@@ -83,7 +83,7 @@ pub(crate) async fn connect_oracle(options: &OracleConnectionOptions) -> DFResul
         .max_size(options.pool_max_size as u32)
         .build(manager)
         .await
-        .map_err(|e| DataFusionError::Internal(format!("Failed to create oracle pool: {:?}", e)))?;
+        .map_err(|e| DataFusionError::Internal(format!("Failed to create oracle pool: {e:?}")))?;
     Ok(OraclePool { pool })
 }
 

@@ -90,7 +90,7 @@ pub(crate) fn connect_mysql(options: &MysqlConnectionOptions) -> DFResult<MysqlP
 impl Pool for MysqlPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
         let conn = self.pool.get_conn().await.map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get mysql connection from pool: {:?}", e))
+            DataFusionError::Execution(format!("Failed to get mysql connection from pool: {e:?}"))
         })?;
         Ok(Arc::new(MysqlConnection {
             conn: Arc::new(Mutex::new(conn)),
