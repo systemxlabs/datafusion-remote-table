@@ -332,7 +332,7 @@ fn spawn_background_task(
                 if is_empty {
                     break;
                 }
-                if let Err(_) = tx.send(Ok(batch)).await {
+                if tx.send(Ok(batch)).await.is_err() {
                     return;
                 }
             }
@@ -364,7 +364,7 @@ fn rows_to_batch(
         append_rows_to_array_builders(
             row,
             table_schema,
-            &columns,
+            columns,
             projection,
             array_builders.as_mut_slice(),
         )?;
