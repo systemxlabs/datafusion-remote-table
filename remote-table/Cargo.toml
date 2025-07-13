@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-remote-table"
-version = "0.16.0"
+version = "0.16.1"
 edition = "2024"
 authors = ["lewiszlw <lewiszlw520@gmail.com>"]
 description = "A DataFusion table provider for executing SQL queries on remote databases"
@@ -14,7 +14,7 @@ default = ["postgres", "mysql", "oracle", "sqlite"]
 postgres = ["dep:bb8", "dep:bb8-postgres"]
 mysql = ["dep:mysql_async"]
 oracle = ["dep:bb8", "dep:oracle", "dep:bb8-oracle"]
-sqlite = ["dep:rusqlite", "dep:tokio-rusqlite"]
+sqlite = ["dep:rusqlite"]
 dm = ["dep:odbc-api"]
 
 [dependencies]
@@ -34,7 +34,7 @@ derive-with = "0.6.1"
 derive-getters = "0.5"
 itertools = "0.14"
 log = { version = "0.4", features = [] }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 bb8 = { version = "0.9", optional = true }
 # Postgres
 bb8-postgres = { version = "0.9", features = ["with-chrono-0_4", "with-serde_json-1"], optional = true }
@@ -50,6 +50,5 @@ oracle = { version = "0.6", optional = true }
 bb8-oracle = { version = "0.3", features = ["chrono"], optional = true}
 # Sqlite
 rusqlite = { workspace = true, features = ["column_decltype"], optional = true }
-tokio-rusqlite = { version = "0.6.0", features = ["bundled"], optional = true }
 # Dm
 odbc-api = { version = "13", default-features = false, features = ["odbc_version_3_80"], optional = true }

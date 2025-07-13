@@ -14,7 +14,7 @@ use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use derive_getters::Getters;
 use derive_with::With;
 use itertools::Itertools;
-use log::debug;
+use log::{debug, error};
 use rusqlite::types::ValueRef;
 use rusqlite::{Column, Row, Rows};
 use std::any::Any;
@@ -45,29 +45,30 @@ impl From<SqliteConnectionOptions> for ConnectionOptions {
 
 #[derive(Debug)]
 pub struct SqlitePool {
-    pool: tokio_rusqlite::Connection,
+    path: PathBuf,
 }
 
 pub async fn connect_sqlite(options: &SqliteConnectionOptions) -> DFResult<SqlitePool> {
-    let pool = tokio_rusqlite::Connection::open(&options.path)
-        .await
-        .map_err(|e| {
-            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
-        })?;
-    Ok(SqlitePool { pool })
+    let _ = rusqlite::Connection::open(&options.path).map_err(|e| {
+        DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+    })?;
+    Ok(SqlitePool {
+        path: options.path.clone(),
+    })
 }
 
 #[async_trait::async_trait]
 impl Pool for SqlitePool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
-        let conn = self.pool.clone();
-        Ok(Arc::new(SqliteConnection { conn }))
+        Ok(Arc::new(SqliteConnection {
+            path: self.path.clone(),
+        }))
     }
 }
 
 #[derive(Debug)]
 pub struct SqliteConnection {
-    conn: tokio_rusqlite::Connection,
+    path: PathBuf,
 }
 
 #[async_trait::async_trait]
@@ -78,21 +79,20 @@ impl Connection for SqliteConnection {
 
     async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Sqlite.query_limit_1(sql);
-        self.conn
-            .call(move |conn| {
-                let mut stmt = conn.prepare(&sql)?;
-                let columns: Vec<OwnedColumn> =
-                    stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
-                let rows = stmt.query([])?;
+        let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+        })?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
+        })?;
+        let columns: Vec<OwnedColumn> =
+            stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
+        let rows = stmt.query([]).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
+        })?;
 
-                let remote_schema = Arc::new(
-                    build_remote_schema(columns.as_slice(), rows)
-                        .map_err(|e| tokio_rusqlite::Error::Other(Box::new(e)))?,
-                );
-                Ok(remote_schema)
-            })
-            .await
-            .map_err(|e| DataFusionError::Execution(format!("Failed to infer schema: {e:?}")))
+        let remote_schema = Arc::new(build_remote_schema(columns.as_slice(), rows)?);
+        Ok(remote_schema)
     }
 
     async fn query(
@@ -108,38 +108,19 @@ impl Connection for SqliteConnection {
         let sql = RemoteDbType::Sqlite.rewrite_query(sql, unparsed_filters, limit);
         debug!("[remote-table] executing sqlite query: {sql}");
 
-        let conn = self.conn.clone();
-        let projection = projection.cloned();
-        let limit = conn_options.stream_chunk_size();
-        let stream = async_stream::stream! {
-            let mut offset = 0;
-            loop {
-                let sql = format!("SELECT * FROM ({sql}) LIMIT {limit} OFFSET {offset}");
-                let sql_clone = sql.clone();
-                let conn = conn.clone();
-                let projection = projection.clone();
-                let table_schema = table_schema.clone();
-                let (batch, is_empty) = conn
-                    .call(move |conn| {
-                        let mut stmt = conn.prepare(&sql)?;
-                        let columns: Vec<OwnedColumn> =
-                            stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
-                        let rows = stmt.query([])?;
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<DFResult<RecordBatch>>(1);
+        let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+        })?;
 
-                        rows_to_batch(rows, &table_schema, columns, projection.as_ref())
-                            .map_err(|e| tokio_rusqlite::Error::Other(e.into()))
-                })
-                .await
-                .map_err(|e| {
-                    DataFusionError::Execution(format!(
-                        "Failed to execute query {sql_clone} on sqlite: {e:?}"
-                    ))
-                })?;
-                if is_empty {
-                    break;
-                }
-                yield Ok(batch);
-                offset += limit;
+        let projection = projection.cloned();
+        let chunk_size = conn_options.stream_chunk_size();
+
+        spawn_background_task(tx, conn, sql, table_schema, projection, chunk_size);
+
+        let stream = async_stream::stream! {
+            while let Some(batch) = rx.recv().await {
+                yield batch;
             }
         };
         Ok(Box::pin(RecordBatchStreamAdapter::new(
@@ -287,11 +268,84 @@ fn build_remote_schema(columns: &[OwnedColumn], mut rows: Rows) -> DFResult<Remo
     Ok(RemoteSchema::new(remote_fields))
 }
 
+fn spawn_background_task(
+    tx: tokio::sync::mpsc::Sender<DFResult<RecordBatch>>,
+    conn: rusqlite::Connection,
+    sql: String,
+    table_schema: SchemaRef,
+    projection: Option<Vec<usize>>,
+    chunk_size: usize,
+) {
+    std::thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread().build() {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                error!("Failed to create tokio runtime to run sqlite query: {e:?}");
+                return;
+            }
+        };
+        let local_set = tokio::task::LocalSet::new();
+        local_set.block_on(&runtime, async move {
+            let mut stmt = match conn.prepare(&sql) {
+                Ok(stmt) => stmt,
+                Err(e) => {
+                    let _ = tx
+                        .send(Err(DataFusionError::Execution(format!(
+                            "Failed to prepare sqlite statement: {e:?}"
+                        ))))
+                        .await;
+                    return;
+                }
+            };
+            let columns: Vec<OwnedColumn> =
+                stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
+            let mut rows = match stmt.query([]) {
+                Ok(rows) => rows,
+                Err(e) => {
+                    let _ = tx
+                        .send(Err(DataFusionError::Execution(format!(
+                            "Failed to query sqlite statement: {e:?}"
+                        ))))
+                        .await;
+                    return;
+                }
+            };
+
+            loop {
+                let (batch, is_empty) = match rows_to_batch(
+                    &mut rows,
+                    &table_schema,
+                    &columns,
+                    projection.as_ref(),
+                    chunk_size,
+                ) {
+                    Ok((batch, is_empty)) => (batch, is_empty),
+                    Err(e) => {
+                        let _ = tx
+                            .send(Err(DataFusionError::Execution(format!(
+                                "Failed to convert rows to batch: {e:?}"
+                            ))))
+                            .await;
+                        return;
+                    }
+                };
+                if is_empty {
+                    break;
+                }
+                if let Err(_) = tx.send(Ok(batch)).await {
+                    return;
+                }
+            }
+        });
+    });
+}
+
 fn rows_to_batch(
-    mut rows: Rows,
+    rows: &mut Rows,
     table_schema: &SchemaRef,
-    columns: Vec<OwnedColumn>,
+    columns: &[OwnedColumn],
     projection: Option<&Vec<usize>>,
+    chunk_size: usize,
 ) -> DFResult<(RecordBatch, bool)> {
     let projected_schema = project_schema(table_schema, projection)?;
     let mut array_builders = vec![];
@@ -314,6 +368,9 @@ fn rows_to_batch(
             projection,
             array_builders.as_mut_slice(),
         )?;
+        if row_count >= chunk_size {
+            break;
+        }
     }
 
     let projected_columns = array_builders
