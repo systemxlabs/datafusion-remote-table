@@ -1,4 +1,4 @@
-use crate::shared_containers::setup_sqlite_db;
+use crate::setup_sqlite_db;
 use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;

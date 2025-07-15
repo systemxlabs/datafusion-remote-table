@@ -5,7 +5,7 @@ use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
     ConnectionOptions, RemoteDbType, RemoteTable, SqliteConnectionOptions,
 };
-use integration_tests::shared_containers::setup_sqlite_db;
+use integration_tests::setup_sqlite_db;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
 use std::sync::Arc;
 

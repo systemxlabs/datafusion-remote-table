@@ -13,7 +13,7 @@ use datafusion_remote_table::{
     RemotePhysicalCodec, RemoteTable, SqliteConnectionOptions, Transform, TransformArgs,
     TransformCodec,
 };
-use integration_tests::shared_containers::setup_sqlite_db;
+use integration_tests::setup_sqlite_db;
 use std::any::Any;
 use std::sync::Arc;
 

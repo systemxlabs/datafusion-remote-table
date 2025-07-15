@@ -2,7 +2,7 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{RemoteDbType, RemoteTable};
-use integration_tests::shared_containers::setup_shared_containers;
+use integration_tests::setup_oracle_db;
 use integration_tests::utils::{
     assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
 };
@@ -10,8 +10,7 @@ use std::sync::Arc;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn supported_oracle_types() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
     assert_result(
         RemoteDbType::Oracle,
         "SELECT * from SYS.supported_data_types",
@@ -28,8 +27,7 @@ pub async fn supported_oracle_types() {
 // ORA-01754: a table may contain only one column of type LONG
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn supported_oracle_types2() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
     assert_result(
         RemoteDbType::Oracle,
         "SELECT * from SYS.supported_data_types2",
@@ -46,16 +44,14 @@ pub async fn supported_oracle_types2() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn various_sqls() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
 
     assert_sqls(RemoteDbType::Oracle, vec!["select * from USER_TABLES"]).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_limit() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
     assert_plan_and_result(
         RemoteDbType::Oracle,
         "select * from SYS.simple_table",
@@ -72,8 +68,7 @@ async fn pushdown_limit() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_filters() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
     assert_plan_and_result(
         RemoteDbType::Oracle,
         "select * from SYS.simple_table",
@@ -90,8 +85,7 @@ async fn pushdown_filters() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn count1_agg() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
 
     assert_plan_and_result(
         RemoteDbType::Oracle,
@@ -153,8 +147,7 @@ async fn count1_agg() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_projection() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
 
     let options = build_conn_options(RemoteDbType::Oracle);
     let table = RemoteTable::try_new(options, "select * from SYS.simple_table")
@@ -183,8 +176,7 @@ async fn empty_projection() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_table() {
-    setup_shared_containers();
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    setup_oracle_db();
 
     assert_result(
         RemoteDbType::Oracle,
