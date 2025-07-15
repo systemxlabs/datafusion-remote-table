@@ -10,5 +10,5 @@ datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 tokio = { workspace = true }
 ctor = "0.4"
-rusqlite = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
 uuid = { version = "1.16.0", features = ["v4"] }

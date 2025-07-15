@@ -144,13 +144,17 @@ fn sqlite_col_to_owned_col(sqlite_col: &Column) -> OwnedColumn {
 }
 
 fn decl_type_to_remote_type(decl_type: &str) -> DFResult<SqliteType> {
-    if ["tinyint", "smallint", "int", "integer", "bigint"].contains(&decl_type) {
+    if [
+        "tinyint", "smallint", "int", "integer", "bigint", "int2", "int4", "int8",
+    ]
+    .contains(&decl_type)
+    {
         return Ok(SqliteType::Integer);
     }
-    if ["real", "float", "double"].contains(&decl_type) {
+    if ["real", "float", "double", "numeric"].contains(&decl_type) {
         return Ok(SqliteType::Real);
     }
-    if decl_type.starts_with("real") {
+    if decl_type.starts_with("real") || decl_type.starts_with("numeric") {
         return Ok(SqliteType::Real);
     }
     if ["text", "varchar", "char", "string"].contains(&decl_type) {
@@ -454,7 +458,7 @@ fn append_rows_to_array_builders(
             }
             _ => {
                 return Err(DataFusionError::NotImplemented(format!(
-                    "Unsupported data type {:?} for col: {:?}",
+                    "Unsupported data type {} for col: {:?}",
                     field.data_type(),
                     col
                 )));
