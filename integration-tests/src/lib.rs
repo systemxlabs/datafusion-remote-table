@@ -15,9 +15,9 @@ pub fn setup_postgres_db() {
         );
         compose.down();
         compose.up();
+        std::thread::sleep(std::time::Duration::from_secs(15));
         compose
     });
-    std::thread::sleep(std::time::Duration::from_secs(15));
 }
 
 static MYSQL_DB: OnceLock<DockerCompose> = OnceLock::new();
@@ -29,9 +29,9 @@ pub fn setup_mysql_db() {
         );
         compose.down();
         compose.up();
+        std::thread::sleep(std::time::Duration::from_secs(120));
         compose
     });
-    std::thread::sleep(std::time::Duration::from_secs(120));
 }
 
 static ORACLE_DB: OnceLock<DockerCompose> = OnceLock::new();
@@ -43,9 +43,9 @@ pub fn setup_oracle_db() {
         );
         compose.down();
         compose.up();
+        std::thread::sleep(std::time::Duration::from_secs(15));
         compose
     });
-    std::thread::sleep(std::time::Duration::from_secs(15));
 }
 
 pub fn setup_sqlite_db() -> PathBuf {
