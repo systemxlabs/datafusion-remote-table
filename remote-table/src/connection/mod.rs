@@ -130,6 +130,27 @@ impl ConnectionOptions {
             ConnectionOptions::Dm(_) => RemoteDbType::Dm,
         }
     }
+
+    pub fn with_pool_max_size(self, pool_max_size: usize) -> Self {
+        match self {
+            #[cfg(feature = "postgres")]
+            ConnectionOptions::Postgres(options) => {
+                ConnectionOptions::Postgres(options.with_pool_max_size(pool_max_size))
+            }
+            #[cfg(feature = "oracle")]
+            ConnectionOptions::Oracle(options) => {
+                ConnectionOptions::Oracle(options.with_pool_max_size(pool_max_size))
+            }
+            #[cfg(feature = "mysql")]
+            ConnectionOptions::Mysql(options) => {
+                ConnectionOptions::Mysql(options.with_pool_max_size(pool_max_size))
+            }
+            #[cfg(feature = "sqlite")]
+            ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
+            #[cfg(feature = "dm")]
+            ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
+        }
+    }
 }
 
 pub enum RemoteDbType {

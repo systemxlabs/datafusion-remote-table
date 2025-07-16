@@ -98,9 +98,10 @@ impl ConnectionCodec for DefaultConnectionCodec {
                 "DefaultConnectionCodec only supports {DEFAULT_CONNECTION_VALUE} value but got: {value:?}"
             )));
         }
+        let conn_options = conn_options.clone().with_pool_max_size(1);
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let pool = connect(conn_options).await?;
+                let pool = connect(&conn_options).await?;
                 let conn = pool.get().await?;
                 Ok::<_, DataFusionError>(conn)
             })
