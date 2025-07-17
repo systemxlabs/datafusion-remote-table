@@ -863,7 +863,7 @@ fn rows_to_batch(
                     }
                     _ => {
                         return Err(DataFusionError::NotImplemented(format!(
-                            "Unsupported list data type {:?} for col: {:?}",
+                            "Unsupported list data type {} for col: {:?}",
                             field.data_type(),
                             col
                         )));
@@ -871,7 +871,7 @@ fn rows_to_batch(
                 },
                 _ => {
                     return Err(DataFusionError::NotImplemented(format!(
-                        "Unsupported data type {:?} for col: {:?}",
+                        "Unsupported data type {} for col: {:?}",
                         field.data_type(),
                         col
                     )));
