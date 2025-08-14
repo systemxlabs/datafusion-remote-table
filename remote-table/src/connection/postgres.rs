@@ -678,16 +678,28 @@ fn rows_to_batch(
                                 "Failed to downcast builder to FixedSizeBinaryBuilder for {field:?}"
                             )
                         });
-                    let v: Option<Uuid> = row.try_get(idx).map_err(|e| {
-                        DataFusionError::Execution(format!(
-                            "Failed to get binary value for field {:?}: {e:?}",
-                            field
-                        ))
-                    })?;
-
-                    match v {
-                        Some(v) => builder.append_value(v.as_bytes())?,
-                        None => builder.append_null(),
+                    if col.is_some() && col.unwrap().type_().name().eq_ignore_ascii_case("uuid") {
+                        let v: Option<Uuid> = row.try_get(idx).map_err(|e| {
+                            DataFusionError::Execution(format!(
+                                "Failed to get Uuid value for field {:?}: {e:?}",
+                                field
+                            ))
+                        })?;
+                        match v {
+                            Some(v) => builder.append_value(v.as_bytes())?,
+                            None => builder.append_null(),
+                        }
+                    } else {
+                        let v: Option<Vec<u8>> = row.try_get(idx).map_err(|e| {
+                            DataFusionError::Execution(format!(
+                                "Failed to get FixedSizeBinary value for field {:?}: {e:?}",
+                                field
+                            ))
+                        })?;
+                        match v {
+                            Some(v) => builder.append_value(v)?,
+                            None => builder.append_null(),
+                        }
                     }
                 }
                 DataType::Timestamp(TimeUnit::Microsecond, None) => {
