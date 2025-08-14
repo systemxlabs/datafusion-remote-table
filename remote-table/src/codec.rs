@@ -550,6 +550,11 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
                 protobuf::PostgresXml {},
             )),
         },
+        RemoteType::Postgres(PostgresType::Uuid) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::PostgresUuid(
+                protobuf::PostgresUuid {},
+            )),
+        },
 
         RemoteType::Mysql(MysqlType::TinyInt) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlTinyInt(
@@ -981,6 +986,7 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
         }
         protobuf::remote_type::Type::PostgresOid(_) => RemoteType::Postgres(PostgresType::Oid),
         protobuf::remote_type::Type::PostgresXml(_) => RemoteType::Postgres(PostgresType::Xml),
+        protobuf::remote_type::Type::PostgresUuid(_) => RemoteType::Postgres(PostgresType::Uuid),
         protobuf::remote_type::Type::MysqlTinyInt(_) => RemoteType::Mysql(MysqlType::TinyInt),
         protobuf::remote_type::Type::MysqlTinyIntUnsigned(_) => {
             RemoteType::Mysql(MysqlType::TinyIntUnsigned)

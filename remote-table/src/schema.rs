@@ -66,6 +66,7 @@ pub enum PostgresType {
     BoolArray,
     PostGisGeometry,
     Xml,
+    Uuid,
 }
 
 impl PostgresType {
@@ -118,6 +119,7 @@ impl PostgresType {
                 DataType::List(Arc::new(Field::new("", DataType::Boolean, true)))
             }
             PostgresType::PostGisGeometry => DataType::Binary,
+            PostgresType::Uuid => DataType::FixedSizeBinary(16),
         }
     }
 }

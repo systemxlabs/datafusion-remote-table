@@ -120,6 +120,7 @@ message RemoteType {
     PostgresPostGisGeometry postgres_postgis_geometry = 30;
     PostgresOid postgres_oid = 31;
     PostgresXml postgres_xml = 32;
+    PostgresUuid postgres_uuid = 33;
     MysqlTinyInt mysql_tiny_int = 101;
     MysqlTinyIntUnsigned mysql_tiny_int_unsigned = 102;
     MysqlSmallInt mysql_small_int = 103;
@@ -223,6 +224,7 @@ message PostgresBoolArray {}
 message PostgresPostGisGeometry {}
 message PostgresOid {}
 message PostgresXml {}
+message PostgresUuid {}
 
 
 message MysqlTinyInt {}

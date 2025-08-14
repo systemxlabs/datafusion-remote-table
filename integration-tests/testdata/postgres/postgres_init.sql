@@ -37,12 +37,13 @@ CREATE TABLE supported_data_types (
 
     bool_array_col BOOLEAN[],
 
-    xml_col XML
+    xml_col XML,
+    uuid_col UUID
 );
 
 INSERT INTO supported_data_types VALUES
-(1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', E'\\xDEADBEEF', '2023-10-01', '12:34:56', '2023-10-01 12:34:56', '2023-10-01 12:34:56+00', '3 months 2 weeks', TRUE, '{"key1": "value1"}', '{"key2": "value2"}', ST_GeomFromText('POINT(1 1)', 312), ARRAY[1, 2], ARRAY[3, 4], ARRAY[5, 6], ARRAY[1.1, 2.2], ARRAY[3.3, 4.4], ARRAY['char0', 'char1'], ARRAY['varchar0', 'varchar1'], ARRAY['bpchar0', 'bpchar1'], ARRAY['text0', 'text1'], ARRAY[true, false], '<item>1</item>'),
-(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+(1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', E'\\xDEADBEEF', '2023-10-01', '12:34:56', '2023-10-01 12:34:56', '2023-10-01 12:34:56+00', '3 months 2 weeks', TRUE, '{"key1": "value1"}', '{"key2": "value2"}', ST_GeomFromText('POINT(1 1)', 312), ARRAY[1, 2], ARRAY[3, 4], ARRAY[5, 6], ARRAY[1.1, 2.2], ARRAY[3.3, 4.4], ARRAY['char0', 'char1'], ARRAY['varchar0', 'varchar1'], ARRAY['bpchar0', 'bpchar1'], ARRAY['text0', 'text1'], ARRAY[true, false], '<item>1</item>', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
+(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 CREATE TABLE simple_table (
     id SERIAL PRIMARY KEY,

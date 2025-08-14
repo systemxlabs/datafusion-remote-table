@@ -11,10 +11,10 @@ use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
-    Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder,
-    IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder, RecordBatch, RecordBatchOptions,
-    StringBuilder, Time64MicrosecondBuilder, Time64NanosecondBuilder, TimestampMicrosecondBuilder,
-    TimestampNanosecondBuilder, UInt32Builder, make_builder,
+    FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int16Builder, Int32Builder,
+    Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder, RecordBatch,
+    RecordBatchOptions, StringBuilder, Time64MicrosecondBuilder, Time64NanosecondBuilder,
+    TimestampMicrosecondBuilder, TimestampNanosecondBuilder, UInt32Builder, make_builder,
 };
 use datafusion::arrow::datatypes::{
     DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit,
@@ -32,6 +32,7 @@ use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, With, Getters)]
 pub struct PostgresConnectionOptions {
@@ -220,6 +221,7 @@ fn pg_type_to_remote_type(pg_type: &Type, row: &Row, idx: usize) -> DFResult<Pos
         &Type::BYTEA_ARRAY => Ok(PostgresType::ByteaArray),
         &Type::BOOL_ARRAY => Ok(PostgresType::BoolArray),
         &Type::XML => Ok(PostgresType::Xml),
+        &Type::UUID => Ok(PostgresType::Uuid),
         other if other.name().eq_ignore_ascii_case("geometry") => Ok(PostgresType::PostGisGeometry),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported postgres type {pg_type:?}",
@@ -665,6 +667,27 @@ fn rows_to_batch(
                             idx,
                             just_return
                         );
+                    }
+                }
+                DataType::FixedSizeBinary(_) => {
+                    let builder = builder
+                        .as_any_mut()
+                        .downcast_mut::<FixedSizeBinaryBuilder>()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Failed to downcast builder to FixedSizeBinaryBuilder for {field:?}"
+                            )
+                        });
+                    let v: Option<Uuid> = row.try_get(idx).map_err(|e| {
+                        DataFusionError::Execution(format!(
+                            "Failed to get binary value for field {:?}: {e:?}",
+                            field
+                        ))
+                    })?;
+
+                    match v {
+                        Some(v) => builder.append_value(v.as_bytes())?,
+                        None => builder.append_null(),
                     }
                 }
                 DataType::Timestamp(TimeUnit::Microsecond, None) => {
