@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-remote-table"
-version = "0.16.3"
+version = "0.16.4"
 edition = "2024"
 authors = ["lewiszlw <lewiszlw520@gmail.com>"]
 description = "A DataFusion table provider for executing SQL queries on remote databases"
