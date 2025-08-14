@@ -119,12 +119,12 @@ impl ExecutionPlan for RemoteTableExec {
     }
 
     fn partition_statistics(&self, partition: Option<usize>) -> DFResult<Statistics> {
-        if let Some(partition) = partition {
-            if partition != 0 {
-                return Err(DataFusionError::Plan(format!(
-                    "Invalid partition index: {partition}"
-                )));
-            }
+        if let Some(partition) = partition
+            && partition != 0
+        {
+            return Err(DataFusionError::Plan(format!(
+                "Invalid partition index: {partition}"
+            )));
         }
         let db_type = self.conn_options.db_type();
         let limit = if db_type.support_rewrite_with_filters_limit(&self.sql) {

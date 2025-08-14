@@ -219,6 +219,7 @@ fn pg_type_to_remote_type(pg_type: &Type, row: &Row, idx: usize) -> DFResult<Pos
         &Type::TEXT_ARRAY => Ok(PostgresType::TextArray),
         &Type::BYTEA_ARRAY => Ok(PostgresType::ByteaArray),
         &Type::BOOL_ARRAY => Ok(PostgresType::BoolArray),
+        &Type::XML => Ok(PostgresType::Xml),
         other if other.name().eq_ignore_ascii_case("geometry") => Ok(PostgresType::PostGisGeometry),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported postgres type {pg_type:?}",
@@ -441,6 +442,24 @@ impl<'a> FromSql<'a> for GeometryFromSql<'a> {
     }
 }
 
+struct XmlFromSql<'a> {
+    xml: &'a str,
+}
+
+impl<'a> FromSql<'a> for XmlFromSql<'a> {
+    fn from_sql(
+        _ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        let xml = str::from_utf8(raw)?;
+        Ok(XmlFromSql { xml })
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        matches!(*ty, Type::XML)
+    }
+}
+
 fn rows_to_batch(
     rows: &[Row],
     table_schema: &SchemaRef,
@@ -552,16 +571,31 @@ fn rows_to_batch(
                     );
                 }
                 DataType::Utf8 => {
-                    handle_primitive_type!(
-                        builder,
-                        field,
-                        col,
-                        StringBuilder,
-                        &str,
-                        row,
-                        idx,
-                        just_return
-                    );
+                    if col.is_some() && col.unwrap().type_().name().eq_ignore_ascii_case("xml") {
+                        let convert: for<'a> fn(XmlFromSql<'a>) -> DFResult<&'a str> =
+                            |v| Ok(v.xml);
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            StringBuilder,
+                            XmlFromSql,
+                            row,
+                            idx,
+                            convert
+                        );
+                    } else {
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            StringBuilder,
+                            &str,
+                            row,
+                            idx,
+                            just_return
+                        );
+                    }
                 }
                 DataType::LargeUtf8 => {
                     if col.is_some() && matches!(col.unwrap().type_(), &Type::JSON | &Type::JSONB) {

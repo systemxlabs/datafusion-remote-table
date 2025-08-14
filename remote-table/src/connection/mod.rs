@@ -166,7 +166,7 @@ impl RemoteDbType {
         sql.trim()[0..6].eq_ignore_ascii_case("select")
     }
 
-    pub(crate) fn create_unparser(&self) -> DFResult<Unparser> {
+    pub(crate) fn create_unparser(&self) -> DFResult<Unparser<'_>> {
         match self {
             RemoteDbType::Postgres => Ok(Unparser::new(&PostgreSqlDialect {})),
             RemoteDbType::Mysql => Ok(Unparser::new(&MySqlDialect {})),
