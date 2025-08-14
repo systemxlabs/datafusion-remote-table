@@ -65,6 +65,7 @@ pub enum PostgresType {
     ByteaArray,
     BoolArray,
     PostGisGeometry,
+    Xml,
 }
 
 impl PostgresType {
@@ -80,7 +81,8 @@ impl PostgresType {
             PostgresType::Name
             | PostgresType::Text
             | PostgresType::Varchar
-            | PostgresType::Bpchar => DataType::Utf8,
+            | PostgresType::Bpchar
+            | PostgresType::Xml => DataType::Utf8,
             PostgresType::Bytea => DataType::Binary,
             PostgresType::Date => DataType::Date32,
             PostgresType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, None),
