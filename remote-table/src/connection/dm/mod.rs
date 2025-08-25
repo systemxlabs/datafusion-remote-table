@@ -116,7 +116,7 @@ impl Connection for DmConnection {
                 "Dm does not support infer schema for table".to_string(),
             )),
             TableSource::Query(_query) => {
-                let sql = RemoteDbType::Dm.query_limit_1(source);
+                let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
                 let conn = self.conn.lock().await;
                 let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
                     DataFusionError::Execution(format!("Failed to infer schema: {e:?}"))

@@ -1420,6 +1420,7 @@ dependencies = [
  "derive-getters",
  "derive-with",
  "futures",
+ "hex",
  "itertools",
  "log",
  "mysql_async",

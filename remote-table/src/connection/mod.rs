@@ -300,6 +300,24 @@ impl RemoteDbType {
             .join(".")
     }
 
+    pub(crate) fn sql_string_literal(&self, value: &str) -> String {
+        match self {
+            RemoteDbType::Postgres | RemoteDbType::Sqlite => {
+                let value = value.replace("'", "''");
+                format!("'{value}'")
+            }
+            RemoteDbType::Mysql | RemoteDbType::Oracle | RemoteDbType::Dm => todo!(),
+        }
+    }
+
+    pub(crate) fn sql_binary_literal(&self, value: &[u8]) -> String {
+        match self {
+            RemoteDbType::Postgres => format!("E'\\\\x{}'", hex::encode(value)),
+            RemoteDbType::Sqlite => format!("X'{}'", hex::encode(value)),
+            RemoteDbType::Mysql | RemoteDbType::Oracle | RemoteDbType::Dm => todo!(),
+        }
+    }
+
     pub(crate) fn select_all_query(&self, table_identifiers: &[String]) -> String {
         match self {
             RemoteDbType::Postgres
