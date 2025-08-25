@@ -1,8 +1,12 @@
 use crate::PostgresType;
 use crate::{DFResult, RemoteDbType, RemoteType};
+use chrono::{TimeZone, Utc};
+use datafusion::arrow::array::timezone::Tz;
 use datafusion::arrow::array::*;
 use datafusion::arrow::datatypes::*;
-use datafusion::arrow::temporal_conversions::date32_to_datetime;
+use datafusion::arrow::temporal_conversions::{
+    date32_to_datetime, time64ns_to_time, timestamp_ns_to_datetime,
+};
 use datafusion::common::tree_node::{TreeNode, TreeNodeRecursion};
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
@@ -168,6 +172,35 @@ pub trait Unparse: Debug + Send + Sync {
         unparse_array!(array)
     }
 
+    fn unparse_timestamp_nanosecond_array(
+        &self,
+        array: &TimestampNanosecondArray,
+        _remote_type: RemoteType,
+    ) -> DFResult<Vec<String>> {
+        let tz = match array.timezone() {
+            Some(tz) => Some(
+                tz.parse::<Tz>()
+                    .map_err(|e| DataFusionError::Internal(e.to_string()))?,
+            ),
+            None => None,
+        };
+
+        unparse_array!(array, |v| {
+            let Some(naive) = timestamp_ns_to_datetime(v) else {
+                return Err(DataFusionError::Internal(format!(
+                    "invalid timestamp nanosecond value: {v}"
+                )));
+            };
+            Ok::<_, DataFusionError>(match tz {
+                Some(tz) => {
+                    let date = Utc.from_utc_datetime(&naive).with_timezone(&tz);
+                    date.format("%Y-%m-%d %H:%M:%S.%f").to_string()
+                }
+                None => naive.format("%Y-%m-%d %H:%M:%S.%f").to_string(),
+            })
+        })
+    }
+
     fn unparse_float64_array(
         &self,
         array: &Float64Array,
@@ -188,6 +221,75 @@ pub trait Unparse: Debug + Send + Sync {
                 )));
             };
             Ok::<_, DataFusionError>(date.format("%Y-%m-%d").to_string())
+        })
+    }
+
+    fn unparse_time64_nanosecond_array(
+        &self,
+        array: &Time64NanosecondArray,
+        _remote_type: RemoteType,
+    ) -> DFResult<Vec<String>> {
+        unparse_array!(array, |v| {
+            let Some(time) = time64ns_to_time(v) else {
+                return Err(DataFusionError::Internal(format!(
+                    "invalid time64 nanosecond value: {v}"
+                )));
+            };
+            Ok::<_, DataFusionError>(time.format("%H:%M:%S.%f").to_string())
+        })
+    }
+
+    fn unparse_interval_month_day_nano_array(
+        &self,
+        array: &IntervalMonthDayNanoArray,
+        _remote_type: RemoteType,
+    ) -> DFResult<Vec<String>> {
+        unparse_array!(array, |v: IntervalMonthDayNano| {
+            let mut s = String::new();
+            let mut prefix = "";
+
+            if v.months != 0 {
+                s.push_str(&format!("{prefix}{} mons", v.months));
+                prefix = " ";
+            }
+
+            if v.days != 0 {
+                s.push_str(&format!("{prefix}{} days", v.days));
+                prefix = " ";
+            }
+
+            if v.nanoseconds != 0 {
+                let secs = v.nanoseconds / 1_000_000_000;
+                let mins = secs / 60;
+                let hours = mins / 60;
+
+                let secs = secs - (mins * 60);
+                let mins = mins - (hours * 60);
+
+                let nanoseconds = v.nanoseconds % 1_000_000_000;
+
+                if hours != 0 {
+                    s.push_str(&format!("{prefix}{} hours", hours));
+                    prefix = " ";
+                }
+
+                if mins != 0 {
+                    s.push_str(&format!("{prefix}{} mins", mins));
+                    prefix = " ";
+                }
+
+                if secs != 0 || nanoseconds != 0 {
+                    let secs_sign = if secs < 0 || nanoseconds < 0 { "-" } else { "" };
+                    s.push_str(&format!(
+                        "{prefix}{}{}.{:09} secs",
+                        secs_sign,
+                        secs.abs(),
+                        nanoseconds.abs()
+                    ));
+                }
+            }
+
+            Ok::<_, DataFusionError>(s)
         })
     }
 
@@ -219,9 +321,14 @@ pub trait Unparse: Debug + Send + Sync {
         remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
         let db_type = remote_type.db_type();
-        unparse_array!(array, |v| Ok::<_, DataFusionError>(
-            db_type.sql_binary_literal(v)
-        ))
+        match remote_type {
+            RemoteType::Postgres(PostgresType::PostGisGeometry) => {
+                todo!()
+            }
+            _ => unparse_array!(array, |v| Ok::<_, DataFusionError>(
+                db_type.sql_binary_literal(v)
+            )),
+        }
     }
 
     fn unparse_fixed_size_binary_array(
@@ -241,6 +348,14 @@ pub trait Unparse: Debug + Send + Sync {
                 db_type.sql_binary_literal(v)
             )),
         }
+    }
+
+    fn unparse_list_array(
+        &self,
+        _array: &ListArray,
+        _remote_type: RemoteType,
+    ) -> DFResult<Vec<String>> {
+        todo!()
     }
 
     fn unparse_decimal128_array(
@@ -331,9 +446,21 @@ pub fn unparse_array(
             let array = array.as_primitive::<Float64Type>();
             unparser.unparse_float64_array(array, remote_type)
         }
+        DataType::Timestamp(TimeUnit::Nanosecond, _) => {
+            let array = array.as_primitive::<TimestampNanosecondType>();
+            unparser.unparse_timestamp_nanosecond_array(array, remote_type)
+        }
         DataType::Date32 => {
             let array = array.as_primitive::<Date32Type>();
             unparser.unparse_date32_array(array, remote_type)
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            let array = array.as_primitive::<Time64NanosecondType>();
+            unparser.unparse_time64_nanosecond_array(array, remote_type)
+        }
+        DataType::Interval(IntervalUnit::MonthDayNano) => {
+            let array = array.as_primitive::<IntervalMonthDayNanoType>();
+            unparser.unparse_interval_month_day_nano_array(array, remote_type)
         }
         DataType::Utf8 => {
             let array = array.as_string();
@@ -350,6 +477,10 @@ pub fn unparse_array(
         DataType::FixedSizeBinary(_) => {
             let array = array.as_fixed_size_binary();
             unparser.unparse_fixed_size_binary_array(array, remote_type)
+        }
+        DataType::List(_) => {
+            let array = array.as_list::<i32>();
+            unparser.unparse_list_array(array, remote_type)
         }
         DataType::Decimal128(_, _) => {
             let array = array.as_primitive::<Decimal128Type>();
