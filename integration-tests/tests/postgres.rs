@@ -1,3 +1,4 @@
+use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
@@ -10,7 +11,7 @@ use std::sync::Arc;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn supported_postgres_types() {
-    setup_postgres_db();
+    setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
         "SELECT * from supported_data_types",
@@ -38,8 +39,34 @@ pub async fn supported_postgres_types() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+pub async fn insert_postgres_types() {
+    setup_postgres_db().await;
+    let options = build_conn_options(RemoteDbType::Postgres);
+    let table = RemoteTable::try_new(options, vec!["insert_table"])
+        .await
+        .unwrap();
+    println!("remote schema: {:#?}", table.remote_schema());
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    let df = ctx
+        .sql("insert into remote_table (smallint_col) values (1)")
+        .await
+        .unwrap();
+    let exec_plan = df.create_physical_plan().await.unwrap();
+    println!(
+        "{}",
+        DisplayableExecutionPlan::new(exec_plan.as_ref()).indent(true)
+    );
+
+    let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
+    println!("{}", pretty_format_batches(&result).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn table_columns() {
-    setup_postgres_db();
+    setup_postgres_db().await;
     let sql = format!(
         r#"
         SELECT
@@ -79,7 +106,7 @@ ORDER BY
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn various_sqls() {
-    setup_postgres_db();
+    setup_postgres_db().await;
 
     assert_sqls(
         RemoteDbType::Postgres,
@@ -90,7 +117,7 @@ pub async fn various_sqls() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_limit() {
-    setup_postgres_db();
+    setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
         "select * from simple_table",
@@ -107,7 +134,7 @@ async fn pushdown_limit() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_filters() {
-    setup_postgres_db();
+    setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
         "select * from simple_table",
@@ -124,7 +151,7 @@ async fn pushdown_filters() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn count1_agg() {
-    setup_postgres_db();
+    setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
         "select * from simple_table",
@@ -167,7 +194,7 @@ async fn count1_agg() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_projection() {
-    setup_postgres_db();
+    setup_postgres_db().await;
 
     let options = build_conn_options(RemoteDbType::Postgres);
     let table = RemoteTable::try_new(options, "select * from simple_table")

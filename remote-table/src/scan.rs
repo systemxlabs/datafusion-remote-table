@@ -1,6 +1,6 @@
 use crate::{
-    Connection, ConnectionOptions, DFResult, RemoteSchemaRef, Transform, TransformStream,
-    transform_schema,
+    Connection, ConnectionOptions, DFResult, RemoteSchemaRef, TableSource, Transform,
+    TransformStream, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Statistics;
@@ -19,9 +19,9 @@ use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct RemoteTableExec {
+pub struct RemoteTableScanExec {
     pub(crate) conn_options: ConnectionOptions,
-    pub(crate) sql: String,
+    pub(crate) source: TableSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
     pub(crate) projection: Option<Vec<usize>>,
@@ -32,11 +32,11 @@ pub struct RemoteTableExec {
     plan_properties: PlanProperties,
 }
 
-impl RemoteTableExec {
+impl RemoteTableScanExec {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         conn_options: ConnectionOptions,
-        sql: String,
+        source: TableSource,
         table_schema: SchemaRef,
         remote_schema: Option<RemoteSchemaRef>,
         projection: Option<Vec<usize>>,
@@ -59,7 +59,7 @@ impl RemoteTableExec {
         );
         Ok(Self {
             conn_options,
-            sql,
+            source,
             table_schema,
             remote_schema,
             projection,
@@ -72,7 +72,7 @@ impl RemoteTableExec {
     }
 }
 
-impl ExecutionPlan for RemoteTableExec {
+impl ExecutionPlan for RemoteTableScanExec {
     fn name(&self) -> &str {
         "RemoteTableExec"
     }
@@ -103,10 +103,12 @@ impl ExecutionPlan for RemoteTableExec {
     ) -> DFResult<SendableRecordBatchStream> {
         assert_eq!(partition, 0);
         let schema = self.schema();
+        // TODO need improve
+        let query = self.source.query(self.conn_options.db_type());
         let fut = build_and_transform_stream(
             self.conn.clone(),
             self.conn_options.clone(),
-            self.sql.clone(),
+            query,
             self.table_schema.clone(),
             self.remote_schema.clone(),
             self.projection.clone(),
@@ -127,12 +129,13 @@ impl ExecutionPlan for RemoteTableExec {
             )));
         }
         let db_type = self.conn_options.db_type();
-        let limit = if db_type.support_rewrite_with_filters_limit(&self.sql) {
+        let query = self.source.query(db_type);
+        let limit = if db_type.support_rewrite_with_filters_limit(&query) {
             self.limit
         } else {
             None
         };
-        let real_sql = db_type.rewrite_query(&self.sql, &self.unparsed_filters, limit);
+        let real_sql = db_type.rewrite_query(&query, &self.unparsed_filters, limit);
 
         if let Some(count1_query) = db_type.try_count1_query(&real_sql) {
             let conn = self.conn.clone();
@@ -160,23 +163,18 @@ impl ExecutionPlan for RemoteTableExec {
                 }
             }
         } else {
-            debug!(
-                "[remote-table] Query can not be rewritten as count1 query: {}",
-                self.sql
-            );
+            debug!("[remote-table] Query can not be rewritten as count1 query: {query}",);
             Ok(Statistics::new_unknown(self.schema().as_ref()))
         }
     }
 
     fn with_fetch(&self, limit: Option<usize>) -> Option<Arc<dyn ExecutionPlan>> {
-        if self
-            .conn_options
-            .db_type()
-            .support_rewrite_with_filters_limit(&self.sql)
-        {
+        let db_type = self.conn_options.db_type();
+        let query = self.source.query(db_type);
+        if db_type.support_rewrite_with_filters_limit(&query) {
             Some(Arc::new(Self {
                 conn_options: self.conn_options.clone(),
-                sql: self.sql.clone(),
+                source: self.source.clone(),
                 table_schema: self.table_schema.clone(),
                 remote_schema: self.remote_schema.clone(),
                 projection: self.projection.clone(),
@@ -237,7 +235,7 @@ async fn build_and_transform_stream(
     )?))
 }
 
-impl DisplayAs for RemoteTableExec {
+impl DisplayAs for RemoteTableScanExec {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,

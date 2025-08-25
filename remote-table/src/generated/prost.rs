@@ -3,8 +3,8 @@
 pub struct RemoteTableExec {
     #[prost(message, optional, tag = "1")]
     pub conn_options: ::core::option::Option<ConnectionOptions>,
-    #[prost(string, tag = "2")]
-    pub sql: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub source: ::core::option::Option<TableSource>,
     #[prost(message, optional, tag = "3")]
     pub table_schema: ::core::option::Option<::datafusion_proto::protobuf::Schema>,
     #[prost(message, optional, tag = "4")]
@@ -43,6 +43,26 @@ pub mod connection_options {
         #[prost(message, tag = "5")]
         Dm(super::DmConnectionOptions),
     }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TableSource {
+    #[prost(oneof = "table_source::TableSource", tags = "1, 2")]
+    pub table_source: ::core::option::Option<table_source::TableSource>,
+}
+/// Nested message and enum types in `TableSource`.
+pub mod table_source {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum TableSource {
+        #[prost(string, tag = "1")]
+        Query(::prost::alloc::string::String),
+        #[prost(message, tag = "2")]
+        Table(super::Identifiers),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Identifiers {
+    #[prost(string, repeated, tag = "1")]
+    pub idents: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PostgresConnectionOptions {

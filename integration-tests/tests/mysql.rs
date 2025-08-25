@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn supported_mysql_types() {
-    setup_mysql_db();
+    setup_mysql_db().await;
     assert_result(
         RemoteDbType::Mysql,
         "select * from supported_data_types",
@@ -26,7 +26,7 @@ pub async fn supported_mysql_types() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn describe_table() {
-    setup_mysql_db();
+    setup_mysql_db().await;
     assert_result(
         RemoteDbType::Mysql,
         "describe simple_table",
@@ -43,7 +43,7 @@ pub async fn describe_table() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn various_sqls() {
-    setup_mysql_db();
+    setup_mysql_db().await;
 
     assert_sqls(
         RemoteDbType::Mysql,
@@ -54,7 +54,7 @@ pub async fn various_sqls() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_limit() {
-    setup_mysql_db();
+    setup_mysql_db().await;
 
     assert_result(
         RemoteDbType::Mysql,
@@ -84,7 +84,7 @@ async fn pushdown_limit() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_filters() {
-    setup_mysql_db();
+    setup_mysql_db().await;
 
     assert_plan_and_result(
         RemoteDbType::Mysql,
@@ -120,7 +120,7 @@ async fn pushdown_filters() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn count1_agg() {
-    setup_mysql_db();
+    setup_mysql_db().await;
 
     assert_plan_and_result(
         RemoteDbType::Mysql,
@@ -164,7 +164,7 @@ async fn count1_agg() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_projection() {
-    setup_mysql_db();
+    setup_mysql_db().await;
 
     let options = build_conn_options(RemoteDbType::Mysql);
     let table = RemoteTable::try_new(options, "select * from simple_table")
@@ -193,7 +193,7 @@ async fn empty_projection() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_table() {
-    setup_mysql_db();
+    setup_mysql_db().await;
 
     assert_result(
         RemoteDbType::Mysql,

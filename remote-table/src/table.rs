@@ -1,6 +1,7 @@
 use crate::{
-    ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, Pool, RemoteSchemaRef,
-    RemoteTableExec, Transform, Unparse, connect, transform_schema,
+    ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, Pool, RemoteDbType,
+    RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec, Transform, Unparse, connect,
+    transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
@@ -9,16 +10,61 @@ use datafusion::common::tree_node::{Transformed, TreeNode};
 use datafusion::common::{Column, Statistics};
 use datafusion::datasource::TableType;
 use datafusion::error::DataFusionError;
+use datafusion::logical_expr::dml::InsertOp;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use datafusion::physical_plan::ExecutionPlan;
 use log::{debug, warn};
 use std::any::Any;
 use std::sync::Arc;
 
+#[derive(Debug, Clone)]
+pub enum TableSource {
+    Query(String),
+    Table(Vec<String>),
+}
+
+impl TableSource {
+    pub fn query(&self, db_type: RemoteDbType) -> String {
+        match self {
+            TableSource::Query(query) => query.clone(),
+            TableSource::Table(table_identifiers) => db_type.select_all_query(table_identifiers),
+        }
+    }
+}
+
+impl From<String> for TableSource {
+    fn from(query: String) -> Self {
+        TableSource::Query(query)
+    }
+}
+
+impl From<&str> for TableSource {
+    fn from(query: &str) -> Self {
+        TableSource::Query(query.to_string())
+    }
+}
+
+impl From<Vec<String>> for TableSource {
+    fn from(table_identifiers: Vec<String>) -> Self {
+        TableSource::Table(table_identifiers)
+    }
+}
+
+impl From<Vec<&str>> for TableSource {
+    fn from(table_identifiers: Vec<&str>) -> Self {
+        TableSource::Table(
+            table_identifiers
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct RemoteTable {
     pub(crate) conn_options: ConnectionOptions,
-    pub(crate) sql: String,
+    pub(crate) source: TableSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) transformed_table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
@@ -30,11 +76,11 @@ pub struct RemoteTable {
 impl RemoteTable {
     pub async fn try_new(
         conn_options: impl Into<ConnectionOptions>,
-        sql: impl Into<String>,
+        source: impl Into<TableSource>,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
             conn_options,
-            sql,
+            source,
             None,
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultUnparser {}),
@@ -44,12 +90,12 @@ impl RemoteTable {
 
     pub async fn try_new_with_schema(
         conn_options: impl Into<ConnectionOptions>,
-        sql: impl Into<String>,
+        source: impl Into<TableSource>,
         table_schema: SchemaRef,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
             conn_options,
-            sql,
+            source,
             Some(table_schema),
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultUnparser {}),
@@ -59,12 +105,12 @@ impl RemoteTable {
 
     pub async fn try_new_with_transform(
         conn_options: impl Into<ConnectionOptions>,
-        sql: impl Into<String>,
+        source: impl Into<TableSource>,
         transform: Arc<dyn Transform>,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
             conn_options,
-            sql,
+            source,
             None,
             transform,
             Arc::new(DefaultUnparser {}),
@@ -74,13 +120,13 @@ impl RemoteTable {
 
     pub async fn try_new_with_schema_transform_unparser(
         conn_options: impl Into<ConnectionOptions>,
-        sql: impl Into<String>,
+        source: impl Into<TableSource>,
         table_schema: Option<SchemaRef>,
         transform: Arc<dyn Transform>,
         unparser: Arc<dyn Unparse>,
     ) -> DFResult<Self> {
         let conn_options = conn_options.into();
-        let sql = sql.into();
+        let source = source.into();
 
         let now = std::time::Instant::now();
         let pool = connect(&conn_options).await?;
@@ -96,7 +142,8 @@ impl RemoteTable {
                 // Infer remote schema
                 let now = std::time::Instant::now();
                 let conn = pool.get().await?;
-                let remote_schema_opt = conn.infer_schema(&sql).await.ok();
+                let query = source.query(conn_options.db_type());
+                let remote_schema_opt = conn.infer_schema(&query).await.ok();
                 debug!(
                     "[remote-table] Inferring remote schema cost: {}ms",
                     now.elapsed().as_millis()
@@ -108,7 +155,8 @@ impl RemoteTable {
             // Infer table schema
             let now = std::time::Instant::now();
             let conn = pool.get().await?;
-            match conn.infer_schema(&sql).await {
+            let query = source.query(conn_options.db_type());
+            match conn.infer_schema(&query).await {
                 Ok(remote_schema) => {
                     debug!(
                         "[remote-table] Inferring table schema cost: {}ms",
@@ -133,7 +181,7 @@ impl RemoteTable {
 
         Ok(RemoteTable {
             conn_options,
-            sql,
+            source,
             table_schema,
             transformed_table_schema,
             remote_schema,
@@ -194,9 +242,9 @@ impl TableProvider for RemoteTable {
             now.elapsed().as_millis()
         );
 
-        Ok(Arc::new(RemoteTableExec::try_new(
+        Ok(Arc::new(RemoteTableScanExec::try_new(
             self.conn_options.clone(),
-            self.sql.clone(),
+            self.source.clone(),
             self.table_schema.clone(),
             self.remote_schema.clone(),
             projection.cloned(),
@@ -211,11 +259,9 @@ impl TableProvider for RemoteTable {
         &self,
         filters: &[&Expr],
     ) -> DFResult<Vec<TableProviderFilterPushDown>> {
-        if !self
-            .conn_options
-            .db_type()
-            .support_rewrite_with_filters_limit(&self.sql)
-        {
+        let db_type = self.conn_options.db_type();
+        let query = self.source.query(db_type);
+        if !db_type.support_rewrite_with_filters_limit(&query) {
             return Ok(vec![
                 TableProviderFilterPushDown::Unsupported;
                 filters.len()
@@ -232,7 +278,9 @@ impl TableProvider for RemoteTable {
     }
 
     fn statistics(&self) -> Option<Statistics> {
-        if let Some(count1_query) = self.conn_options.db_type().try_count1_query(&self.sql) {
+        let db_type = self.conn_options.db_type();
+        let query = self.source.query(db_type);
+        if let Some(count1_query) = db_type.try_count1_query(&query) {
             let conn_options = self.conn_options.clone();
             let row_count_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
@@ -261,12 +309,56 @@ impl TableProvider for RemoteTable {
                 }
             }
         } else {
-            debug!(
-                "[remote-table] Query can not be rewritten as count1 query: {}",
-                self.sql
-            );
+            debug!("[remote-table] Query can not be rewritten as count1 query: {query}",);
             None
         }
+    }
+
+    async fn insert_into(
+        &self,
+        _state: &dyn Session,
+        input: Arc<dyn ExecutionPlan>,
+        insert_op: InsertOp,
+    ) -> DFResult<Arc<dyn ExecutionPlan>> {
+        match insert_op {
+            InsertOp::Append => {}
+            InsertOp::Overwrite | InsertOp::Replace => {
+                return Err(DataFusionError::Execution(
+                    "Only support append insert operation".to_string(),
+                ));
+            }
+        }
+
+        let remote_schema = self
+            .remote_schema
+            .as_ref()
+            .ok_or(DataFusionError::Execution(
+                "Remote schema is not available".to_string(),
+            ))?
+            .clone();
+
+        let TableSource::Table(table) = &self.source else {
+            return Err(DataFusionError::Execution(
+                "Only support table kind source for insertion".to_string(),
+            ));
+        };
+
+        let now = std::time::Instant::now();
+        let conn = self.pool.get().await?;
+        debug!(
+            "[remote-table] Getting connection from pool cost: {}ms",
+            now.elapsed().as_millis()
+        );
+
+        let exec = RemoteTableInsertExec::new(
+            input,
+            self.conn_options.clone(),
+            self.unparser.clone(),
+            table.clone(),
+            remote_schema,
+            conn,
+        );
+        Ok(Arc::new(exec))
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteType, SqliteType,
+    RemoteType, SqliteType, Unparse,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -127,6 +127,19 @@ impl Connection for SqliteConnection {
             projected_schema,
             stream,
         )))
+    }
+
+    async fn insert(
+        &self,
+        _conn_options: &ConnectionOptions,
+        _unparser: Arc<dyn Unparse>,
+        _table: &[String],
+        _remote_schema: RemoteSchemaRef,
+        _input: SendableRecordBatchStream,
+    ) -> DFResult<usize> {
+        Err(DataFusionError::Execution(
+            "Insert operation is not supported for sqlite".to_string(),
+        ))
     }
 }
 

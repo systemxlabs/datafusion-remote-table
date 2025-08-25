@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, OracleType, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType,
+    RemoteSchemaRef, RemoteType, Unparse,
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
@@ -154,6 +154,19 @@ impl Connection for OracleConnection {
             projected_schema,
             stream,
         )))
+    }
+
+    async fn insert(
+        &self,
+        _conn_options: &ConnectionOptions,
+        _unparser: Arc<dyn Unparse>,
+        _table: &[String],
+        _remote_schema: RemoteSchemaRef,
+        _input: SendableRecordBatchStream,
+    ) -> DFResult<usize> {
+        Err(DataFusionError::Execution(
+            "Insert operation is not supported for oracle".to_string(),
+        ))
     }
 }
 

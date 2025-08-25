@@ -21,7 +21,7 @@ pub use postgres::*;
 pub use sqlite::*;
 use std::any::Any;
 
-use crate::{DFResult, RemoteSchemaRef, extract_primitive_array};
+use crate::{DFResult, RemoteSchemaRef, Unparse, extract_primitive_array};
 use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
 use datafusion::common::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
@@ -54,6 +54,15 @@ pub trait Connection: Debug + Send + Sync {
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream>;
+
+    async fn insert(
+        &self,
+        conn_options: &ConnectionOptions,
+        unparser: Arc<dyn Unparse>,
+        table: &[String],
+        remote_schema: RemoteSchemaRef,
+        input: SendableRecordBatchStream,
+    ) -> DFResult<usize>;
 }
 
 pub async fn connect(options: &ConnectionOptions) -> DFResult<Arc<dyn Pool>> {
@@ -153,6 +162,7 @@ impl ConnectionOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum RemoteDbType {
     Postgres,
     Mysql,
@@ -225,6 +235,38 @@ impl RemoteDbType {
                 } else {
                     format!("SELECT * FROM ({sql}){where_clause}")
                 }
+            }
+        }
+    }
+
+    pub(crate) fn sql_identifier(&self, identifier: &str) -> String {
+        match self {
+            RemoteDbType::Postgres
+            | RemoteDbType::Mysql
+            | RemoteDbType::Oracle
+            | RemoteDbType::Sqlite
+            | RemoteDbType::Dm => {
+                format!("\"{identifier}\"")
+            }
+        }
+    }
+
+    pub(crate) fn sql_table_name(&self, indentifiers: &[String]) -> String {
+        indentifiers
+            .iter()
+            .map(|identifier| self.sql_identifier(identifier))
+            .collect::<Vec<String>>()
+            .join(".")
+    }
+
+    pub(crate) fn select_all_query(&self, table_identifiers: &[String]) -> String {
+        match self {
+            RemoteDbType::Postgres
+            | RemoteDbType::Mysql
+            | RemoteDbType::Oracle
+            | RemoteDbType::Sqlite
+            | RemoteDbType::Dm => {
+                format!("SELECT * FROM {}", self.sql_table_name(table_identifiers))
             }
         }
     }

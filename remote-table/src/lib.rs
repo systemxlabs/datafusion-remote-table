@@ -1,7 +1,8 @@
 mod codec;
 mod connection;
-mod exec;
 mod generated;
+mod insert;
+mod scan;
 mod schema;
 mod table;
 mod transform;
@@ -10,7 +11,8 @@ mod utils;
 
 pub use codec::*;
 pub use connection::*;
-pub use exec::*;
+pub use insert::*;
+pub use scan::*;
 pub use schema::*;
 pub use table::*;
 pub use transform::*;

@@ -51,3 +51,8 @@ CREATE TABLE simple_table (
 );
 
 INSERT INTO simple_table VALUES (1, 'Tom'), (2, 'Jerry'), (3, 'Spike');
+
+CREATE TABLE insert_table (
+    smallint_col SMALLINT
+);
+INSERT INTO insert_table VALUES (1);

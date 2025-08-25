@@ -95,6 +95,22 @@ pub async fn assert_sqls(database: RemoteDbType, remote_sqls: Vec<&str>) {
     }
 }
 
+pub async fn wait_container_ready(database: RemoteDbType) {
+    let conn = build_conn_options(database);
+
+    let mut retry = 0;
+    loop {
+        if let Ok(_table) = RemoteTable::try_new(conn.clone(), "select 1").await {
+            break;
+        };
+        retry += 1;
+        if retry > 20 {
+            panic!("container still not ready after 200 seconds");
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    }
+}
+
 pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
     match database {
         RemoteDbType::Mysql => ConnectionOptions::Mysql(

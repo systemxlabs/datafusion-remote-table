@@ -1,6 +1,8 @@
 use datafusion::arrow::datatypes::{DataType, Field, IntervalUnit, Schema, TimeUnit};
 use std::sync::Arc;
 
+use crate::RemoteDbType;
+
 #[derive(Debug, Clone)]
 pub enum RemoteType {
     Postgres(PostgresType),
@@ -18,6 +20,16 @@ impl RemoteType {
             RemoteType::Oracle(oracle_type) => oracle_type.to_arrow_type(),
             RemoteType::Sqlite(sqlite_type) => sqlite_type.to_arrow_type(),
             RemoteType::Dm(dm_type) => dm_type.to_arrow_type(),
+        }
+    }
+
+    pub fn db_type(&self) -> RemoteDbType {
+        match self {
+            RemoteType::Postgres(_) => RemoteDbType::Postgres,
+            RemoteType::Mysql(_) => RemoteDbType::Mysql,
+            RemoteType::Oracle(_) => RemoteDbType::Oracle,
+            RemoteType::Sqlite(_) => RemoteDbType::Sqlite,
+            RemoteType::Dm(_) => RemoteDbType::Dm,
         }
     }
 }

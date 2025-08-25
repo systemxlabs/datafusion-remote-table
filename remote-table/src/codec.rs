@@ -11,8 +11,8 @@ use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
     Connection, ConnectionOptions, DFResult, DefaultTransform, DmType, MysqlType, OracleType,
-    PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteTableExec, RemoteType,
-    SqliteType, Transform, connect,
+    PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteTableScanExec, RemoteType,
+    SqliteType, TableSource, Transform, connect,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::DataFusionError;
@@ -149,6 +149,11 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
             self.transform_codec.try_decode(&proto.transform)?
         };
 
+        let proto_source = proto.source.as_ref().ok_or(DataFusionError::Internal(
+            "table source is not set".to_string(),
+        ))?;
+        let source = parse_table_source(proto_source)?;
+
         let table_schema: SchemaRef = Arc::new(convert_required!(&proto.table_schema)?);
         let remote_schema = proto
             .remote_schema
@@ -171,9 +176,9 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
             now.elapsed().as_millis()
         );
 
-        Ok(Arc::new(RemoteTableExec::try_new(
+        Ok(Arc::new(RemoteTableScanExec::try_new(
             conn_options,
-            proto.sql,
+            source,
             table_schema,
             remote_schema,
             projection,
@@ -185,7 +190,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
     }
 
     fn try_encode(&self, node: Arc<dyn ExecutionPlan>, buf: &mut Vec<u8>) -> DFResult<()> {
-        if let Some(exec) = node.as_any().downcast_ref::<RemoteTableExec>() {
+        if let Some(exec) = node.as_any().downcast_ref::<RemoteTableScanExec>() {
             let serialized_transform = if exec.transform.as_any().is::<DefaultTransform>() {
                 DefaultTransformCodec {}.try_encode(exec.transform.as_ref())?
             } else {
@@ -201,9 +206,11 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 .connection_codec
                 .try_encode(exec.conn.as_ref(), &exec.conn_options)?;
 
+            let serialized_source = serialize_table_source(&exec.source);
+
             let proto = protobuf::RemoteTableExec {
                 conn_options: Some(serialized_connection_options),
-                sql: exec.sql.clone(),
+                source: Some(serialized_source),
                 table_schema: Some(exec.table_schema.as_ref().try_into()?),
                 remote_schema,
                 projection: exec
@@ -225,7 +232,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         } else {
             Err(DataFusionError::Execution(format!(
                 "Failed to encode {}",
-                RemoteTableExec::static_name()
+                RemoteTableScanExec::static_name()
             )))
         }
     }
@@ -1105,5 +1112,35 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
             RemoteType::Dm(DmType::Time(*precision as u8))
         }
         protobuf::remote_type::Type::DmDate(_) => RemoteType::Dm(DmType::Date),
+    }
+}
+
+fn serialize_table_source(source: &TableSource) -> protobuf::TableSource {
+    match source {
+        TableSource::Query(query) => protobuf::TableSource {
+            table_source: Some(protobuf::table_source::TableSource::Query(query.clone())),
+        },
+        TableSource::Table(table_identifiers) => protobuf::TableSource {
+            table_source: Some(protobuf::table_source::TableSource::Table(
+                protobuf::Identifiers {
+                    idents: table_identifiers.clone(),
+                },
+            )),
+        },
+    }
+}
+
+fn parse_table_source(source: &protobuf::TableSource) -> DFResult<TableSource> {
+    let source = source
+        .table_source
+        .as_ref()
+        .ok_or(DataFusionError::Internal(
+            "table source is not set".to_string(),
+        ))?;
+    match source {
+        protobuf::table_source::TableSource::Query(query) => Ok(TableSource::Query(query.clone())),
+        protobuf::table_source::TableSource::Table(table_identifiers) => {
+            Ok(TableSource::Table(table_identifiers.idents.clone()))
+        }
     }
 }

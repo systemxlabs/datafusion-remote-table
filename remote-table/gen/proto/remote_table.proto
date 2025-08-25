@@ -7,7 +7,7 @@ import "datafusion.proto";
 
 message RemoteTableExec {
   ConnectionOptions conn_options = 1;
-  string sql = 2;
+  TableSource source = 2;
   datafusion_common.Schema table_schema = 3;
   RemoteSchema remote_schema = 4;
   Projection projection = 5;
@@ -25,6 +25,17 @@ message ConnectionOptions {
     SqliteConnectionOptions sqlite = 4;
     DmConnectionOptions dm = 5;
   }
+}
+
+message TableSource {
+  oneof table_source {
+    string query = 1;
+    Identifiers table = 2;
+  }
+}
+
+message Identifiers {
+  repeated string idents = 1;
 }
 
 message PostgresConnectionOptions {

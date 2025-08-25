@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn supported_oracle_types() {
-    setup_oracle_db();
+    setup_oracle_db().await;
     assert_result(
         RemoteDbType::Oracle,
         "SELECT * from SYS.supported_data_types",
@@ -27,7 +27,7 @@ pub async fn supported_oracle_types() {
 // ORA-01754: a table may contain only one column of type LONG
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn supported_oracle_types2() {
-    setup_oracle_db();
+    setup_oracle_db().await;
     assert_result(
         RemoteDbType::Oracle,
         "SELECT * from SYS.supported_data_types2",
@@ -44,14 +44,14 @@ pub async fn supported_oracle_types2() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 pub async fn various_sqls() {
-    setup_oracle_db();
+    setup_oracle_db().await;
 
     assert_sqls(RemoteDbType::Oracle, vec!["select * from USER_TABLES"]).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_limit() {
-    setup_oracle_db();
+    setup_oracle_db().await;
     assert_plan_and_result(
         RemoteDbType::Oracle,
         "select * from SYS.simple_table",
@@ -68,7 +68,7 @@ async fn pushdown_limit() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn pushdown_filters() {
-    setup_oracle_db();
+    setup_oracle_db().await;
     assert_plan_and_result(
         RemoteDbType::Oracle,
         "select * from SYS.simple_table",
@@ -85,7 +85,7 @@ async fn pushdown_filters() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn count1_agg() {
-    setup_oracle_db();
+    setup_oracle_db().await;
 
     assert_plan_and_result(
         RemoteDbType::Oracle,
@@ -147,7 +147,7 @@ async fn count1_agg() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_projection() {
-    setup_oracle_db();
+    setup_oracle_db().await;
 
     let options = build_conn_options(RemoteDbType::Oracle);
     let table = RemoteTable::try_new(options, "select * from SYS.simple_table")
@@ -176,7 +176,7 @@ async fn empty_projection() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn empty_table() {
-    setup_oracle_db();
+    setup_oracle_db().await;
 
     assert_result(
         RemoteDbType::Oracle,

@@ -2,12 +2,15 @@ pub mod cmd;
 pub mod docker;
 pub mod utils;
 
+use datafusion_remote_table::RemoteDbType;
+
 use crate::docker::DockerCompose;
+use crate::utils::wait_container_ready;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
 static POSTGRES_DB: OnceLock<DockerCompose> = OnceLock::new();
-pub fn setup_postgres_db() {
+pub async fn setup_postgres_db() {
     let _ = POSTGRES_DB.get_or_init(|| {
         let compose = DockerCompose::new(
             "postgres",
@@ -15,13 +18,13 @@ pub fn setup_postgres_db() {
         );
         compose.down();
         compose.up();
-        std::thread::sleep(std::time::Duration::from_secs(15));
         compose
     });
+    wait_container_ready(RemoteDbType::Postgres).await;
 }
 
 static MYSQL_DB: OnceLock<DockerCompose> = OnceLock::new();
-pub fn setup_mysql_db() {
+pub async fn setup_mysql_db() {
     let _ = MYSQL_DB.get_or_init(|| {
         let compose = DockerCompose::new(
             "mysql",
@@ -29,13 +32,13 @@ pub fn setup_mysql_db() {
         );
         compose.down();
         compose.up();
-        std::thread::sleep(std::time::Duration::from_secs(120));
         compose
     });
+    wait_container_ready(RemoteDbType::Mysql).await;
 }
 
 static ORACLE_DB: OnceLock<DockerCompose> = OnceLock::new();
-pub fn setup_oracle_db() {
+pub async fn setup_oracle_db() {
     let _ = ORACLE_DB.get_or_init(|| {
         let compose = DockerCompose::new(
             "oracle",
@@ -43,9 +46,9 @@ pub fn setup_oracle_db() {
         );
         compose.down();
         compose.up();
-        std::thread::sleep(std::time::Duration::from_secs(15));
         compose
     });
+    wait_container_ready(RemoteDbType::Oracle).await;
 }
 
 pub fn setup_sqlite_db() -> PathBuf {

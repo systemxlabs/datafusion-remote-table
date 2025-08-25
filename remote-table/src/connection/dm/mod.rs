@@ -3,7 +3,7 @@ use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
     Connection, ConnectionOptions, DFResult, DmType, Pool, RemoteDbType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType,
+    RemoteSchemaRef, RemoteType, Unparse,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -11,7 +11,6 @@ use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
-use datafusion::logical_expr::Expr;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use derive_getters::Getters;
 use derive_with::With;
@@ -231,6 +230,19 @@ impl Connection for DmConnection {
         Ok(Box::pin(RecordBatchStreamAdapter::new(
             projected_schema,
             output_stream,
+        )))
+    }
+
+    async fn insert(
+        &self,
+        _conn_options: &ConnectionOptions,
+        _unparser: Arc<dyn Unparse>,
+        _table: &[String],
+        _remote_schema: RemoteSchemaRef,
+        _input: SendableRecordBatchStream,
+    ) -> DFResult<usize> {
+        Err(DataFusionError::Execution(format!(
+            "Insert operation is not supported for dm"
         )))
     }
 }

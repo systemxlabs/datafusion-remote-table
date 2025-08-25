@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType,
+    RemoteSchemaRef, RemoteType, Unparse,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
@@ -10,14 +10,16 @@ use bigdecimal::BigDecimal;
 use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
-    ArrayBuilder, ArrayRef, BinaryBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
-    FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int16Builder, Int32Builder,
-    Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder, RecordBatch,
-    RecordBatchOptions, StringBuilder, Time64MicrosecondBuilder, Time64NanosecondBuilder,
-    TimestampMicrosecondBuilder, TimestampNanosecondBuilder, UInt32Builder, make_builder,
+    ArrayBuilder, ArrayRef, AsArray, BinaryBuilder, BooleanBuilder, Date32Builder,
+    Decimal128Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int16Builder,
+    Int32Builder, Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder,
+    RecordBatch, RecordBatchOptions, StringBuilder, Time64MicrosecondBuilder,
+    Time64NanosecondBuilder, TimestampMicrosecondBuilder, TimestampNanosecondBuilder,
+    UInt32Builder, make_builder,
 };
 use datafusion::arrow::datatypes::{
-    DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit,
+    DataType, Date32Type, Int8Type, Int16Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef,
+    TimeUnit,
 };
 use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
@@ -175,6 +177,79 @@ impl Connection for PostgresConnection {
             projected_schema,
             stream,
         )))
+    }
+
+    async fn insert(
+        &self,
+        _conn_options: &ConnectionOptions,
+        unparser: Arc<dyn Unparse>,
+        table: &[String],
+        remote_schema: RemoteSchemaRef,
+        mut input: SendableRecordBatchStream,
+    ) -> DFResult<usize> {
+        let mut total_count = 0;
+        while let Some(batch) = input.next().await {
+            let batch = batch?;
+
+            let mut columns = Vec::with_capacity(remote_schema.fields.len());
+
+            for i in 0..batch.num_columns() {
+                let remote_type = remote_schema.fields[i].remote_type.clone();
+                let array = batch.column(i);
+                match array.data_type() {
+                    DataType::Int8 => {
+                        let array = array.as_primitive::<Int8Type>();
+                        let values = unparser.unparse_int8_array(array, remote_type)?;
+                        columns.push(values);
+                    }
+                    DataType::Int16 => {
+                        let array = array.as_primitive::<Int16Type>();
+                        let values = unparser.unparse_int16_array(array, remote_type)?;
+                        columns.push(values);
+                    }
+                    _ => {
+                        return Err(DataFusionError::Execution(format!(
+                            "Unsupported data type for insertion: {}",
+                            array.data_type()
+                        )));
+                    }
+                }
+            }
+
+            let num_rows = columns[0].len();
+            let num_columns = columns.len();
+
+            let mut values = Vec::with_capacity(num_rows);
+            for i in 0..num_rows {
+                let mut value = Vec::with_capacity(num_columns);
+                for col in columns.iter() {
+                    value.push(col[i].as_str());
+                }
+                values.push(format!("({})", value.join(",")));
+            }
+
+            let sql = format!(
+                "INSERT INTO {} ({}) VALUES {}",
+                RemoteDbType::Postgres.sql_table_name(table),
+                remote_schema
+                    .fields
+                    .iter()
+                    .map(|field| RemoteDbType::Postgres.sql_identifier(&field.name))
+                    .collect::<Vec<String>>()
+                    .join(","),
+                values.join(",")
+            );
+
+            // TODO error message might be too big
+            let count = self.conn.execute(&sql, &[]).await.map_err(|e| {
+                DataFusionError::Execution(format!(
+                    "Failed to execute insert statement {sql} on postgres: {e:?}"
+                ))
+            })?;
+            total_count += count as usize;
+        }
+
+        Ok(total_count)
     }
 }
 

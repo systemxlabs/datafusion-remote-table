@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, MysqlType, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType,
+    RemoteSchemaRef, RemoteType, Unparse,
 };
 use async_stream::stream;
 use bigdecimal::{BigDecimal, num_bigint};
@@ -178,6 +178,19 @@ impl Connection for MysqlConnection {
             projected_schema,
             stream,
         )))
+    }
+
+    async fn insert(
+        &self,
+        _conn_options: &ConnectionOptions,
+        _unparser: Arc<dyn Unparse>,
+        _table: &[String],
+        _remote_schema: RemoteSchemaRef,
+        _input: SendableRecordBatchStream,
+    ) -> DFResult<usize> {
+        Err(DataFusionError::Execution(
+            "Insert operation is not supported for mysql".to_string(),
+        ))
     }
 }
 
