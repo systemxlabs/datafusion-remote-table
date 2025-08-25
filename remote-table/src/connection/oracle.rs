@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, OracleType, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, Unparse,
+    RemoteSchemaRef, RemoteType, TableSource, Unparse,
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
@@ -108,19 +108,28 @@ impl Connection for OracleConnection {
         self
     }
 
-    async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Oracle.query_limit_1(sql);
-        let result_set = self.conn.query(&sql, &[]).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to execute query {sql} on oracle: {e:?}"))
-        })?;
-        let remote_schema = Arc::new(build_remote_schema(&result_set)?);
-        Ok(remote_schema)
+    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+        match source {
+            TableSource::Table(_table) => Err(DataFusionError::Execution(
+                "Oracle does not support infer schema for table".to_string(),
+            )),
+            TableSource::Query(_query) => {
+                let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
+                let result_set = self.conn.query(&sql, &[]).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to execute query {sql} on oracle: {e:?}"
+                    ))
+                })?;
+                let remote_schema = Arc::new(build_remote_schema(&result_set)?);
+                Ok(remote_schema)
+            }
+        }
     }
 
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        sql: &str,
+        source: &TableSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],
@@ -128,7 +137,7 @@ impl Connection for OracleConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Oracle.rewrite_query(sql, unparsed_filters, limit);
+        let sql = RemoteDbType::Oracle.rewrite_query(source, unparsed_filters, limit);
         debug!("[remote-table] executing oracle query: {sql}");
 
         let projection = projection.cloned();

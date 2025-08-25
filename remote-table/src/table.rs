@@ -32,6 +32,15 @@ impl TableSource {
     }
 }
 
+impl std::fmt::Display for TableSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TableSource::Query(query) => write!(f, "{query}"),
+            TableSource::Table(table) => write!(f, "{}", table.join(".")),
+        }
+    }
+}
+
 impl From<String> for TableSource {
     fn from(query: String) -> Self {
         TableSource::Query(query)
@@ -142,8 +151,7 @@ impl RemoteTable {
                 // Infer remote schema
                 let now = std::time::Instant::now();
                 let conn = pool.get().await?;
-                let query = source.query(conn_options.db_type());
-                let remote_schema_opt = conn.infer_schema(&query).await.ok();
+                let remote_schema_opt = conn.infer_schema(&source).await.ok();
                 debug!(
                     "[remote-table] Inferring remote schema cost: {}ms",
                     now.elapsed().as_millis()
@@ -155,8 +163,7 @@ impl RemoteTable {
             // Infer table schema
             let now = std::time::Instant::now();
             let conn = pool.get().await?;
-            let query = source.query(conn_options.db_type());
-            match conn.infer_schema(&query).await {
+            match conn.infer_schema(&source).await {
                 Ok(remote_schema) => {
                     debug!(
                         "[remote-table] Inferring table schema cost: {}ms",
@@ -260,8 +267,7 @@ impl TableProvider for RemoteTable {
         filters: &[&Expr],
     ) -> DFResult<Vec<TableProviderFilterPushDown>> {
         let db_type = self.conn_options.db_type();
-        let query = self.source.query(db_type);
-        if !db_type.support_rewrite_with_filters_limit(&query) {
+        if !db_type.support_rewrite_with_filters_limit(&self.source) {
             return Ok(vec![
                 TableProviderFilterPushDown::Unsupported;
                 filters.len()
@@ -279,8 +285,7 @@ impl TableProvider for RemoteTable {
 
     fn statistics(&self) -> Option<Statistics> {
         let db_type = self.conn_options.db_type();
-        let query = self.source.query(db_type);
-        if let Some(count1_query) = db_type.try_count1_query(&query) {
+        if let Some(count1_query) = db_type.try_count1_query(&self.source) {
             let conn_options = self.conn_options.clone();
             let row_count_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
@@ -309,7 +314,10 @@ impl TableProvider for RemoteTable {
                 }
             }
         } else {
-            debug!("[remote-table] Query can not be rewritten as count1 query: {query}",);
+            debug!(
+                "[remote-table] Query can not be rewritten as count1 query: {}",
+                self.source
+            );
             None
         }
     }
@@ -339,7 +347,7 @@ impl TableProvider for RemoteTable {
 
         let TableSource::Table(table) = &self.source else {
             return Err(DataFusionError::Execution(
-                "Only support table kind source for insertion".to_string(),
+                "Only support insert operation for table".to_string(),
             ));
         };
 

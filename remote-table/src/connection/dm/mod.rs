@@ -3,7 +3,7 @@ use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
     Connection, ConnectionOptions, DFResult, DmType, Pool, RemoteDbType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, Unparse,
+    RemoteSchemaRef, RemoteType, TableSource, Unparse,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -110,19 +110,26 @@ impl Connection for DmConnection {
         self
     }
 
-    async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Dm.query_limit_1(sql);
-        let conn = self.conn.lock().await;
-        let cursor_opt = conn
-            .execute(&sql, (), None)
-            .map_err(|e| DataFusionError::Execution(format!("Failed to infer schema: {e:?}")))?;
-        match cursor_opt {
-            None => Err(DataFusionError::Execution(
-                "No rows returned to infer schema".to_string(),
+    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+        match source {
+            TableSource::Table(_table) => Err(DataFusionError::Execution(
+                "Dm does not support infer schema for table".to_string(),
             )),
-            Some(cursor) => {
-                let remote_schema = Arc::new(build_remote_schema(cursor)?);
-                Ok(remote_schema)
+            TableSource::Query(_query) => {
+                let sql = RemoteDbType::Dm.query_limit_1(source);
+                let conn = self.conn.lock().await;
+                let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
+                    DataFusionError::Execution(format!("Failed to infer schema: {e:?}"))
+                })?;
+                match cursor_opt {
+                    None => Err(DataFusionError::Execution(
+                        "No rows returned to infer schema".to_string(),
+                    )),
+                    Some(cursor) => {
+                        let remote_schema = Arc::new(build_remote_schema(cursor)?);
+                        Ok(remote_schema)
+                    }
+                }
             }
         }
     }
@@ -130,7 +137,7 @@ impl Connection for DmConnection {
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        sql: &str,
+        source: &TableSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],
@@ -138,7 +145,7 @@ impl Connection for DmConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Dm.rewrite_query(sql, unparsed_filters, limit);
+        let sql = RemoteDbType::Dm.rewrite_query(source, unparsed_filters, limit);
         debug!("[remote-table] executing dm query: {sql}");
 
         let chunk_size = conn_options.stream_chunk_size();

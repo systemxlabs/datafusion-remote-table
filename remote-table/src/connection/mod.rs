@@ -21,7 +21,7 @@ pub use postgres::*;
 pub use sqlite::*;
 use std::any::Any;
 
-use crate::{DFResult, RemoteSchemaRef, Unparse, extract_primitive_array};
+use crate::{DFResult, RemoteSchemaRef, TableSource, Unparse, extract_primitive_array};
 use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
 use datafusion::common::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
@@ -43,12 +43,12 @@ pub trait Pool: Debug + Send + Sync {
 pub trait Connection: Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
 
-    async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef>;
+    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef>;
 
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        sql: &str,
+        source: &TableSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],
@@ -172,8 +172,11 @@ pub enum RemoteDbType {
 }
 
 impl RemoteDbType {
-    pub(crate) fn support_rewrite_with_filters_limit(&self, sql: &str) -> bool {
-        sql.trim()[0..6].eq_ignore_ascii_case("select")
+    pub(crate) fn support_rewrite_with_filters_limit(&self, source: &TableSource) -> bool {
+        match source {
+            TableSource::Table(_) => true,
+            TableSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+        }
     }
 
     pub(crate) fn create_unparser(&self) -> DFResult<Unparser<'_>> {
@@ -192,50 +195,88 @@ impl RemoteDbType {
 
     pub(crate) fn rewrite_query(
         &self,
-        sql: &str,
+        source: &TableSource,
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> String {
-        match self {
-            RemoteDbType::Postgres
-            | RemoteDbType::Mysql
-            | RemoteDbType::Sqlite
-            | RemoteDbType::Dm => {
-                let where_clause = if unparsed_filters.is_empty() {
-                    "".to_string()
-                } else {
-                    format!(" WHERE {}", unparsed_filters.join(" AND "))
-                };
-                let limit_clause = if let Some(limit) = limit {
-                    format!(" LIMIT {limit}")
-                } else {
-                    "".to_string()
-                };
+        match source {
+            TableSource::Table(table) => match self {
+                RemoteDbType::Postgres
+                | RemoteDbType::Mysql
+                | RemoteDbType::Sqlite
+                | RemoteDbType::Dm => {
+                    let where_clause = if unparsed_filters.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(" WHERE {}", unparsed_filters.join(" AND "))
+                    };
+                    let limit_clause = if let Some(limit) = limit {
+                        format!(" LIMIT {limit}")
+                    } else {
+                        "".to_string()
+                    };
 
-                if where_clause.is_empty() && limit_clause.is_empty() {
-                    sql.to_string()
-                } else {
-                    format!("SELECT * FROM ({sql}) as __subquery{where_clause}{limit_clause}")
+                    format!(
+                        "{}{where_clause}{limit_clause}",
+                        self.select_all_query(table)
+                    )
                 }
-            }
-            RemoteDbType::Oracle => {
-                let mut all_filters: Vec<String> = vec![];
-                all_filters.extend_from_slice(unparsed_filters);
-                if let Some(limit) = limit {
-                    all_filters.push(format!("ROWNUM <= {limit}"))
-                }
+                RemoteDbType::Oracle => {
+                    let mut all_filters: Vec<String> = vec![];
+                    all_filters.extend_from_slice(unparsed_filters);
+                    if let Some(limit) = limit {
+                        all_filters.push(format!("ROWNUM <= {limit}"))
+                    }
 
-                let where_clause = if all_filters.is_empty() {
-                    "".to_string()
-                } else {
-                    format!(" WHERE {}", all_filters.join(" AND "))
-                };
-                if where_clause.is_empty() {
-                    sql.to_string()
-                } else {
-                    format!("SELECT * FROM ({sql}){where_clause}")
+                    let where_clause = if all_filters.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(" WHERE {}", all_filters.join(" AND "))
+                    };
+                    format!("{}{where_clause}", self.select_all_query(table))
                 }
-            }
+            },
+            TableSource::Query(query) => match self {
+                RemoteDbType::Postgres
+                | RemoteDbType::Mysql
+                | RemoteDbType::Sqlite
+                | RemoteDbType::Dm => {
+                    let where_clause = if unparsed_filters.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(" WHERE {}", unparsed_filters.join(" AND "))
+                    };
+                    let limit_clause = if let Some(limit) = limit {
+                        format!(" LIMIT {limit}")
+                    } else {
+                        "".to_string()
+                    };
+
+                    if where_clause.is_empty() && limit_clause.is_empty() {
+                        query.clone()
+                    } else {
+                        format!("SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}")
+                    }
+                }
+                RemoteDbType::Oracle => {
+                    let mut all_filters: Vec<String> = vec![];
+                    all_filters.extend_from_slice(unparsed_filters);
+                    if let Some(limit) = limit {
+                        all_filters.push(format!("ROWNUM <= {limit}"))
+                    }
+
+                    let where_clause = if all_filters.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(" WHERE {}", all_filters.join(" AND "))
+                    };
+                    if where_clause.is_empty() {
+                        query.clone()
+                    } else {
+                        format!("SELECT * FROM ({query}){where_clause}")
+                    }
+                }
+            },
         }
     }
 
@@ -271,23 +312,26 @@ impl RemoteDbType {
         }
     }
 
-    pub(crate) fn query_limit_1(&self, sql: &str) -> String {
-        if !self.support_rewrite_with_filters_limit(sql) {
-            return sql.to_string();
+    pub(crate) fn limit_1_query_if_possible(&self, source: &TableSource) -> String {
+        if !self.support_rewrite_with_filters_limit(source) {
+            return source.query(*self);
         }
-        self.rewrite_query(sql, &[], Some(1))
+        self.rewrite_query(source, &[], Some(1))
     }
 
-    pub(crate) fn try_count1_query(&self, sql: &str) -> Option<String> {
-        if !self.support_rewrite_with_filters_limit(sql) {
+    pub(crate) fn try_count1_query(&self, source: &TableSource) -> Option<String> {
+        if !self.support_rewrite_with_filters_limit(source) {
             return None;
         }
-        match self {
-            RemoteDbType::Postgres
-            | RemoteDbType::Mysql
-            | RemoteDbType::Sqlite
-            | RemoteDbType::Dm => Some(format!("SELECT COUNT(1) FROM ({sql}) AS __subquery")),
-            RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({sql})")),
+        match source {
+            TableSource::Table(table) => Some(self.select_all_query(table)),
+            TableSource::Query(query) => match self {
+                RemoteDbType::Postgres
+                | RemoteDbType::Mysql
+                | RemoteDbType::Sqlite
+                | RemoteDbType::Dm => Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery")),
+                RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
+            },
         }
     }
 
@@ -303,7 +347,14 @@ impl RemoteDbType {
             false,
         )]));
         let stream = conn
-            .query(conn_options, count1_query, count1_schema, None, &[], None)
+            .query(
+                conn_options,
+                &TableSource::Query(count1_query.to_string()),
+                count1_schema,
+                None,
+                &[],
+                None,
+            )
             .await?;
         let batches = collect(stream).await?;
         let count_vec = extract_primitive_array::<Int64Type>(&batches, 0)?;

@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, Unparse,
+    RemoteSchemaRef, RemoteType, TableSource, Unparse,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
@@ -124,19 +124,36 @@ impl Connection for PostgresConnection {
         self
     }
 
-    async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Postgres.query_limit_1(sql);
-        let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {
-            DataFusionError::Execution(format!("Failed to execute query {sql} on postgres: {e:?}",))
-        })?;
-        let remote_schema = Arc::new(build_remote_schema(&row)?);
-        Ok(remote_schema)
+    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+        match source {
+            TableSource::Table(_table) => {
+                // TODO: improve infer schema for table
+                let sql = RemoteDbType::Postgres.limit_1_query_if_possible(source);
+                let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to execute query {sql} on postgres: {e:?}",
+                    ))
+                })?;
+                let remote_schema = Arc::new(build_remote_schema(&row)?);
+                Ok(remote_schema)
+            }
+            TableSource::Query(_query) => {
+                let sql = RemoteDbType::Postgres.limit_1_query_if_possible(source);
+                let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to execute query {sql} on postgres: {e:?}",
+                    ))
+                })?;
+                let remote_schema = Arc::new(build_remote_schema(&row)?);
+                Ok(remote_schema)
+            }
+        }
     }
 
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        sql: &str,
+        source: &TableSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],
@@ -144,7 +161,7 @@ impl Connection for PostgresConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Postgres.rewrite_query(sql, unparsed_filters, limit);
+        let sql = RemoteDbType::Postgres.rewrite_query(source, unparsed_filters, limit);
         debug!("[remote-table] executing postgres query: {sql}");
 
         let projection = projection.cloned();

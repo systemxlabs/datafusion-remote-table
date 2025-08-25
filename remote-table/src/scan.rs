@@ -103,12 +103,10 @@ impl ExecutionPlan for RemoteTableScanExec {
     ) -> DFResult<SendableRecordBatchStream> {
         assert_eq!(partition, 0);
         let schema = self.schema();
-        // TODO need improve
-        let query = self.source.query(self.conn_options.db_type());
         let fut = build_and_transform_stream(
             self.conn.clone(),
             self.conn_options.clone(),
-            query,
+            self.source.clone(),
             self.table_schema.clone(),
             self.remote_schema.clone(),
             self.projection.clone(),
@@ -129,15 +127,14 @@ impl ExecutionPlan for RemoteTableScanExec {
             )));
         }
         let db_type = self.conn_options.db_type();
-        let query = self.source.query(db_type);
-        let limit = if db_type.support_rewrite_with_filters_limit(&query) {
+        let limit = if db_type.support_rewrite_with_filters_limit(&self.source) {
             self.limit
         } else {
             None
         };
-        let real_sql = db_type.rewrite_query(&query, &self.unparsed_filters, limit);
+        let real_sql = db_type.rewrite_query(&self.source, &self.unparsed_filters, limit);
 
-        if let Some(count1_query) = db_type.try_count1_query(&real_sql) {
+        if let Some(count1_query) = db_type.try_count1_query(&TableSource::Query(real_sql)) {
             let conn = self.conn.clone();
             let conn_options = self.conn_options.clone();
             let row_count_result = tokio::task::block_in_place(|| {
@@ -163,15 +160,17 @@ impl ExecutionPlan for RemoteTableScanExec {
                 }
             }
         } else {
-            debug!("[remote-table] Query can not be rewritten as count1 query: {query}",);
+            debug!(
+                "[remote-table] Query can not be rewritten as count1 query: {}",
+                self.source
+            );
             Ok(Statistics::new_unknown(self.schema().as_ref()))
         }
     }
 
     fn with_fetch(&self, limit: Option<usize>) -> Option<Arc<dyn ExecutionPlan>> {
         let db_type = self.conn_options.db_type();
-        let query = self.source.query(db_type);
-        if db_type.support_rewrite_with_filters_limit(&query) {
+        if db_type.support_rewrite_with_filters_limit(&self.source) {
             Some(Arc::new(Self {
                 conn_options: self.conn_options.clone(),
                 source: self.source.clone(),
@@ -198,7 +197,7 @@ impl ExecutionPlan for RemoteTableScanExec {
 async fn build_and_transform_stream(
     conn: Arc<dyn Connection>,
     conn_options: ConnectionOptions,
-    sql: String,
+    source: TableSource,
     table_schema: SchemaRef,
     remote_schema: Option<RemoteSchemaRef>,
     projection: Option<Vec<usize>>,
@@ -208,7 +207,7 @@ async fn build_and_transform_stream(
 ) -> DFResult<SendableRecordBatchStream> {
     let limit = if conn_options
         .db_type()
-        .support_rewrite_with_filters_limit(&sql)
+        .support_rewrite_with_filters_limit(&source)
     {
         limit
     } else {
@@ -218,7 +217,7 @@ async fn build_and_transform_stream(
     let stream = conn
         .query(
             &conn_options,
-            &sql,
+            &source,
             table_schema.clone(),
             projection.as_ref(),
             unparsed_filters.as_slice(),

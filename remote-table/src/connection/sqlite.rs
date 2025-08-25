@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteType, SqliteType, Unparse,
+    RemoteType, SqliteType, TableSource, Unparse,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -77,35 +77,42 @@ impl Connection for SqliteConnection {
         self
     }
 
-    async fn infer_schema(&self, sql: &str) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Sqlite.query_limit_1(sql);
-        let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
-        })?;
-        let mut stmt = conn.prepare(&sql).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
-        })?;
-        let columns: Vec<OwnedColumn> =
-            stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
-        let rows = stmt.query([]).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
-        })?;
+    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+        match source {
+            TableSource::Table(_table) => Err(DataFusionError::Execution(
+                "Sqlite does not support infer schema for table".to_string(),
+            )),
+            TableSource::Query(_query) => {
+                let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source);
+                let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
+                    DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+                })?;
+                let mut stmt = conn.prepare(&sql).map_err(|e| {
+                    DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
+                })?;
+                let columns: Vec<OwnedColumn> =
+                    stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
+                let rows = stmt.query([]).map_err(|e| {
+                    DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
+                })?;
 
-        let remote_schema = Arc::new(build_remote_schema(columns.as_slice(), rows)?);
-        Ok(remote_schema)
+                let remote_schema = Arc::new(build_remote_schema(columns.as_slice(), rows)?);
+                Ok(remote_schema)
+            }
+        }
     }
 
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        sql: &str,
+        source: &TableSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
-        let sql = RemoteDbType::Sqlite.rewrite_query(sql, unparsed_filters, limit);
+        let sql = RemoteDbType::Sqlite.rewrite_query(source, unparsed_filters, limit);
         debug!("[remote-table] executing sqlite query: {sql}");
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<DFResult<RecordBatch>>(1);
