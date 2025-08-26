@@ -102,7 +102,7 @@ impl PostgresType {
             PostgresType::TimestampTz => {
                 DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
             }
-            PostgresType::Time => DataType::Time64(TimeUnit::Nanosecond),
+            PostgresType::Time => DataType::Time64(TimeUnit::Microsecond),
             PostgresType::Interval => DataType::Interval(IntervalUnit::MonthDayNano),
             PostgresType::Bool => DataType::Boolean,
             PostgresType::Json | PostgresType::Jsonb => DataType::LargeUtf8,
