@@ -819,6 +819,21 @@ fn rows_to_batch(
                         }
                     );
                 }
+                DataType::Timestamp(TimeUnit::Microsecond, Some(_tz)) => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        TimestampMicrosecondBuilder,
+                        chrono::DateTime<chrono::Utc>,
+                        row,
+                        idx,
+                        |v: chrono::DateTime<chrono::Utc>| {
+                            let timestamp: i64 = v.timestamp_micros();
+                            Ok::<_, DataFusionError>(timestamp)
+                        }
+                    );
+                }
                 DataType::Timestamp(TimeUnit::Nanosecond, Some(_tz)) => {
                     handle_primitive_type!(
                         builder,
