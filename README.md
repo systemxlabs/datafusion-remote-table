@@ -5,12 +5,14 @@
 
 ## Features
 1. Execute SQL queries on remote databases and stream results as datafusion table provider
-2. Support inferring schema or user specified schema
-3. Support pushing down filters and limit to remote databases
-4. Execution plan can be serialized for distributed execution
-5. Record batches can be transformed before outputting to next plan node
+2. Insert data into remote databases
+3. Support inferring schema or user specified schema
+4. Support pushing down filters and limit to remote databases
+5. Execution plan can be serialized for distributed execution
+6. Record batches can be transformed before outputting to next plan node
 
 ## Usage
+1. Execute SQL queries on remote database
 ```rust
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,6 +23,22 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ctx.register_table("remote_table", Arc::new(remote_table))?;
 
     ctx.sql("select * from remote_table").await?.show().await?;
+
+    Ok(())
+}
+```
+
+2. Insert data into remote database
+```rust
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let options = PostgresConnectionOptions::new("localhost", 5432, "user", "password");
+    let remote_table = RemoteTable::try_new(options, vec!["public", "test_table"]).await?;
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(remote_table))?;
+
+    ctx.sql("insert into remote_table values (1, 'Tom')").await?.show().await?;
 
     Ok(())
 }
