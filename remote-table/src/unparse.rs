@@ -6,6 +6,7 @@ use datafusion::arrow::array::*;
 use datafusion::arrow::datatypes::*;
 use datafusion::arrow::temporal_conversions::{
     date32_to_datetime, time64ns_to_time, time64us_to_time, timestamp_ns_to_datetime,
+    timestamp_us_to_datetime,
 };
 use datafusion::common::tree_node::{TreeNode, TreeNodeRecursion};
 use datafusion::error::DataFusionError;
@@ -170,6 +171,37 @@ pub trait Unparse: Debug + Send + Sync {
         _remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
         unparse_array!(array)
+    }
+
+    fn unparse_timestamp_microsecond_array(
+        &self,
+        array: &TimestampMicrosecondArray,
+        remote_type: RemoteType,
+    ) -> DFResult<Vec<String>> {
+        let db_type = remote_type.db_type();
+        let tz = match array.timezone() {
+            Some(tz) => Some(
+                tz.parse::<Tz>()
+                    .map_err(|e| DataFusionError::Internal(e.to_string()))?,
+            ),
+            None => None,
+        };
+
+        unparse_array!(array, |v| {
+            let Some(naive) = timestamp_us_to_datetime(v) else {
+                return Err(DataFusionError::Internal(format!(
+                    "invalid timestamp microsecond value: {v}"
+                )));
+            };
+            let format = match tz {
+                Some(tz) => {
+                    let date = Utc.from_utc_datetime(&naive).with_timezone(&tz);
+                    date.format("%Y-%m-%d %H:%M:%S.%f").to_string()
+                }
+                None => naive.format("%Y-%m-%d %H:%M:%S.%f").to_string(),
+            };
+            Ok::<_, DataFusionError>(db_type.sql_string_literal(&format))
+        })
     }
 
     fn unparse_timestamp_nanosecond_array(
@@ -549,6 +581,10 @@ pub fn unparse_array(
         DataType::Float64 => {
             let array = array.as_primitive::<Float64Type>();
             unparser.unparse_float64_array(array, remote_type)
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, _) => {
+            let array = array.as_primitive::<TimestampMicrosecondType>();
+            unparser.unparse_timestamp_microsecond_array(array, remote_type)
         }
         DataType::Timestamp(TimeUnit::Nanosecond, _) => {
             let array = array.as_primitive::<TimestampNanosecondType>();
