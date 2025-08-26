@@ -804,21 +804,6 @@ fn rows_to_batch(
                         }
                     );
                 }
-                DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-                    handle_primitive_type!(
-                        builder,
-                        field,
-                        col,
-                        TimestampNanosecondBuilder,
-                        chrono::NaiveDateTime,
-                        row,
-                        idx,
-                        |v: chrono::NaiveDateTime| {
-                            let timestamp: i64 = v.and_utc().timestamp_nanos_opt().unwrap_or_else(|| panic!("Failed to get timestamp in nanoseconds from {v} for {field:?} and {col:?}"));
-                            Ok::<i64, DataFusionError>(timestamp)
-                        }
-                    );
-                }
                 DataType::Timestamp(TimeUnit::Microsecond, Some(_tz)) => {
                     handle_primitive_type!(
                         builder,
@@ -831,6 +816,21 @@ fn rows_to_batch(
                         |v: chrono::DateTime<chrono::Utc>| {
                             let timestamp: i64 = v.timestamp_micros();
                             Ok::<_, DataFusionError>(timestamp)
+                        }
+                    );
+                }
+                DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        TimestampNanosecondBuilder,
+                        chrono::NaiveDateTime,
+                        row,
+                        idx,
+                        |v: chrono::NaiveDateTime| {
+                            let timestamp: i64 = v.and_utc().timestamp_nanos_opt().unwrap_or_else(|| panic!("Failed to get timestamp in nanoseconds from {v} for {field:?} and {col:?}"));
+                            Ok::<i64, DataFusionError>(timestamp)
                         }
                     );
                 }
