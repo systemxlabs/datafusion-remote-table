@@ -5,18 +5,18 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
     ConnectionOptions, MysqlConnectionOptions, OracleConnectionOptions, PostgresConnectionOptions,
-    RemoteDbType, RemoteTable, SqliteConnectionOptions,
+    RemoteDbType, RemoteTable, SqliteConnectionOptions, TableSource,
 };
 use std::sync::Arc;
 
 pub async fn assert_result(
     database: RemoteDbType,
-    remote_sql: &str,
+    source: impl Into<TableSource>,
     df_sql: &str,
     expected_result: &str,
 ) {
     let options = build_conn_options(database);
-    let table = RemoteTable::try_new(options, remote_sql).await.unwrap();
+    let table = RemoteTable::try_new(options, source.into()).await.unwrap();
     println!("remote schema: {:#?}", table.remote_schema());
 
     let ctx = SessionContext::new();

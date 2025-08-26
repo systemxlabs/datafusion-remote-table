@@ -1,4 +1,3 @@
-use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
@@ -39,29 +38,28 @@ pub async fn supported_postgres_types() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-pub async fn insert_postgres_types() {
+pub async fn insert_supported_postgres_types() {
     setup_postgres_db().await;
-    let options = build_conn_options(RemoteDbType::Postgres);
-    let table = RemoteTable::try_new(options, vec!["insert_table"])
-        .await
-        .unwrap();
-    println!("remote schema: {:#?}", table.remote_schema());
+    assert_result(RemoteDbType::Postgres, vec!["insert_supported_data_types"],
+    "insert into remote_table values
+        (1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', X'01', '2023-10-01', '12:34:56', '2023-10-01 12:34:56', '2023-10-01 12:34:56+00', '3 months 2 weeks', true, '{\"key1\":\"value1\"}', '{\"key2\":\"value2\"}', X'010100002038010000000000000000f03f000000000000f03f', [1, 2], [3, 4], [5, 6], [1.1, 2.2], [3.3, 4.4], ['char0', 'char1'], ['varchar0', 'varchar1'], ['bpchar0', 'bpchar1'], ['text0', 'text1'], [true, false], '<item>1</item>', X'a0eebc999c0b4ef8bb6d6bb9bd380a11'),
+        (NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+        r#"+-------+
+| count |
++-------+
+| 2     |
++-------+"#,
+).await;
 
-    let ctx = SessionContext::new();
-    ctx.register_table("remote_table", Arc::new(table)).unwrap();
-
-    let df = ctx
-        .sql("insert into remote_table (smallint_col) values (1)")
-        .await
-        .unwrap();
-    let exec_plan = df.create_physical_plan().await.unwrap();
-    println!(
-        "{}",
-        DisplayableExecutionPlan::new(exec_plan.as_ref()).indent(true)
-    );
-
-    let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
-    println!("{}", pretty_format_batches(&result).unwrap());
+    assert_result(RemoteDbType::Postgres, vec!["insert_supported_data_types"], "SELECT * FROM remote_table",
+    r#"+--------------+-------------+------------+----------+------------+-------------+------------+-------------+------------+----------+-----------+------------+----------+---------------------+----------------------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+
+| smallint_col | integer_col | bigint_col | real_col | double_col | numeric_col | char_col   | varchar_col | bpchar_col | text_col | bytea_col | date_col   | time_col | timestamp_col       | timestamptz_col      | interval_col   | boolean_col | json_col          | jsonb_col         | geometry_col                                       | smallint_array_col | integer_array_col | bigint_array_col | real_array_col | double_array_col | char_array_col           | varchar_array_col    | bpchar_array_col   | text_array_col | bool_array_col | xml_col        | uuid_col                         |
++--------------+-------------+------------+----------+------------+-------------+------------+-------------+------------+----------+-----------+------------+----------+---------------------+----------------------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+
+| 1            |             |            |          |            |             |            |             |            |          |           |            |          |                     |                      |                |             |                   |                   |                                                    |                    |                   |                  |                |                  |                          |                      |                    |                |                |                |                                  |
+| 1            | 2           | 3          | 1.1      | 2.2        | 300         | char       | varchar     | bpchar     | text     | 01        | 2023-10-01 | 12:34:56 | 2023-10-01T12:34:56 | 2023-10-01T12:34:56Z | 3 mons 14 days | true        | {"key1":"value1"} | {"key2":"value2"} | 010100002038010000000000000000f03f000000000000f03f | [1, 2]             | [3, 4]            | [5, 6]           | [1.1, 2.2]     | [3.3, 4.4]       | [char0     , char1     ] | [varchar0, varchar1] | [bpchar0, bpchar1] | [text0, text1] | [true, false]  | <item>1</item> | a0eebc999c0b4ef8bb6d6bb9bd380a11 |
+|              |             |            |          |            |             |            |             |            |          |           |            |          |                     |                      |                |             |                   |                   |                                                    |                    |                   |                  |                |                  |                          |                      |                    |                |                |                |                                  |
++--------------+-------------+------------+----------+------------+-------------+------------+-------------+------------+----------+-----------+------------+----------+---------------------+----------------------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+"#,
+    ).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]

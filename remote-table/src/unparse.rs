@@ -14,7 +14,7 @@ use std::fmt::Debug;
 
 macro_rules! unparse_array {
     ($array:ident) => {{
-        let mut sqls = Vec::with_capacity($array.len());
+        let mut sqls: Vec<String> = Vec::with_capacity($array.len());
         for v in $array.iter() {
             match v {
                 Some(v) => {
@@ -25,10 +25,10 @@ macro_rules! unparse_array {
                 }
             }
         }
-        Ok(sqls)
+        Ok::<_, DataFusionError>(sqls)
     }};
     ($array:ident, $convert:expr) => {{
-        let mut sqls = Vec::with_capacity($array.len());
+        let mut sqls: Vec<String> = Vec::with_capacity($array.len());
         for v in $array.iter() {
             match v {
                 Some(v) => {
@@ -39,7 +39,7 @@ macro_rules! unparse_array {
                 }
             }
         }
-        Ok(sqls)
+        Ok::<_, DataFusionError>(sqls)
     }};
 }
 
@@ -175,8 +175,9 @@ pub trait Unparse: Debug + Send + Sync {
     fn unparse_timestamp_nanosecond_array(
         &self,
         array: &TimestampNanosecondArray,
-        _remote_type: RemoteType,
+        remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
+        let db_type = remote_type.db_type();
         let tz = match array.timezone() {
             Some(tz) => Some(
                 tz.parse::<Tz>()
@@ -191,13 +192,14 @@ pub trait Unparse: Debug + Send + Sync {
                     "invalid timestamp nanosecond value: {v}"
                 )));
             };
-            Ok::<_, DataFusionError>(match tz {
+            let format = match tz {
                 Some(tz) => {
                     let date = Utc.from_utc_datetime(&naive).with_timezone(&tz);
                     date.format("%Y-%m-%d %H:%M:%S.%f").to_string()
                 }
                 None => naive.format("%Y-%m-%d %H:%M:%S.%f").to_string(),
-            })
+            };
+            Ok::<_, DataFusionError>(db_type.sql_string_literal(&format))
         })
     }
 
@@ -212,38 +214,45 @@ pub trait Unparse: Debug + Send + Sync {
     fn unparse_date32_array(
         &self,
         array: &Date32Array,
-        _remote_type: RemoteType,
+        remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
+        let db_type = remote_type.db_type();
         unparse_array!(array, |v| {
             let Some(date) = date32_to_datetime(v) else {
                 return Err(DataFusionError::Internal(format!(
                     "invalid date32 value: {v}"
                 )));
             };
-            Ok::<_, DataFusionError>(date.format("%Y-%m-%d").to_string())
+            Ok::<_, DataFusionError>(
+                db_type.sql_string_literal(&date.format("%Y-%m-%d").to_string()),
+            )
         })
     }
 
     fn unparse_time64_nanosecond_array(
         &self,
         array: &Time64NanosecondArray,
-        _remote_type: RemoteType,
+        remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
+        let db_type = remote_type.db_type();
         unparse_array!(array, |v| {
             let Some(time) = time64ns_to_time(v) else {
                 return Err(DataFusionError::Internal(format!(
                     "invalid time64 nanosecond value: {v}"
                 )));
             };
-            Ok::<_, DataFusionError>(time.format("%H:%M:%S.%f").to_string())
+            Ok::<_, DataFusionError>(
+                db_type.sql_string_literal(&time.format("%H:%M:%S.%f").to_string()),
+            )
         })
     }
 
     fn unparse_interval_month_day_nano_array(
         &self,
         array: &IntervalMonthDayNanoArray,
-        _remote_type: RemoteType,
+        remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
+        let db_type = remote_type.db_type();
         unparse_array!(array, |v: IntervalMonthDayNano| {
             let mut s = String::new();
             let mut prefix = "";
@@ -289,7 +298,7 @@ pub trait Unparse: Debug + Send + Sync {
                 }
             }
 
-            Ok::<_, DataFusionError>(s)
+            Ok::<_, DataFusionError>(db_type.sql_string_literal(&s))
         })
     }
 
@@ -323,7 +332,10 @@ pub trait Unparse: Debug + Send + Sync {
         let db_type = remote_type.db_type();
         match remote_type {
             RemoteType::Postgres(PostgresType::PostGisGeometry) => {
-                todo!()
+                unparse_array!(array, |v| {
+                    let s = db_type.sql_binary_literal(v);
+                    Ok::<_, DataFusionError>(format!("ST_GeomFromWKB({s})"))
+                })
             }
             _ => unparse_array!(array, |v| Ok::<_, DataFusionError>(
                 db_type.sql_binary_literal(v)
@@ -352,10 +364,84 @@ pub trait Unparse: Debug + Send + Sync {
 
     fn unparse_list_array(
         &self,
-        _array: &ListArray,
-        _remote_type: RemoteType,
+        array: &ListArray,
+        remote_type: RemoteType,
     ) -> DFResult<Vec<String>> {
-        todo!()
+        let db_type = remote_type.db_type();
+        let data_type = array.data_type();
+        let DataType::List(field) = data_type else {
+            return Err(DataFusionError::Internal(format!(
+                "expect list array, but got {data_type}"
+            )));
+        };
+
+        let inner_type = field.data_type();
+
+        match inner_type {
+            DataType::Boolean => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_boolean();
+                    let sqls = unparse_array!(array)?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::Int16 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_primitive::<Int16Type>();
+                    let sqls = unparse_array!(array)?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::Int32 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_primitive::<Int32Type>();
+                    let sqls = unparse_array!(array)?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::Int64 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_primitive::<Int64Type>();
+                    let sqls = unparse_array!(array)?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::Float32 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_primitive::<Float32Type>();
+                    let sqls = unparse_array!(array)?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::Float64 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_primitive::<Float64Type>();
+                    let sqls = unparse_array!(array)?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::Utf8 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_string::<i32>();
+                    let sqls = unparse_array!(array, |v| Ok::<_, DataFusionError>(
+                        db_type.sql_string_literal(v)
+                    ))?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            DataType::LargeUtf8 => {
+                unparse_array!(array, |v: ArrayRef| {
+                    let array = v.as_string::<i64>();
+                    let sqls = unparse_array!(array, |v| Ok::<_, DataFusionError>(
+                        db_type.sql_string_literal(v)
+                    ))?;
+                    Ok::<_, DataFusionError>(format!("ARRAY[{}]", sqls.join(",")))
+                })
+            }
+            _ => Err(DataFusionError::NotImplemented(format!(
+                "Not supported unparsing list array: {data_type}"
+            ))),
+        }
     }
 
     fn unparse_decimal128_array(

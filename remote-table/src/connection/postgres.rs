@@ -238,10 +238,9 @@ impl Connection for PostgresConnection {
                 values.join(",")
             );
 
-            // TODO error message might be too big
             let count = self.conn.execute(&sql, &[]).await.map_err(|e| {
                 DataFusionError::Execution(format!(
-                    "Failed to execute insert statement {sql} on postgres: {e:?}"
+                    "Failed to execute insert statement on postgres: {e:?}, sql: {sql}"
                 ))
             })?;
             total_count += count as usize;

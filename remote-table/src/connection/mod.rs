@@ -301,20 +301,15 @@ impl RemoteDbType {
     }
 
     pub(crate) fn sql_string_literal(&self, value: &str) -> String {
-        match self {
-            RemoteDbType::Postgres | RemoteDbType::Sqlite => {
-                let value = value.replace("'", "''");
-                format!("'{value}'")
-            }
-            RemoteDbType::Mysql | RemoteDbType::Oracle | RemoteDbType::Dm => todo!(),
-        }
+        let value = value.replace("'", "''");
+        format!("'{value}'")
     }
 
     pub(crate) fn sql_binary_literal(&self, value: &[u8]) -> String {
         match self {
             RemoteDbType::Postgres => format!("E'\\\\x{}'", hex::encode(value)),
-            RemoteDbType::Sqlite => format!("X'{}'", hex::encode(value)),
-            RemoteDbType::Mysql | RemoteDbType::Oracle | RemoteDbType::Dm => todo!(),
+            RemoteDbType::Mysql | RemoteDbType::Sqlite => format!("X'{}'", hex::encode(value)),
+            RemoteDbType::Oracle | RemoteDbType::Dm => todo!(),
         }
     }
 

@@ -52,7 +52,46 @@ CREATE TABLE simple_table (
 
 INSERT INTO simple_table VALUES (1, 'Tom'), (2, 'Jerry'), (3, 'Spike');
 
-CREATE TABLE insert_table (
-    smallint_col SMALLINT
+CREATE TABLE insert_supported_data_types (
+    smallint_col SMALLINT,
+    integer_col INTEGER,
+    bigint_col BIGINT,
+    real_col REAL,
+    double_col DOUBLE PRECISION,
+    numeric_col NUMERIC(10, 2),
+
+    char_col CHAR(10),
+    varchar_col VARCHAR(255),
+    bpchar_col BPCHAR,
+    text_col TEXT,
+
+    bytea_col BYTEA,
+
+    date_col DATE,
+    time_col TIME,
+    timestamp_col TIMESTAMP,
+    timestamptz_col TIMESTAMPTZ,
+    interval_col INTERVAL,
+
+    boolean_col BOOLEAN,
+    json_col JSON,
+    jsonb_col JSONB,
+    geometry_col GEOMETRY,
+
+    smallint_array_col SMALLINT[],
+    integer_array_col INTEGER[],
+    bigint_array_col BIGINT[],
+    real_array_col REAL[],
+    double_array_col DOUBLE PRECISION[],
+
+    char_array_col CHAR(10)[],
+    varchar_array_col VARCHAR(255)[],
+    bpchar_array_col BPCHAR[],
+    text_array_col TEXT[],
+
+    bool_array_col BOOLEAN[],
+
+    xml_col XML,
+    uuid_col UUID
 );
-INSERT INTO insert_table VALUES (1);
+INSERT INTO insert_supported_data_types VALUES (1);

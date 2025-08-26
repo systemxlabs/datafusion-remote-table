@@ -47,6 +47,12 @@ impl From<String> for TableSource {
     }
 }
 
+impl From<&String> for TableSource {
+    fn from(query: &String) -> Self {
+        TableSource::Query(query.clone())
+    }
+}
+
 impl From<&str> for TableSource {
     fn from(query: &str) -> Self {
         TableSource::Query(query.to_string())
