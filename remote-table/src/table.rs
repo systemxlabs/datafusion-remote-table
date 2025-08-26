@@ -97,6 +97,7 @@ impl RemoteTable {
             conn_options,
             source,
             None,
+            None,
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultUnparser {}),
         )
@@ -112,6 +113,23 @@ impl RemoteTable {
             conn_options,
             source,
             Some(table_schema),
+            None,
+            Arc::new(DefaultTransform {}),
+            Arc::new(DefaultUnparser {}),
+        )
+        .await
+    }
+
+    pub async fn try_new_with_remote_schema(
+        conn_options: impl Into<ConnectionOptions>,
+        source: impl Into<TableSource>,
+        remote_schema: RemoteSchemaRef,
+    ) -> DFResult<Self> {
+        Self::try_new_with_schema_transform_unparser(
+            conn_options,
+            source,
+            None,
+            Some(remote_schema),
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultUnparser {}),
         )
@@ -127,6 +145,7 @@ impl RemoteTable {
             conn_options,
             source,
             None,
+            None,
             transform,
             Arc::new(DefaultUnparser {}),
         )
@@ -137,6 +156,7 @@ impl RemoteTable {
         conn_options: impl Into<ConnectionOptions>,
         source: impl Into<TableSource>,
         table_schema: Option<SchemaRef>,
+        remote_schema: Option<RemoteSchemaRef>,
         transform: Arc<dyn Transform>,
         unparser: Arc<dyn Unparse>,
     ) -> DFResult<Self> {
@@ -150,41 +170,52 @@ impl RemoteTable {
             now.elapsed().as_millis()
         );
 
-        let (table_schema, remote_schema) = if let Some(table_schema) = table_schema {
-            let remote_schema = if transform.as_any().is::<DefaultTransform>() {
-                None
-            } else {
-                // Infer remote schema
-                let now = std::time::Instant::now();
-                let conn = pool.get().await?;
-                let remote_schema_opt = conn.infer_schema(&source).await.ok();
-                debug!(
-                    "[remote-table] Inferring remote schema cost: {}ms",
-                    now.elapsed().as_millis()
-                );
-                remote_schema_opt
+        let (table_schema, remote_schema): (SchemaRef, Option<RemoteSchemaRef>) =
+            match (table_schema, remote_schema) {
+                (Some(table_schema), Some(remote_schema)) => (table_schema, Some(remote_schema)),
+                (Some(table_schema), None) => {
+                    let remote_schema = if transform.as_any().is::<DefaultTransform>()
+                        && matches!(source, TableSource::Query(_))
+                    {
+                        None
+                    } else {
+                        // Infer remote schema
+                        let now = std::time::Instant::now();
+                        let conn = pool.get().await?;
+                        let remote_schema_opt = conn.infer_schema(&source).await.ok();
+                        debug!(
+                            "[remote-table] Inferring remote schema cost: {}ms",
+                            now.elapsed().as_millis()
+                        );
+                        remote_schema_opt
+                    };
+                    (table_schema, remote_schema)
+                }
+                (None, Some(remote_schema)) => (
+                    Arc::new(remote_schema.to_arrow_schema()),
+                    Some(remote_schema),
+                ),
+                (None, None) => {
+                    // Infer table schema
+                    let now = std::time::Instant::now();
+                    let conn = pool.get().await?;
+                    match conn.infer_schema(&source).await {
+                        Ok(remote_schema) => {
+                            debug!(
+                                "[remote-table] Inferring table schema cost: {}ms",
+                                now.elapsed().as_millis()
+                            );
+                            let inferred_table_schema = Arc::new(remote_schema.to_arrow_schema());
+                            (inferred_table_schema, Some(remote_schema))
+                        }
+                        Err(e) => {
+                            return Err(DataFusionError::Execution(format!(
+                                "Failed to infer schema: {e}"
+                            )));
+                        }
+                    }
+                }
             };
-            (table_schema, remote_schema)
-        } else {
-            // Infer table schema
-            let now = std::time::Instant::now();
-            let conn = pool.get().await?;
-            match conn.infer_schema(&source).await {
-                Ok(remote_schema) => {
-                    debug!(
-                        "[remote-table] Inferring table schema cost: {}ms",
-                        now.elapsed().as_millis()
-                    );
-                    let inferred_table_schema = Arc::new(remote_schema.to_arrow_schema());
-                    (inferred_table_schema, Some(remote_schema))
-                }
-                Err(e) => {
-                    return Err(DataFusionError::Execution(format!(
-                        "Failed to infer schema: {e}"
-                    )));
-                }
-            }
-        };
 
         let transformed_table_schema = transform_schema(
             table_schema.clone(),

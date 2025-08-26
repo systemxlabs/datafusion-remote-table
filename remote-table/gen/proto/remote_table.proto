@@ -5,7 +5,7 @@ package remote_table;
 import "datafusion_common.proto";
 import "datafusion.proto";
 
-message RemoteTableExec {
+message RemoteTableScanExec {
   ConnectionOptions conn_options = 1;
   TableSource source = 2;
   datafusion_common.Schema table_schema = 3;
@@ -95,6 +95,7 @@ message RemoteField {
   string name = 1;
   RemoteType remote_type = 2;
   bool nullable = 3;
+  bool auto_increment = 4;
 }
 
 message RemoteType {

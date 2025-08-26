@@ -362,6 +362,7 @@ pub struct RemoteField {
     pub name: String,
     pub remote_type: RemoteType,
     pub nullable: bool,
+    pub auto_increment: bool,
 }
 
 impl RemoteField {
@@ -370,7 +371,13 @@ impl RemoteField {
             name: name.into(),
             remote_type,
             nullable,
+            auto_increment: false,
         }
+    }
+
+    pub fn with_auto_increment(mut self, auto_increment: bool) -> Self {
+        self.auto_increment = auto_increment;
+        self
     }
 
     pub fn to_arrow_field(&self) -> Field {
@@ -393,6 +400,7 @@ impl RemoteSchema {
     pub fn empty() -> Self {
         RemoteSchema { fields: vec![] }
     }
+
     pub fn new(fields: Vec<RemoteField>) -> Self {
         RemoteSchema { fields }
     }
@@ -403,21 +411,5 @@ impl RemoteSchema {
             fields.push(remote_field.to_arrow_field());
         }
         Schema::new(fields)
-    }
-}
-
-pub fn project_remote_schema(
-    schema: &RemoteSchema,
-    projection: Option<&Vec<usize>>,
-) -> RemoteSchema {
-    match projection {
-        Some(projection) => {
-            let fields = projection
-                .iter()
-                .map(|i| schema.fields[*i].clone())
-                .collect::<Vec<_>>();
-            RemoteSchema::new(fields)
-        }
-        None => schema.clone(),
     }
 }

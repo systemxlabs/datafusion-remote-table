@@ -202,12 +202,20 @@ impl Connection for PostgresConnection {
         remote_schema: RemoteSchemaRef,
         mut input: SendableRecordBatchStream,
     ) -> DFResult<usize> {
+        let input_schema = input.schema();
+
         let mut total_count = 0;
         while let Some(batch) = input.next().await {
             let batch = batch?;
 
             let mut columns = Vec::with_capacity(remote_schema.fields.len());
             for i in 0..batch.num_columns() {
+                let input_field = input_schema.field(i);
+                let remote_field = &remote_schema.fields[i];
+                if remote_field.auto_increment && input_field.is_nullable() {
+                    continue;
+                }
+
                 let remote_type = remote_schema.fields[i].remote_type.clone();
                 let array = batch.column(i);
                 let column = unparse_array(unparser.as_ref(), array, remote_type)?;
@@ -226,15 +234,20 @@ impl Connection for PostgresConnection {
                 values.push(format!("({})", value.join(",")));
             }
 
+            let mut col_names = Vec::with_capacity(remote_schema.fields.len());
+            for (remote_field, input_field) in
+                remote_schema.fields.iter().zip(input_schema.fields.iter())
+            {
+                if remote_field.auto_increment && input_field.is_nullable() {
+                    continue;
+                }
+                col_names.push(RemoteDbType::Postgres.sql_identifier(&remote_field.name));
+            }
+
             let sql = format!(
                 "INSERT INTO {} ({}) VALUES {}",
                 RemoteDbType::Postgres.sql_table_name(table),
-                remote_schema
-                    .fields
-                    .iter()
-                    .map(|field| RemoteDbType::Postgres.sql_identifier(&field.name))
-                    .collect::<Vec<String>>()
-                    .join(","),
+                col_names.join(","),
                 values.join(",")
             );
 

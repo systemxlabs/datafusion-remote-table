@@ -95,3 +95,9 @@ CREATE TABLE insert_supported_data_types (
     uuid_col UUID
 );
 INSERT INTO insert_supported_data_types VALUES (1);
+
+CREATE TABLE insert_table_with_primary_key (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255)
+);
+INSERT INTO insert_table_with_primary_key (name) VALUES ('Tom');

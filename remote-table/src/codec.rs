@@ -25,8 +25,6 @@ use derive_with::With;
 use log::debug;
 use prost::Message;
 use std::fmt::Debug;
-#[cfg(feature = "sqlite")]
-use std::path::Path;
 use std::sync::Arc;
 
 pub trait TransformCodec: Debug + Send + Sync {
@@ -137,9 +135,9 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         _inputs: &[Arc<dyn ExecutionPlan>],
         _registry: &dyn FunctionRegistry,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
-        let proto = protobuf::RemoteTableExec::decode(buf).map_err(|e| {
+        let proto = protobuf::RemoteTableScanExec::decode(buf).map_err(|e| {
             DataFusionError::Internal(format!(
-                "Failed to decode remote table execution plan: {e:?}"
+                "Failed to decode remote table scan execution plan: {e:?}"
             ))
         })?;
 
@@ -208,7 +206,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
             let serialized_source = serialize_table_source(&exec.source);
 
-            let proto = protobuf::RemoteTableExec {
+            let proto = protobuf::RemoteTableScanExec {
                 conn_options: Some(serialized_connection_options),
                 source: Some(serialized_source),
                 table_schema: Some(exec.table_schema.as_ref().try_into()?),
@@ -349,7 +347,7 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
         #[cfg(feature = "sqlite")]
         Some(protobuf::connection_options::ConnectionOptions::Sqlite(options)) => {
             ConnectionOptions::Sqlite(SqliteConnectionOptions {
-                path: Path::new(&options.path).to_path_buf(),
+                path: std::path::Path::new(&options.path).to_path_buf(),
                 stream_chunk_size: options.stream_chunk_size as usize,
             })
         }
@@ -390,6 +388,7 @@ fn serialize_remote_field(remote_field: &RemoteField) -> protobuf::RemoteField {
         name: remote_field.name.clone(),
         remote_type: Some(serialize_remote_type(&remote_field.remote_type)),
         nullable: remote_field.nullable,
+        auto_increment: remote_field.auto_increment,
     }
 }
 
@@ -918,6 +917,7 @@ fn parse_remote_field(field: &protobuf::RemoteField) -> RemoteField {
         name: field.name.clone(),
         remote_type: parse_remote_type(field.remote_type.as_ref().unwrap()),
         nullable: field.nullable,
+        auto_increment: field.auto_increment,
     }
 }
 
