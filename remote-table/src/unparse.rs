@@ -5,7 +5,7 @@ use datafusion::arrow::array::timezone::Tz;
 use datafusion::arrow::array::*;
 use datafusion::arrow::datatypes::*;
 use datafusion::arrow::temporal_conversions::{
-    date32_to_datetime, time64ns_to_time, timestamp_ns_to_datetime,
+    date32_to_datetime, time64ns_to_time, time64us_to_time, timestamp_ns_to_datetime,
 };
 use datafusion::common::tree_node::{TreeNode, TreeNodeRecursion};
 use datafusion::error::DataFusionError;
@@ -225,6 +225,24 @@ pub trait Unparse: Debug + Send + Sync {
             };
             Ok::<_, DataFusionError>(
                 db_type.sql_string_literal(&date.format("%Y-%m-%d").to_string()),
+            )
+        })
+    }
+
+    fn unparse_time64_microsecond_array(
+        &self,
+        array: &Time64MicrosecondArray,
+        remote_type: RemoteType,
+    ) -> DFResult<Vec<String>> {
+        let db_type = remote_type.db_type();
+        unparse_array!(array, |v| {
+            let Some(time) = time64us_to_time(v) else {
+                return Err(DataFusionError::Internal(format!(
+                    "invalid time64 microsecond value: {v}"
+                )));
+            };
+            Ok::<_, DataFusionError>(
+                db_type.sql_string_literal(&time.format("%H:%M:%S.%f").to_string()),
             )
         })
     }
@@ -539,6 +557,10 @@ pub fn unparse_array(
         DataType::Date32 => {
             let array = array.as_primitive::<Date32Type>();
             unparser.unparse_date32_array(array, remote_type)
+        }
+        DataType::Time64(TimeUnit::Microsecond) => {
+            let array = array.as_primitive::<Time64MicrosecondType>();
+            unparser.unparse_time64_microsecond_array(array, remote_type)
         }
         DataType::Time64(TimeUnit::Nanosecond) => {
             let array = array.as_primitive::<Time64NanosecondType>();
