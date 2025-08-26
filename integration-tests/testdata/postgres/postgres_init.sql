@@ -15,8 +15,6 @@ CREATE TABLE supported_data_types (
 
     date_col DATE,
     time_col TIME,
-    timestamp_col TIMESTAMP,
-    timestamptz_col TIMESTAMPTZ,
     interval_col INTERVAL,
 
     boolean_col BOOLEAN,
@@ -42,8 +40,9 @@ CREATE TABLE supported_data_types (
 );
 
 INSERT INTO supported_data_types VALUES
-(1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', E'\\xDEADBEEF', '2023-10-01', '12:34:56', '2023-10-01 12:34:56', '2023-10-01 12:34:56+00', '3 months 2 weeks', TRUE, '{"key1": "value1"}', '{"key2": "value2"}', ST_GeomFromText('POINT(1 1)', 312), ARRAY[1, 2], ARRAY[3, 4], ARRAY[5, 6], ARRAY[1.1, 2.2], ARRAY[3.3, 4.4], ARRAY['char0', 'char1'], ARRAY['varchar0', 'varchar1'], ARRAY['bpchar0', 'bpchar1'], ARRAY['text0', 'text1'], ARRAY[true, false], '<item>1</item>', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
-(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+(1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', E'\\xDEADBEEF', '2023-10-01', '12:34:56', '3 months 2 weeks', TRUE, '{"key1": "value1"}', '{"key2": "value2"}', ST_GeomFromText('POINT(1 1)', 312), ARRAY[1, 2], ARRAY[3, 4], ARRAY[5, 6], ARRAY[1.1, 2.2], ARRAY[3.3, 4.4], ARRAY['char0', 'char1'], ARRAY['varchar0', 'varchar1'], ARRAY['bpchar0', 'bpchar1'], ARRAY['text0', 'text1'], ARRAY[true, false], '<item>1</item>', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
+(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
 
 CREATE TABLE simple_table (
     id SERIAL PRIMARY KEY,
@@ -101,3 +100,79 @@ CREATE TABLE insert_table_with_primary_key (
     name VARCHAR(255)
 );
 INSERT INTO insert_table_with_primary_key (name) VALUES ('Tom');
+
+
+
+-- Create simplified timestamp test table
+CREATE TABLE timestamp_test (
+    -- Basic timestamp types
+    timestamp_col TIMESTAMP,
+    timestamptz_col TIMESTAMPTZ,
+    
+    -- Timestamps with different precision
+    timestamp_0 TIMESTAMP(0),
+    timestamp_3 TIMESTAMP(3),
+    timestamp_6 TIMESTAMP(6)
+);
+
+-- Insert regular timestamp data
+INSERT INTO timestamp_test VALUES (
+    '2023-10-27 12:34:56',
+    '2023-10-27 12:34:56+02',
+    '2023-10-27 12:34:56',
+    '2023-10-27 12:34:56.123',
+    '2023-10-27 12:34:56.123456'
+);
+
+-- Insert pre-Unix epoch timestamp data
+INSERT INTO timestamp_test VALUES (
+    '1969-07-20 20:17:40',
+    '1969-07-20 20:17:40+00',
+    '1969-07-20 20:17:40',
+    '1969-07-20 20:17:40.123',
+    '1969-07-20 20:17:40.123456'
+);
+
+-- Insert future timestamp data
+INSERT INTO timestamp_test VALUES (
+    '2030-12-31 23:59:59',
+    '2030-12-31 23:59:59+00',
+    '2030-12-31 23:59:59',
+    '2030-12-31 23:59:59.999',
+    '2030-12-31 23:59:59.999999'
+);
+
+-- Insert precision test data
+INSERT INTO timestamp_test VALUES (
+    '2023-10-27 12:34:56.876543',
+    '2023-10-27 12:34:56.876543+00',
+    '2023-10-27 12:34:57',
+    '2023-10-27 12:34:56.877',
+    '2023-10-27 12:34:56.876543'
+);
+
+-- Insert minimum timestamp data
+INSERT INTO timestamp_test VALUES (
+    '0001-01-01 00:00:00',
+    '0001-01-01 00:00:00+00',
+    '0001-01-01 00:00:00',
+    '0001-01-01 00:00:00.000',
+    '0001-01-01 00:00:00.000000'
+);
+
+-- Insert maximum timestamp data
+INSERT INTO timestamp_test VALUES (
+    '9999-12-31 23:59:59',
+    '9999-12-31 23:59:59+00',
+    '9999-12-31 23:59:59',
+    '9999-12-31 23:59:59.999',
+    '9999-12-31 23:59:59.999999'
+);
+-- Insert NULL values
+INSERT INTO timestamp_test VALUES (
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+);

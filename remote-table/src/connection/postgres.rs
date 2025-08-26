@@ -19,6 +19,7 @@ use datafusion::arrow::array::{
 use datafusion::arrow::datatypes::{
     DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit,
 };
+
 use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
@@ -31,7 +32,6 @@ use num_bigint::{BigInt, Sign};
 use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, With, Getters)]
@@ -794,21 +794,28 @@ fn rows_to_batch(
                         field,
                         col,
                         TimestampMicrosecondBuilder,
-                        SystemTime,
+                        chrono::NaiveDateTime,
                         row,
                         idx,
-                        |v: SystemTime| {
-                            if let Ok(v) = v.duration_since(UNIX_EPOCH) {
-                                let timestamp: i64 = v
-                                    .as_micros()
-                                    .try_into()
-                                    .expect("Failed to convert SystemTime to i64");
-                                Ok(timestamp)
-                            } else {
-                                Err(DataFusionError::Execution(format!(
-                                    "Failed to convert SystemTime {v:?} to i64 for {field:?} and {col:?}"
-                                )))
-                            }
+                        |v: chrono::NaiveDateTime| {
+                            let timestamp: i64 = v.and_utc().timestamp_micros();
+
+                            Ok::<i64, DataFusionError>(timestamp)
+                        }
+                    );
+                }
+                DataType::Timestamp(TimeUnit::Microsecond, Some(_tz)) => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        TimestampMicrosecondBuilder,
+                        chrono::DateTime<chrono::Utc>,
+                        row,
+                        idx,
+                        |v: chrono::DateTime<chrono::Utc>| {
+                            let timestamp: i64 = v.timestamp_micros();
+                            Ok::<_, DataFusionError>(timestamp)
                         }
                     );
                 }
@@ -818,21 +825,12 @@ fn rows_to_batch(
                         field,
                         col,
                         TimestampNanosecondBuilder,
-                        SystemTime,
+                        chrono::NaiveDateTime,
                         row,
                         idx,
-                        |v: SystemTime| {
-                            if let Ok(v) = v.duration_since(UNIX_EPOCH) {
-                                let timestamp: i64 = v
-                                    .as_nanos()
-                                    .try_into()
-                                    .expect("Failed to convert SystemTime to i64");
-                                Ok(timestamp)
-                            } else {
-                                Err(DataFusionError::Execution(format!(
-                                    "Failed to convert SystemTime {v:?} to i64 for {field:?} and {col:?}"
-                                )))
-                            }
+                        |v: chrono::NaiveDateTime| {
+                            let timestamp: i64 = v.and_utc().timestamp_nanos_opt().unwrap_or_else(|| panic!("Failed to get timestamp in nanoseconds from {v} for {field:?} and {col:?}"));
+                            Ok::<i64, DataFusionError>(timestamp)
                         }
                     );
                 }

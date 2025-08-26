@@ -98,11 +98,11 @@ impl PostgresType {
             | PostgresType::Xml => DataType::Utf8,
             PostgresType::Bytea => DataType::Binary,
             PostgresType::Date => DataType::Date32,
-            PostgresType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, None),
+            PostgresType::Timestamp => DataType::Timestamp(TimeUnit::Microsecond, None),
             PostgresType::TimestampTz => {
-                DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into()))
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
             }
-            PostgresType::Time => DataType::Time64(TimeUnit::Nanosecond),
+            PostgresType::Time => DataType::Time64(TimeUnit::Microsecond),
             PostgresType::Interval => DataType::Interval(IntervalUnit::MonthDayNano),
             PostgresType::Bool => DataType::Boolean,
             PostgresType::Json | PostgresType::Jsonb => DataType::LargeUtf8,
