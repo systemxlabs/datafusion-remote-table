@@ -10,16 +10,23 @@ use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
-    Connection, ConnectionOptions, DFResult, DefaultTransform, DmType, MysqlType, OracleType,
-    PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteTableScanExec, RemoteType,
-    SqliteType, TableSource, Transform, connect,
+    Connection, ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, DmType, MysqlType,
+    OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec,
+    RemoteTableScanExec, RemoteType, SqliteType, TableSource, Transform, Unparse, connect,
 };
-use datafusion::arrow::datatypes::SchemaRef;
+use datafusion::arrow::array::RecordBatch;
+use datafusion::arrow::datatypes::{Schema, SchemaRef};
+use datafusion::arrow::ipc::reader::StreamReader;
+use datafusion::arrow::ipc::writer::StreamWriter;
+use datafusion::catalog::memory::{DataSourceExec, MemorySourceConfig};
 use datafusion::common::DataFusionError;
+use datafusion::datasource::source::DataSource;
 use datafusion::execution::FunctionRegistry;
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
+use datafusion_proto::physical_plan::from_proto::parse_physical_sort_exprs;
+use datafusion_proto::physical_plan::to_proto::serialize_physical_sort_exprs;
 use datafusion_proto::protobuf::proto_error;
 use derive_with::With;
 use log::debug;
@@ -54,6 +61,38 @@ impl TransformCodec for DefaultTransformCodec {
         } else {
             Err(DataFusionError::Execution(
                 "DefaultTransformCodec only supports DefaultTransform".to_string(),
+            ))
+        }
+    }
+}
+
+pub trait UnparseCodec: Debug + Send + Sync {
+    fn try_encode(&self, value: &dyn Unparse) -> DFResult<Vec<u8>>;
+    fn try_decode(&self, value: &[u8]) -> DFResult<Arc<dyn Unparse>>;
+}
+
+#[derive(Debug)]
+pub struct DefaultUnparseCodec {}
+
+const DEFAULT_UNPARSE_ID: &str = "__default";
+
+impl UnparseCodec for DefaultUnparseCodec {
+    fn try_encode(&self, value: &dyn Unparse) -> DFResult<Vec<u8>> {
+        if value.as_any().is::<DefaultUnparser>() {
+            Ok(DEFAULT_UNPARSE_ID.as_bytes().to_vec())
+        } else {
+            Err(DataFusionError::Execution(format!(
+                "DefaultUnparseCodec does not support unparse: {value:?}, please implement a custom UnparseCodec."
+            )))
+        }
+    }
+
+    fn try_decode(&self, value: &[u8]) -> DFResult<Arc<dyn Unparse>> {
+        if value == DEFAULT_UNPARSE_ID.as_bytes() {
+            Ok(Arc::new(DefaultUnparser {}))
+        } else {
+            Err(DataFusionError::Execution(
+                "DefaultUnparseCodec only supports DefaultUnparser".to_string(),
             ))
         }
     }
@@ -109,14 +148,16 @@ impl ConnectionCodec for DefaultConnectionCodec {
 
 #[derive(Debug, With)]
 pub struct RemotePhysicalCodec {
-    transform_codec: Arc<dyn TransformCodec>,
-    connection_codec: Arc<dyn ConnectionCodec>,
+    pub transform_codec: Arc<dyn TransformCodec>,
+    pub unparse_codec: Arc<dyn UnparseCodec>,
+    pub connection_codec: Arc<dyn ConnectionCodec>,
 }
 
 impl RemotePhysicalCodec {
     pub fn new() -> Self {
         Self {
             transform_codec: Arc::new(DefaultTransformCodec {}),
+            unparse_codec: Arc::new(DefaultUnparseCodec {}),
             connection_codec: Arc::new(DefaultConnectionCodec {}),
         }
     }
@@ -132,59 +173,136 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
     fn try_decode(
         &self,
         buf: &[u8],
-        _inputs: &[Arc<dyn ExecutionPlan>],
-        _registry: &dyn FunctionRegistry,
+        inputs: &[Arc<dyn ExecutionPlan>],
+        registry: &dyn FunctionRegistry,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
-        let proto = protobuf::RemoteTableScanExec::decode(buf).map_err(|e| {
-            DataFusionError::Internal(format!(
-                "Failed to decode remote table scan execution plan: {e:?}"
-            ))
+        let remote_table_node =
+            protobuf::RemoteTablePhysicalPlanNode::decode(buf).map_err(|e| {
+                DataFusionError::Internal(format!(
+                    "Failed to decode remote table physical plan node: {e:?}"
+                ))
+            })?;
+        let remote_table_plan = remote_table_node.remote_table_physical_plan_type.ok_or_else(|| {
+            DataFusionError::Internal(
+                "Failed to decode remote table physical plan node due to physical plan type is none".to_string()
+            )
         })?;
 
-        let transform = if proto.transform == DEFAULT_TRANSFORM_ID.as_bytes() {
-            Arc::new(DefaultTransform {})
-        } else {
-            self.transform_codec.try_decode(&proto.transform)?
-        };
+        match remote_table_plan {
+            protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Scan(proto) => {
+                let transform = if proto.transform == DEFAULT_TRANSFORM_ID.as_bytes() {
+                    Arc::new(DefaultTransform {})
+                } else {
+                    self.transform_codec.try_decode(&proto.transform)?
+                };
 
-        let proto_source = proto.source.as_ref().ok_or(DataFusionError::Internal(
-            "table source is not set".to_string(),
-        ))?;
-        let source = parse_table_source(proto_source)?;
+                let source = parse_table_source(proto.source.as_ref().ok_or(DataFusionError::Internal(
+                    "table source is not set".to_string(),
+                ))?)?;
 
-        let table_schema: SchemaRef = Arc::new(convert_required!(&proto.table_schema)?);
-        let remote_schema = proto
-            .remote_schema
-            .map(|schema| Arc::new(parse_remote_schema(&schema)));
+                let table_schema: SchemaRef = Arc::new(convert_required!(&proto.table_schema)?);
+                let remote_schema = proto
+                    .remote_schema
+                    .map(|schema| Arc::new(parse_remote_schema(&schema)));
 
-        let projection: Option<Vec<usize>> = proto
-            .projection
-            .map(|p| p.projection.iter().map(|n| *n as usize).collect());
+                let projection: Option<Vec<usize>> = proto
+                    .projection
+                    .map(|p| p.projection.iter().map(|n| *n as usize).collect());
 
-        let limit = proto.limit.map(|l| l as usize);
+                let limit = proto.limit.map(|l| l as usize);
 
-        let conn_options = parse_connection_options(proto.conn_options.unwrap());
+                let conn_options = parse_connection_options(proto.conn_options.unwrap());
 
-        let now = std::time::Instant::now();
-        let conn = self
-            .connection_codec
-            .try_decode(&proto.connection, &conn_options)?;
-        debug!(
-            "[remote-table] Decoding connection cost {}ms",
-            now.elapsed().as_millis()
-        );
+                let now = std::time::Instant::now();
+                let conn = self
+                    .connection_codec
+                    .try_decode(&proto.connection, &conn_options)?;
+                debug!(
+                    "[remote-table] Decoding connection cost {}ms",
+                    now.elapsed().as_millis()
+                );
 
-        Ok(Arc::new(RemoteTableScanExec::try_new(
-            conn_options,
-            source,
-            table_schema,
-            remote_schema,
-            projection,
-            proto.unparsed_filters,
-            limit,
-            transform,
-            conn,
-        )?))
+                Ok(Arc::new(RemoteTableScanExec::try_new(
+                    conn_options,
+                    source,
+                    table_schema,
+                    remote_schema,
+                    projection,
+                    proto.unparsed_filters,
+                    limit,
+                    transform,
+                    conn,
+                )?))
+            }
+            protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Insert(proto) => {
+
+                if inputs.len() != 1 {
+                    return Err(DataFusionError::Internal(
+                        "RemoteTableInsertExec only support one input".to_string(),
+                    ));
+                }
+
+                let input = inputs[0].clone();
+
+                let conn_options = parse_connection_options(proto.conn_options.unwrap());
+                let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap()));
+                let table = proto.table.unwrap().idents;
+
+                let unparser = if proto.unparser == DEFAULT_UNPARSE_ID.as_bytes() {
+                    Arc::new(DefaultUnparser {})
+                } else {
+                    self.unparse_codec.try_decode(&proto.unparser)?
+                };
+
+                let now = std::time::Instant::now();
+                let conn = self
+                    .connection_codec
+                    .try_decode(&proto.connection, &conn_options)?;
+                debug!(
+                    "[remote-table] Decoding connection cost {}ms",
+                    now.elapsed().as_millis()
+                );
+
+                Ok(Arc::new(RemoteTableInsertExec::new(
+                    input,
+                    conn_options,
+                    unparser,
+                    table,
+                    remote_schema,
+                    conn,
+                )))
+            }
+            protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::MemoryDatasource(proto) => {
+                let partitions = parse_partitions(&proto.partitions)?;
+                let schema = Schema::try_from(&proto.schema.unwrap())?;
+                let projection = parse_projection(proto.projection.as_ref());
+
+                let sort_information = proto
+                    .sort_information
+                    .iter()
+                    .map(|sort_exprs| {
+                        let sort_exprs = parse_physical_sort_exprs(
+                            sort_exprs.physical_sort_expr_nodes.as_slice(),
+                            registry,
+                            &schema,
+                            self,
+                        )?;
+                        Ok::<_, DataFusionError>(sort_exprs)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let show_sizes = proto.show_sizes;
+                let fetch = proto.fetch.map(|f| f as usize);
+                let memory_source =
+                    MemorySourceConfig::try_new(&partitions, Arc::new(schema), projection)?
+                        .with_show_sizes(show_sizes)
+                        .with_limit(fetch);
+
+                let memory_source =
+                    MemorySourceConfig::try_with_sort_information(memory_source, sort_information)?;
+                Ok(DataSourceExec::from_data_source(memory_source))
+            }
+        }
     }
 
     fn try_encode(&self, node: Arc<dyn ExecutionPlan>, buf: &mut Vec<u8>) -> DFResult<()> {
@@ -206,31 +324,109 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
             let serialized_source = serialize_table_source(&exec.source);
 
-            let proto = protobuf::RemoteTableScanExec {
-                conn_options: Some(serialized_connection_options),
-                source: Some(serialized_source),
-                table_schema: Some(exec.table_schema.as_ref().try_into()?),
-                remote_schema,
-                projection: exec
-                    .projection
-                    .as_ref()
-                    .map(|p| serialize_projection(p.as_slice())),
-                unparsed_filters: exec.unparsed_filters.clone(),
-                limit: exec.limit.map(|l| l as u32),
-                transform: serialized_transform,
-                connection: serialized_conn,
+            let proto = protobuf::RemoteTablePhysicalPlanNode {
+                remote_table_physical_plan_type: Some(
+                    protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Scan(
+                        protobuf::RemoteTableScanExec {
+                            conn_options: Some(serialized_connection_options),
+                            source: Some(serialized_source),
+                            table_schema: Some(exec.table_schema.as_ref().try_into()?),
+                            remote_schema,
+                            projection: serialize_projection(exec.projection.as_ref()),
+                            unparsed_filters: exec.unparsed_filters.clone(),
+                            limit: exec.limit.map(|l| l as u32),
+                            transform: serialized_transform,
+                            connection: serialized_conn,
+                        },
+                    ),
+                ),
             };
 
             proto.encode(buf).map_err(|e| {
                 DataFusionError::Internal(format!(
-                    "Failed to encode remote table execution plan: {e:?}"
+                    "Failed to encode remote table scan exec plan: {e:?}"
                 ))
             })?;
             Ok(())
+        } else if let Some(exec) = node.as_any().downcast_ref::<RemoteTableInsertExec>() {
+            let serialized_connection_options = serialize_connection_options(&exec.conn_options);
+            let remote_schema = serialize_remote_schema(&exec.remote_schema);
+            let serialized_table = protobuf::Identifiers {
+                idents: exec.table.clone(),
+            };
+            let serialized_unparser = self.unparse_codec.try_encode(exec.unparser.as_ref())?;
+            let serialized_conn = self
+                .connection_codec
+                .try_encode(exec.conn.as_ref(), &exec.conn_options)?;
+
+            let proto = protobuf::RemoteTablePhysicalPlanNode {
+                remote_table_physical_plan_type: Some(
+                    protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Insert(
+                        protobuf::RemoteTableInsertExec {
+                            conn_options: Some(serialized_connection_options),
+                            table: Some(serialized_table),
+                            remote_schema: Some(remote_schema),
+                            unparser: serialized_unparser,
+                            connection: serialized_conn,
+                        },
+                    ),
+                ),
+            };
+
+            proto.encode(buf).map_err(|e| {
+                DataFusionError::Internal(format!(
+                    "Failed to encode remote table insert exec node: {e:?}"
+                ))
+            })?;
+
+            Ok(())
+        } else if let Some(exec) = node.as_any().downcast_ref::<DataSourceExec>() {
+            let source = exec.data_source();
+            if let Some(memory_source) = source.as_any().downcast_ref::<MemorySourceConfig>() {
+                let proto_partitions = serialize_partitions(memory_source.partitions())?;
+                let projection = serialize_projection(memory_source.projection().as_ref());
+                let sort_information = memory_source
+                    .sort_information()
+                    .iter()
+                    .map(|ordering| {
+                        let sort_exprs = serialize_physical_sort_exprs(ordering.clone(), self)?;
+                        Ok::<_, DataFusionError>(
+                            datafusion_proto::protobuf::PhysicalSortExprNodeCollection {
+                                physical_sort_expr_nodes: sort_exprs,
+                            },
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let proto = protobuf::RemoteTablePhysicalPlanNode {
+                    remote_table_physical_plan_type: Some(
+                        protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::MemoryDatasource(protobuf::MemoryDatasourceNode {
+                            partitions: proto_partitions,
+                            schema: Some(memory_source.original_schema().try_into()?),
+                            projection,
+                            sort_information,
+                            show_sizes: memory_source.show_sizes(),
+                            fetch: memory_source.fetch().map(|f| f as u32),
+                        }),
+                    ),
+                };
+
+                proto.encode(buf).map_err(|e| {
+                    DataFusionError::Internal(format!(
+                        "Failed to encode memory datasource node: {e:?}"
+                    ))
+                })?;
+
+                Ok(())
+            } else {
+                Err(DataFusionError::NotImplemented(format!(
+                    "RemotePhysicalCodec only support encoding MemorySourceConfig, got {source:?}",
+                )))
+            }
         } else {
-            Err(DataFusionError::Execution(format!(
-                "Failed to encode {}",
-                RemoteTableScanExec::static_name()
+            Err(DataFusionError::NotImplemented(format!(
+                "RemotePhysicalCodec does not support encoding {}",
+                node.name()
             )))
         }
     }
@@ -367,10 +563,14 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
     }
 }
 
-fn serialize_projection(projection: &[usize]) -> protobuf::Projection {
-    protobuf::Projection {
-        projection: projection.iter().map(|n| *n as u32).collect(),
-    }
+fn serialize_projection(projection: Option<&Vec<usize>>) -> Option<protobuf::Projection> {
+    projection.map(|p| protobuf::Projection {
+        projection: p.iter().map(|n| *n as u32).collect(),
+    })
+}
+
+fn parse_projection(projection: Option<&protobuf::Projection>) -> Option<Vec<usize>> {
+    projection.map(|p| p.projection.iter().map(|n| *n as usize).collect())
 }
 
 fn serialize_remote_schema(remote_schema: &RemoteSchemaRef) -> protobuf::RemoteSchema {
@@ -1143,4 +1343,42 @@ fn parse_table_source(source: &protobuf::TableSource) -> DFResult<TableSource> {
             Ok(TableSource::Table(table_identifiers.idents.clone()))
         }
     }
+}
+
+fn serialize_partitions(partitions: &[Vec<RecordBatch>]) -> Result<Vec<Vec<u8>>, DataFusionError> {
+    let mut proto_partitions = vec![];
+    for partition in partitions {
+        if partition.is_empty() {
+            proto_partitions.push(vec![]);
+            continue;
+        }
+        let mut proto_partition = vec![];
+        let mut stream_writer =
+            StreamWriter::try_new(&mut proto_partition, &partition[0].schema())?;
+        for batch in partition {
+            stream_writer.write(batch)?;
+        }
+        stream_writer.finish()?;
+        proto_partitions.push(proto_partition);
+    }
+    Ok(proto_partitions)
+}
+
+fn parse_partitions(
+    proto_partitions: &[Vec<u8>],
+) -> Result<Vec<Vec<RecordBatch>>, DataFusionError> {
+    let mut partitions = vec![];
+    for proto_partition in proto_partitions {
+        if proto_partition.is_empty() {
+            partitions.push(vec![]);
+            continue;
+        }
+        let mut partition = vec![];
+        let stream_reader = StreamReader::try_new(proto_partition.as_slice(), None)?;
+        for batch in stream_reader {
+            partition.push(batch?);
+        }
+        partitions.push(partition);
+    }
+    Ok(partitions)
 }

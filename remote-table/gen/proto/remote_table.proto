@@ -5,6 +5,14 @@ package remote_table;
 import "datafusion_common.proto";
 import "datafusion.proto";
 
+message RemoteTablePhysicalPlanNode {
+  oneof RemoteTablePhysicalPlanType {
+    RemoteTableScanExec scan = 1;
+    RemoteTableInsertExec insert = 2;
+    MemoryDatasourceNode memory_datasource = 3;
+  }
+}
+
 message RemoteTableScanExec {
   ConnectionOptions conn_options = 1;
   TableSource source = 2;
@@ -15,6 +23,23 @@ message RemoteTableScanExec {
   optional uint32 limit = 7;
   bytes transform = 8;
   bytes connection = 9;
+}
+
+message RemoteTableInsertExec {
+  ConnectionOptions conn_options = 1;
+  Identifiers table = 2;
+  RemoteSchema remote_schema = 3;
+  bytes unparser = 4;
+  bytes connection = 5;
+}
+
+message MemoryDatasourceNode {
+  repeated bytes partitions = 1;
+  datafusion_common.Schema schema = 2;
+  Projection projection = 3;
+  repeated datafusion.PhysicalSortExprNodeCollection sort_information = 4;  
+  bool show_sizes = 5;
+  optional uint32 fetch = 6;
 }
 
 message ConnectionOptions {

@@ -11,6 +11,7 @@ use datafusion::arrow::temporal_conversions::{
 use datafusion::common::tree_node::{TreeNode, TreeNodeRecursion};
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
+use std::any::Any;
 use std::fmt::Debug;
 
 macro_rules! unparse_array {
@@ -45,6 +46,8 @@ macro_rules! unparse_array {
 }
 
 pub trait Unparse: Debug + Send + Sync {
+    fn as_any(&self) -> &dyn Any;
+
     fn support_filter_pushdown(
         &self,
         filter: &Expr,
@@ -644,4 +647,8 @@ pub fn unparse_array(
 #[derive(Debug)]
 pub struct DefaultUnparser {}
 
-impl Unparse for DefaultUnparser {}
+impl Unparse for DefaultUnparser {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
