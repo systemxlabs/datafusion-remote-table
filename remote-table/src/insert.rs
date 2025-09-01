@@ -31,6 +31,7 @@ impl RemoteTableInsertExec {
         remote_schema: RemoteSchemaRef,
         conn: Arc<dyn Connection>,
     ) -> Self {
+        // TODO sqlite does not support parallel insert
         let plan_properties = PlanProperties::new(
             EquivalenceProperties::new(make_count_schema()),
             Partitioning::UnknownPartitioning(input.output_partitioning().partition_count()),

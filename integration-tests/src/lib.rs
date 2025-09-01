@@ -51,11 +51,14 @@ pub async fn setup_oracle_db() {
     wait_container_ready(RemoteDbType::Oracle).await;
 }
 
-pub fn setup_sqlite_db() -> PathBuf {
-    let tmpdir = std::env::temp_dir();
-    let db_path = tmpdir.join(uuid::Uuid::new_v4().to_string());
-    let conn = rusqlite::Connection::open(&db_path).unwrap();
-    conn.execute_batch(include_str!("../testdata/sqlite_init.sql"))
-        .unwrap();
-    db_path
+static SQLITE_DB: OnceLock<PathBuf> = OnceLock::new();
+pub fn setup_sqlite_db() -> &'static PathBuf {
+    SQLITE_DB.get_or_init(|| {
+        let tmpdir = std::env::temp_dir();
+        let db_path = tmpdir.join(uuid::Uuid::new_v4().to_string());
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(include_str!("../testdata/sqlite_init.sql"))
+            .unwrap();
+        db_path
+    })
 }

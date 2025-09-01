@@ -3,7 +3,8 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, RemoteDbType, RemoteTable, SqliteConnectionOptions,
+    ConnectionOptions, RemoteDbType, RemoteField, RemoteSchema, RemoteTable, RemoteType,
+    SqliteConnectionOptions, SqliteType,
 };
 use integration_tests::setup_sqlite_db;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
@@ -41,7 +42,7 @@ pub async fn supported_sqlite_types() {
 async fn streaming_execution() {
     let db_path = setup_sqlite_db();
     let options = ConnectionOptions::Sqlite(
-        SqliteConnectionOptions::new(db_path).with_stream_chunk_size(1usize),
+        SqliteConnectionOptions::new(db_path.clone()).with_stream_chunk_size(1usize),
     );
     let table = RemoteTable::try_new(options, "select * from simple_table")
         .await
@@ -172,4 +173,90 @@ async fn empty_projection() {
     let batch = &result[0];
     assert_eq!(batch.num_columns(), 0);
     assert_eq!(batch.num_rows(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+pub async fn insert_supported_sqlite_types() {
+    assert_result(
+        RemoteDbType::Sqlite,
+        vec!["insert_supported_data_types"],
+        "insert into remote_table values
+        (1, 2, 3, 4, 5, 6, 7, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 'char', 'char(10)', 'varchar', 'varchar(120)', 'text', 'text(200)', X'01', X'02', X'03', X'04', X'05'),
+        (NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+        r#"+-------+
+| count |
++-------+
+| 2     |
++-------+"#,
+    )
+    .await;
+
+    assert_result(
+        RemoteDbType::Sqlite,
+        vec!["insert_supported_data_types"],
+        "select * from remote_table",
+        r#"+-------------+--------------+---------+------------+----------+----------+----------+-----------+------------+----------+--------------------+--------------------------+-------------+-----------------------+-----------------------------+----------+--------------+-------------+-----------------+----------+--------------+------------+----------------+---------------+-------------------+----------+
+| tinyint_col | smallint_col | int_col | bigint_col | int2_col | int4_col | int8_col | float_col | double_col | real_col | real_precision_col | real_precision_scale_col | numeric_col | numeric_precision_col | numeric_precision_scale_col | char_col | char_len_col | varchar_col | varchar_len_col | text_col | text_len_col | binary_col | binary_len_col | varbinary_col | varbinary_len_col | blob_col |
++-------------+--------------+---------+------------+----------+----------+----------+-----------+------------+----------+--------------------+--------------------------+-------------+-----------------------+-----------------------------+----------+--------------+-------------+-----------------+----------+--------------+------------+----------------+---------------+-------------------+----------+
+| 1           | 2            | 3       | 4          | 5        | 6        | 7        | 1.1       | 2.2        | 3.3      | 4.4                | 5.5                      | 6.6         | 7.7                   | 8.8                         | char     | char(10)     | varchar     | varchar(120)    | text     | text(200)    | 01         | 02             | 03            | 04                | 05       |
+|             |              |         |            |          |          |          |           |            |          |                    |                          |             |                       |                             |          |              |             |                 |          |              |            |                |               |                   |          |
++-------------+--------------+---------+------------+----------+----------+----------+-----------+------------+----------+--------------------+--------------------------+-------------+-----------------------+-----------------------------+----------+--------------+-------------+-----------------+----------+--------------+------------+----------------+---------------+-------------------+----------+"#,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+pub async fn insert_table_with_primary_key() {
+    let db_path = setup_sqlite_db();
+    let options = ConnectionOptions::Sqlite(SqliteConnectionOptions::new(db_path.clone()));
+    let remote_schema = Arc::new(RemoteSchema::new(vec![
+        RemoteField::new("id", RemoteType::Sqlite(SqliteType::Integer), false)
+            .with_auto_increment(true),
+        RemoteField::new("name", RemoteType::Sqlite(SqliteType::Text), true),
+    ]));
+    let table = RemoteTable::try_new_with_remote_schema(
+        options,
+        vec!["insert_table_with_primary_key"],
+        remote_schema,
+    )
+    .await
+    .unwrap();
+    println!("remote schema: {:#?}", table.remote_schema());
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    let df = ctx
+        .sql("insert into remote_table (name) values ('Tom')")
+        .await
+        .unwrap();
+    let exec_plan = df.create_physical_plan().await.unwrap();
+    println!(
+        "{}",
+        DisplayableExecutionPlan::new(exec_plan.as_ref()).indent(true)
+    );
+
+    let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
+    println!("{}", pretty_format_batches(&result).unwrap());
+
+    assert_eq!(
+        pretty_format_batches(&result).unwrap().to_string(),
+        r#"+-------+
+| count |
++-------+
+| 1     |
++-------+"#,
+    );
+
+    assert_result(
+        RemoteDbType::Sqlite,
+        vec!["insert_table_with_primary_key"],
+        "SELECT * FROM remote_table",
+        r#"+----+------+
+| id | name |
++----+------+
+| 1  | Tom  |
++----+------+"#,
+    )
+    .await;
 }

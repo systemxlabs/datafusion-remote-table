@@ -37,3 +37,37 @@ CREATE TABLE simple_table (
 );
 
 INSERT INTO simple_table VALUES (1, 'Tom'), (2, 'Jerry'), (3, 'Spike');
+
+CREATE TABLE insert_supported_data_types (
+    tinyint_col TINYINT,
+    smallint_col SMALLINT,
+    int_col INTEGER,
+    bigint_col BIGINT,
+    int2_col INT2,
+    int4_col INT4,
+    int8_col INT8,
+    float_col FLOAT,
+    double_col DOUBLE,
+    real_col REAL,
+    real_precision_col REAL(10),
+    real_precision_scale_col REAL (10, 2),
+    numeric_col NUMERIC,
+    numeric_precision_col NUMERIC(10),
+    numeric_precision_scale_col NUMERIC(10, 2),
+    char_col CHAR,
+    char_len_col CHAR(10),
+    varchar_col VARCHAR,
+    varchar_len_col VARCHAR(120),
+    text_col TEXT,
+    text_len_col TEXT(200),
+    binary_col BINARY,
+    binary_len_col BINARY(10),
+    varbinary_col VARBINARY,
+    varbinary_len_col VARBINARY(200),
+    blob_col BLOB
+);
+
+CREATE TABLE insert_table_with_primary_key (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR
+);

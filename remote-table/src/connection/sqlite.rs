@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteType, SqliteType, TableSource, Unparse,
+    RemoteType, SqliteType, TableSource, Unparse, unparse_array,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -13,6 +13,7 @@ use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use derive_getters::Getters;
 use derive_with::With;
+use futures::StreamExt;
 use itertools::Itertools;
 use log::{debug, error};
 use rusqlite::types::ValueRef;
@@ -78,15 +79,27 @@ impl Connection for SqliteConnection {
     }
 
     async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+        let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+        })?;
         match source {
-            TableSource::Table(_table) => Err(DataFusionError::Execution(
-                "Sqlite does not support infer schema for table".to_string(),
-            )),
+            TableSource::Table(table) => {
+                // TODO missing auto increment, could use sqlparser to parse create table sql
+                let sql = format!(
+                    "PRAGMA table_info({})",
+                    RemoteDbType::Sqlite.sql_table_name(table)
+                );
+                let mut stmt = conn.prepare(&sql).map_err(|e| {
+                    DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
+                })?;
+                let rows = stmt.query([]).map_err(|e| {
+                    DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
+                })?;
+                let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
+                Ok(remote_schema)
+            }
             TableSource::Query(_query) => {
                 let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source);
-                let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
-                })?;
                 let mut stmt = conn.prepare(&sql).map_err(|e| {
                     DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
                 })?;
@@ -96,7 +109,8 @@ impl Connection for SqliteConnection {
                     DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
                 })?;
 
-                let remote_schema = Arc::new(build_remote_schema(columns.as_slice(), rows)?);
+                let remote_schema =
+                    Arc::new(build_remote_schema_for_query(columns.as_slice(), rows)?);
                 Ok(remote_schema)
             }
         }
@@ -139,14 +153,72 @@ impl Connection for SqliteConnection {
     async fn insert(
         &self,
         _conn_options: &ConnectionOptions,
-        _unparser: Arc<dyn Unparse>,
-        _table: &[String],
-        _remote_schema: RemoteSchemaRef,
-        _input: SendableRecordBatchStream,
+        unparser: Arc<dyn Unparse>,
+        table: &[String],
+        remote_schema: RemoteSchemaRef,
+        mut input: SendableRecordBatchStream,
     ) -> DFResult<usize> {
-        Err(DataFusionError::Execution(
-            "Insert operation is not supported for sqlite".to_string(),
-        ))
+        let input_schema = input.schema();
+        let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+        })?;
+
+        let mut total_count = 0;
+        while let Some(batch) = input.next().await {
+            let batch = batch?;
+
+            let mut columns = Vec::with_capacity(remote_schema.fields.len());
+            for i in 0..batch.num_columns() {
+                let input_field = input_schema.field(i);
+                let remote_field = &remote_schema.fields[i];
+                if remote_field.auto_increment && input_field.is_nullable() {
+                    continue;
+                }
+
+                let remote_type = remote_schema.fields[i].remote_type.clone();
+                let array = batch.column(i);
+                let column = unparse_array(unparser.as_ref(), array, remote_type)?;
+                columns.push(column);
+            }
+
+            let num_rows = columns[0].len();
+            let num_columns = columns.len();
+
+            let mut values = Vec::with_capacity(num_rows);
+            for i in 0..num_rows {
+                let mut value = Vec::with_capacity(num_columns);
+                for col in columns.iter() {
+                    value.push(col[i].as_str());
+                }
+                values.push(format!("({})", value.join(",")));
+            }
+
+            let mut col_names = Vec::with_capacity(remote_schema.fields.len());
+            for (remote_field, input_field) in
+                remote_schema.fields.iter().zip(input_schema.fields.iter())
+            {
+                if remote_field.auto_increment && input_field.is_nullable() {
+                    continue;
+                }
+                col_names.push(RemoteDbType::Sqlite.sql_identifier(&remote_field.name));
+            }
+
+            let sql = format!(
+                "INSERT INTO {} ({}) VALUES {}",
+                RemoteDbType::Sqlite.sql_table_name(table),
+                col_names.join(","),
+                values.join(",")
+            );
+
+            let count = conn.execute(&sql, []).map_err(|e| {
+                DataFusionError::Execution(format!(
+                    "Failed to execute insert statement on sqlite: {e:?}, sql: {sql}"
+                ))
+            })?;
+            total_count += count as usize;
+        }
+
+        Ok(total_count)
     }
 }
 
@@ -197,7 +269,34 @@ fn decl_type_to_remote_type(decl_type: &str) -> DFResult<SqliteType> {
     )))
 }
 
-fn build_remote_schema(columns: &[OwnedColumn], mut rows: Rows) -> DFResult<RemoteSchema> {
+fn build_remote_schema_for_table(mut rows: Rows) -> DFResult<RemoteSchema> {
+    let mut remote_fields = vec![];
+    while let Some(row) = rows.next().map_err(|e| {
+        DataFusionError::Execution(format!("Failed to get next row from sqlite: {e:?}"))
+    })? {
+        let name = row.get::<_, String>(1).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get col name from sqlite row: {e:?}"))
+        })?;
+        let decl_type = row.get::<_, String>(2).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get decl type from sqlite row: {e:?}"))
+        })?;
+        let remote_type = decl_type_to_remote_type(&decl_type.to_ascii_lowercase())?;
+        let nullable = row.get::<_, i64>(3).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get nullable from sqlite row: {e:?}"))
+        })? == 0;
+        remote_fields.push(RemoteField::new(
+            &name,
+            RemoteType::Sqlite(remote_type),
+            nullable,
+        ));
+    }
+    Ok(RemoteSchema::new(remote_fields))
+}
+
+fn build_remote_schema_for_query(
+    columns: &[OwnedColumn],
+    mut rows: Rows,
+) -> DFResult<RemoteSchema> {
     let mut remote_field_map = HashMap::with_capacity(columns.len());
     let mut unknown_cols = vec![];
     for (col_idx, col) in columns.iter().enumerate() {

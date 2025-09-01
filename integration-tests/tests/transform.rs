@@ -20,7 +20,7 @@ use std::sync::Arc;
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn transform() {
     let db_path = setup_sqlite_db();
-    let options = SqliteConnectionOptions::new(db_path);
+    let options = SqliteConnectionOptions::new(db_path.clone());
 
     let table = RemoteTable::try_new_with_transform(
         options,
@@ -57,7 +57,7 @@ async fn transform() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn transform_serialization() {
     let db_path = setup_sqlite_db();
-    let options = SqliteConnectionOptions::new(db_path);
+    let options = SqliteConnectionOptions::new(db_path.clone());
 
     let table = RemoteTable::try_new_with_transform(
         options,

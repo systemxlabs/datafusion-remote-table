@@ -130,7 +130,7 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
         )),
         RemoteDbType::Sqlite => {
             let db_path = setup_sqlite_db();
-            ConnectionOptions::Sqlite(SqliteConnectionOptions::new(db_path))
+            ConnectionOptions::Sqlite(SqliteConnectionOptions::new(db_path.clone()))
         }
         RemoteDbType::Dm => todo!(),
     }
