@@ -112,7 +112,7 @@ async fn count1_agg() {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: source=query
+                RemoteTableExec: source=query, projection=[ID]
 "#,
         r#"+----------+
 | count(*) |
