@@ -71,3 +71,8 @@ CREATE TABLE insert_table_with_primary_key (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR
 );
+
+CREATE TABLE insert_exec_serialization_table (
+    id INTEGER,
+    name VARCHAR
+);

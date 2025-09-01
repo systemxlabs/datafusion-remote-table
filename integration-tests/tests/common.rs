@@ -258,3 +258,62 @@ impl Transform for MyTransform {
         ))
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn insert_serialization() -> Result<(), DataFusionError> {
+    let db_path = setup_sqlite_db();
+    let options = SqliteConnectionOptions::new(db_path.clone());
+
+    let table = RemoteTable::try_new(options, vec!["insert_exec_serialization_table"]).await?;
+    println!("remote schema: {:#?}", table.remote_schema());
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table))?;
+
+    let df = ctx
+        .sql("INSERT INTO remote_table (id, name) VALUES (1, 'Eve')")
+        .await?;
+    let plan = df.create_physical_plan().await?;
+    println!(
+        "plan: {}",
+        DisplayableExecutionPlan::new(plan.as_ref()).indent(true)
+    );
+
+    let codec = RemotePhysicalCodec::new();
+    let mut plan_buf: Vec<u8> = vec![];
+    let plan_proto = PhysicalPlanNode::try_from_physical_plan(plan, &codec)?;
+    plan_proto.try_encode(&mut plan_buf)?;
+    let new_plan: Arc<dyn ExecutionPlan> = PhysicalPlanNode::try_decode(&plan_buf)
+        .and_then(|proto| proto.try_into_physical_plan(&ctx, &ctx.runtime_env(), &codec))?;
+    println!(
+        "deserialized plan: {}",
+        DisplayableExecutionPlan::new(new_plan.as_ref()).indent(true)
+    );
+
+    let batches = collect(new_plan, ctx.task_ctx()).await?;
+    let table_str = pretty_format_batches(&batches)?.to_string();
+    println!("{}", table_str);
+    assert_eq!(
+        table_str,
+        r#"+-------+
+| count |
++-------+
+| 1     |
++-------+"#,
+    );
+
+    let df = ctx.sql("SELECT * FROM remote_table").await?;
+    let batches = df.collect().await?;
+    let table_str = pretty_format_batches(&batches)?.to_string();
+    println!("{}", table_str);
+    assert_eq!(
+        table_str,
+        r#"+----+------+
+| id | name |
++----+------+
+| 1  | Eve  |
++----+------+"#,
+    );
+
+    Ok(())
+}

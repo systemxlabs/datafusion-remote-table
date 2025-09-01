@@ -80,7 +80,7 @@ async fn pushdown_limit() {
         RemoteDbType::Sqlite,
         "select * from simple_table",
         "select * from remote_table limit 1",
-        "RemoteTableExec: limit=Some(1), filters=[]\n",
+        "RemoteTableExec: source=query, limit=1\n",
         r#"+----+------+
 | id | name |
 +----+------+
@@ -96,7 +96,7 @@ async fn pushdown_filters() {
         RemoteDbType::Sqlite,
         "select * from simple_table",
         "select * from remote_table where id = 1",
-        "RemoteTableExec: limit=None, filters=[(`id` = 1)]\n",
+        "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
         r#"+----+------+
 | id | name |
 +----+------+
@@ -166,7 +166,10 @@ async fn empty_projection() {
         .indent(true)
         .to_string();
     println!("{plan_display}");
-    assert_eq!(plan_display, "RemoteTableExec: limit=None, filters=[]\n");
+    assert_eq!(
+        plan_display,
+        "RemoteTableExec: source=query, projection=[]\n"
+    );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
     assert_eq!(result.len(), 1);

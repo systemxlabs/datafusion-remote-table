@@ -1,6 +1,7 @@
 use crate::{Connection, ConnectionOptions, DFResult, RemoteSchemaRef, Unparse};
 use datafusion::arrow::array::{ArrayRef, RecordBatch, UInt64Array};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion::common::stats::Precision;
 use datafusion::execution::{SendableRecordBatchStream, TaskContext};
 use datafusion::physical_expr::EquivalenceProperties;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
@@ -118,7 +119,15 @@ impl ExecutionPlan for RemoteTableInsertExec {
 
 impl DisplayAs for RemoteTableInsertExec {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "RemoteTableInsertExec: table={}", self.table.join("."))
+        write!(f, "RemoteTableInsertExec: table={}", self.table.join("."))?;
+        if let Ok(stats) = self.input.partition_statistics(None) {
+            match stats.num_rows {
+                Precision::Exact(rows) => write!(f, ", rows={rows}")?,
+                Precision::Inexact(rows) => write!(f, ", rows~={rows}")?,
+                Precision::Absent => {}
+            }
+        }
+        Ok(())
     }
 }
 

@@ -56,7 +56,7 @@ async fn pushdown_limit() {
         RemoteDbType::Oracle,
         "select * from SYS.simple_table",
         "select * from remote_table limit 1",
-        "RemoteTableExec: limit=Some(1), filters=[]\n",
+        "RemoteTableExec: source=query, limit=1\n",
         r#"+----+------+
 | ID | NAME |
 +----+------+
@@ -73,7 +73,7 @@ async fn pushdown_filters() {
         RemoteDbType::Oracle,
         "select * from SYS.simple_table",
         r#"select * from remote_table where "ID" = 1"#,
-        "CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: limit=None, filters=[]\n",
+        "CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: source=query\n",
         r#"+----+------+
 | ID | NAME |
 +----+------+
@@ -112,7 +112,7 @@ async fn count1_agg() {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: limit=None, filters=[]
+                RemoteTableExec: source=query
 "#,
         r#"+----------+
 | count(*) |
@@ -134,7 +134,7 @@ async fn count1_agg() {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192, fetch=1
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: limit=None, filters=[]
+                RemoteTableExec: source=query
 "#,
         r#"+----------+
 | count(*) |
@@ -165,7 +165,10 @@ async fn empty_projection() {
         .indent(true)
         .to_string();
     println!("{plan_display}");
-    assert_eq!(plan_display, "RemoteTableExec: limit=None, filters=[]\n");
+    assert_eq!(
+        plan_display,
+        "RemoteTableExec: source=query, projection=[]\n"
+    );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
     assert_eq!(result.len(), 1);

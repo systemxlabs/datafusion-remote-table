@@ -90,7 +90,7 @@ async fn pushdown_filters() {
         RemoteDbType::Mysql,
         "select * from simple_table",
         "select * from remote_table where id = 1",
-        "RemoteTableExec: limit=None, filters=[(`id` = 1)]\n",
+        "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
         r#"+----+------+
 | id | name |
 +----+------+
@@ -107,7 +107,7 @@ async fn pushdown_filters() {
         r#"CoalesceBatchesExec: target_batch_size=8192
   FilterExec: Key@3 = PRI
     RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-      RemoteTableExec: limit=None, filters=[]
+      RemoteTableExec: source=query
 "#,
         r#"+-------+------+------+-----+---------+-------+
 | Field | Type | Null | Key | Default | Extra |
@@ -182,7 +182,10 @@ async fn empty_projection() {
         .indent(true)
         .to_string();
     println!("{plan_display}");
-    assert_eq!(plan_display, "RemoteTableExec: limit=None, filters=[]\n");
+    assert_eq!(
+        plan_display,
+        "RemoteTableExec: source=query, projection=[]\n"
+    );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
     assert_eq!(result.len(), 1);

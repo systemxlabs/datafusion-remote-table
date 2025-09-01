@@ -8,6 +8,7 @@ use datafusion::common::stats::Precision;
 use datafusion::error::DataFusionError;
 use datafusion::execution::{SendableRecordBatchStream, TaskContext};
 use datafusion::physical_expr::{EquivalenceProperties, Partitioning};
+use datafusion::physical_plan::display::ProjectSchemaDisplay;
 use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::physical_plan::{
@@ -238,9 +239,40 @@ impl DisplayAs for RemoteTableScanExec {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "RemoteTableExec: limit={:?}, filters=[{}]",
-            self.limit,
-            self.unparsed_filters.join(", ")
-        )
+            "RemoteTableExec: source={}",
+            match &self.source {
+                TableSource::Query(_query) => "query".to_string(),
+                TableSource::Table(table) => table.join("."),
+            }
+        )?;
+        let projected_schema = self.schema();
+        if has_projection(self.projection.as_ref(), self.table_schema.fields().len()) {
+            write!(
+                f,
+                ", projection={}",
+                ProjectSchemaDisplay(&projected_schema)
+            )?;
+        }
+        if let Some(limit) = self.limit {
+            write!(f, ", limit={limit}")?;
+        }
+        if !self.unparsed_filters.is_empty() {
+            write!(f, ", filters=[{}]", self.unparsed_filters.join(", "))?;
+        }
+        Ok(())
     }
+}
+
+fn has_projection(projection: Option<&Vec<usize>>, table_columns: usize) -> bool {
+    if let Some(projection) = projection {
+        if projection.len() != table_columns {
+            return true;
+        }
+        for (i, index) in projection.iter().enumerate() {
+            if *index != i {
+                return true;
+            }
+        }
+    }
+    false
 }

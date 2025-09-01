@@ -215,7 +215,7 @@ impl Connection for SqliteConnection {
                     "Failed to execute insert statement on sqlite: {e:?}, sql: {sql}"
                 ))
             })?;
-            total_count += count as usize;
+            total_count += count;
         }
 
         Ok(total_count)
