@@ -163,6 +163,14 @@ impl RemoteTable {
         let conn_options = conn_options.into();
         let source = source.into();
 
+        if let TableSource::Table(table) = &source
+            && table.len() == 0
+        {
+            return Err(DataFusionError::Plan(
+                "Table source is empty vec".to_string(),
+            ));
+        }
+
         let now = std::time::Instant::now();
         let pool = connect(&conn_options).await?;
         debug!(

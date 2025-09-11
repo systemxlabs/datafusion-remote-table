@@ -124,15 +124,50 @@ impl Connection for PostgresConnection {
 
     async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
         match source {
-            TableSource::Table(_table) => {
-                // TODO: improve infer schema for table
-                let sql = RemoteDbType::Postgres.limit_1_query_if_possible(source);
-                let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {
+            TableSource::Table(table) => {
+                let db_type = RemoteDbType::Postgres;
+                let where_clause = if table.len() == 1 {
+                    format!("table_name = {}", db_type.sql_string_literal(&table[0]))
+                } else if table.len() == 2 {
+                    format!(
+                        "table_schema = {} AND table_name = {}",
+                        db_type.sql_string_literal(&table[0]),
+                        db_type.sql_string_literal(&table[1])
+                    )
+                } else {
+                    format!(
+                        "table_catalog = {} AND table_schema = {} AND table_name = {}",
+                        db_type.sql_string_literal(&table[0]),
+                        db_type.sql_string_literal(&table[1]),
+                        db_type.sql_string_literal(&table[2])
+                    )
+                };
+                let sql = format!(
+                    "
+select
+	column_name,
+	case
+        when data_type = 'ARRAY'
+        		then data_type || udt_name
+        when data_type = 'USER-DEFINED'
+         		then udt_schema || '.' || udt_name
+		else
+                data_type
+	end as column_type,
+	numeric_precision,
+	numeric_scale,
+	is_nullable
+from information_schema.columns
+where {}
+order by ordinal_position",
+                    where_clause
+                );
+                let rows = self.conn.query(&sql, &[]).await.map_err(|e| {
                     DataFusionError::Execution(format!(
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
-                let remote_schema = Arc::new(build_remote_schema(&row)?);
+                let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
                 Ok(remote_schema)
             }
             TableSource::Query(_query) => {
@@ -142,7 +177,7 @@ impl Connection for PostgresConnection {
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
-                let remote_schema = Arc::new(build_remote_schema(&row)?);
+                let remote_schema = Arc::new(build_remote_schema_for_query(&row)?);
                 Ok(remote_schema)
             }
         }
@@ -314,7 +349,7 @@ fn pg_type_to_remote_type(pg_type: &Type, row: &Row, idx: usize) -> DFResult<Pos
     }
 }
 
-fn build_remote_schema(row: &Row) -> DFResult<RemoteSchema> {
+fn build_remote_schema_for_query(row: &Row) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
     for (idx, col) in row.columns().iter().enumerate() {
         remote_fields.push(RemoteField::new(
@@ -324,6 +359,99 @@ fn build_remote_schema(row: &Row) -> DFResult<RemoteSchema> {
         ));
     }
     Ok(RemoteSchema::new(remote_fields))
+}
+
+fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
+    let mut remote_fields = vec![];
+    for row in rows {
+        let columa_name = row.try_get::<_, String>(0).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get col name from postgres row: {e:?}"))
+        })?;
+        let column_type = row.try_get::<_, String>(1).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get col type from postgres row: {e:?}"))
+        })?;
+        let numeric_precision = row.try_get::<_, Option<i32>>(2).map_err(|e| {
+            DataFusionError::Execution(format!(
+                "Failed to get numeric precision from postgres row: {e:?}"
+            ))
+        })?;
+        let numeric_scale = row.try_get::<_, Option<i32>>(3).map_err(|e| {
+            DataFusionError::Execution(format!(
+                "Failed to get numeric scale from postgres row: {e:?}"
+            ))
+        })?;
+        let pg_type = parse_pg_type(&column_type, numeric_precision, numeric_scale)?;
+        let is_nullable = row.try_get::<_, String>(4).map_err(|e| {
+            DataFusionError::Execution(format!(
+                "Failed to get is_nullable from postgres row: {e:?}"
+            ))
+        })?;
+        let nullable = match is_nullable.as_str() {
+            "YES" => true,
+            "NO" => false,
+            _ => {
+                return Err(DataFusionError::Execution(format!(
+                    "Unsupported postgres is_nullable value {is_nullable}"
+                )));
+            }
+        };
+        remote_fields.push(RemoteField::new(
+            columa_name,
+            RemoteType::Postgres(pg_type),
+            nullable,
+        ));
+    }
+    Ok(RemoteSchema::new(remote_fields))
+}
+
+fn parse_pg_type(
+    pg_type: &str,
+    _numeric_precision: Option<i32>,
+    numeric_scale: Option<i32>,
+) -> DFResult<PostgresType> {
+    if pg_type.starts_with("numeric") {
+        let Some(scale) = numeric_scale else {
+            return Err(DataFusionError::Execution(
+                "Failed to get numeric scale from postgres row".to_string(),
+            ));
+        };
+        return Ok(PostgresType::Numeric(scale as i8));
+    }
+    match pg_type {
+        "smallint" => Ok(PostgresType::Int2),
+        "integer" => Ok(PostgresType::Int4),
+        "bigint" => Ok(PostgresType::Int8),
+        "real" => Ok(PostgresType::Float4),
+        "double precision" => Ok(PostgresType::Float8),
+        "character varying" => Ok(PostgresType::Varchar),
+        "character" => Ok(PostgresType::Bpchar),
+        "text" => Ok(PostgresType::Text),
+        "bytea" => Ok(PostgresType::Bytea),
+        "date" => Ok(PostgresType::Date),
+        "time without time zone" => Ok(PostgresType::Time),
+        "timestamp without time zone" => Ok(PostgresType::Timestamp),
+        "timestamp with time zone" => Ok(PostgresType::TimestampTz),
+        "interval" => Ok(PostgresType::Interval),
+        "boolean" => Ok(PostgresType::Bool),
+        "json" => Ok(PostgresType::Json),
+        "jsonb" => Ok(PostgresType::Jsonb),
+        "public.geometry" => Ok(PostgresType::PostGisGeometry),
+        "ARRAY_int2" => Ok(PostgresType::Int2Array),
+        "ARRAY_int4" => Ok(PostgresType::Int4Array),
+        "ARRAY_int8" => Ok(PostgresType::Int8Array),
+        "ARRAY_float4" => Ok(PostgresType::Float4Array),
+        "ARRAY_float8" => Ok(PostgresType::Float8Array),
+        "ARRAY_varchar" => Ok(PostgresType::VarcharArray),
+        "ARRAY_bpchar" => Ok(PostgresType::BpcharArray),
+        "ARRAY_text" => Ok(PostgresType::TextArray),
+        "ARRAY_bytea" => Ok(PostgresType::ByteaArray),
+        "ARRAY_bool" => Ok(PostgresType::BoolArray),
+        "xml" => Ok(PostgresType::Xml),
+        "uuid" => Ok(PostgresType::Uuid),
+        _ => Err(DataFusionError::Execution(format!(
+            "Unsupported postgres type {pg_type}"
+        ))),
+    }
 }
 
 macro_rules! handle_primitive_type {
