@@ -25,7 +25,11 @@ pub async fn supported_postgres_types() {
 |              |             |            |          |            |             |            |             |            |          |           |            |          |                |             |                   |                   |                                                    |                    |                   |                  |                |                  |                          |                      |                    |                |                |                |                                  |
 +--------------+-------------+------------+----------+------------+-------------+------------+-------------+------------+----------+-----------+------------+----------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+"#,
    ).await;
+}
 
+#[tokio::test(flavor = "multi_thread")]
+pub async fn supported_postgres_timestamp_type() {
+    setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
         "SELECT * FROM timestamp_test",
@@ -41,19 +45,6 @@ pub async fn supported_postgres_types() {
 | 9999-12-31T23:59:59        | 9999-12-31T23:59:59Z        | 9999-12-31T23:59:59 | 9999-12-31T23:59:59.999 | 9999-12-31T23:59:59.999999 |
 |                            |                             |                     |                         |                            |
 +----------------------------+-----------------------------+---------------------+-------------------------+----------------------------+"#,
-    )
-    .await;
-
-    assert_result(
-        RemoteDbType::Postgres,
-        "SELECT * from supported_data_types",
-        "SELECT integer_col, varchar_col FROM remote_table",
-        r#"+-------------+-------------+
-| integer_col | varchar_col |
-+-------------+-------------+
-| 2           | varchar     |
-|             |             |
-+-------------+-------------+"#,
     )
     .await;
 }
@@ -182,6 +173,23 @@ async fn count1_agg() {
 +----------+
 | 1        |
 +----------+"#,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+pub async fn table_projection() {
+    setup_postgres_db().await;
+    assert_result(
+        RemoteDbType::Postgres,
+        "SELECT * from supported_data_types",
+        "SELECT integer_col, varchar_col FROM remote_table",
+        r#"+-------------+-------------+
+| integer_col | varchar_col |
++-------------+-------------+
+| 2           | varchar     |
+|             |             |
++-------------+-------------+"#,
     )
     .await;
 }
