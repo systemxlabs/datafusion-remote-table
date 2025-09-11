@@ -164,7 +164,7 @@ impl RemoteTable {
         let source = source.into();
 
         if let TableSource::Table(table) = &source
-            && table.len() == 0
+            && table.is_empty()
         {
             return Err(DataFusionError::Plan(
                 "Table source is empty vec".to_string(),
