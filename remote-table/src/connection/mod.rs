@@ -391,7 +391,7 @@ pub(crate) fn projections_contains(projection: Option<&Vec<usize>>, col_idx: usi
     }
 }
 
-#[cfg(any(feature = "mysql", feature = "postgres", feature = "oracle"))]
+#[cfg(any(feature = "mysql", feature = "oracle"))]
 fn big_decimal_to_i128(decimal: &bigdecimal::BigDecimal, scale: Option<i32>) -> Option<i128> {
     use bigdecimal::{FromPrimitive, ToPrimitive};
     let scale = scale.unwrap_or_else(|| {

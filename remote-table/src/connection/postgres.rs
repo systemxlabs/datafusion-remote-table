@@ -1,12 +1,11 @@
-use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
+use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
     RemoteSchemaRef, RemoteSource, RemoteType, Unparse, unparse_array,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
-use bb8_postgres::tokio_postgres::{NoTls, Row};
-use bigdecimal::BigDecimal;
+use bb8_postgres::tokio_postgres::{NoTls, Row, RowStream, Statement};
 use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
@@ -26,10 +25,10 @@ use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use derive_getters::Getters;
 use derive_with::With;
-use futures::StreamExt;
+use futures::{StreamExt, pin_mut};
 use log::debug;
-use num_bigint::{BigInt, Sign};
 use std::any::Any;
+use std::collections::BTreeMap;
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -171,13 +170,13 @@ order by ordinal_position",
                 Ok(remote_schema)
             }
             RemoteSource::Query(_query) => {
-                let sql = RemoteDbType::Postgres.limit_1_query_if_possible(source);
-                let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {
+                let sql = source.query(RemoteDbType::Postgres);
+                let stmt = self.conn.prepare(&sql).await.map_err(|e| {
                     DataFusionError::Execution(format!(
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
-                let remote_schema = Arc::new(build_remote_schema_for_query(&row)?);
+                let remote_schema = Arc::new(build_remote_schema_for_query(self, stmt).await?);
                 Ok(remote_schema)
             }
         }
@@ -298,24 +297,59 @@ order by ordinal_position",
     }
 }
 
-fn pg_type_to_remote_type(pg_type: &Type, row: &Row, idx: usize) -> DFResult<PostgresType> {
+async fn build_remote_schema_for_query(
+    conn: &PostgresConnection,
+    stmt: Statement,
+) -> DFResult<RemoteSchema> {
+    let mut remote_field_map = BTreeMap::new();
+    let mut numeric_field_map = BTreeMap::new();
+    for (col_idx, col) in stmt.columns().iter().enumerate() {
+        let pg_type = col.type_();
+        match col.type_() {
+            &Type::NUMERIC => {
+                numeric_field_map.insert(col_idx, col.name());
+            }
+            _ => {
+                let remote_type = pg_type_to_remote_type(pg_type)?;
+                remote_field_map.insert(
+                    col_idx,
+                    RemoteField::new(col.name(), RemoteType::Postgres(remote_type), true),
+                );
+            }
+        }
+    }
+    if !numeric_field_map.is_empty() {
+        let row_stream = conn
+            .conn
+            .query_raw(&stmt, Vec::<String>::new())
+            .await
+            .map_err(|e| DataFusionError::Execution(format!("Failed to exec stmt: {e:?}")))?;
+        let numeric_types = infer_pg_numeric_type(
+            row_stream,
+            &numeric_field_map.keys().copied().collect::<Vec<_>>(),
+        )
+        .await?;
+        assert_eq!(numeric_field_map.len(), numeric_types.len());
+
+        for ((col_idx, name), remote_type) in
+            numeric_field_map.into_iter().zip(numeric_types.into_iter())
+        {
+            remote_field_map.insert(
+                col_idx,
+                RemoteField::new(name, RemoteType::Postgres(remote_type), true),
+            );
+        }
+    }
+    Ok(RemoteSchema::new(remote_field_map.into_values().collect()))
+}
+
+fn pg_type_to_remote_type(pg_type: &Type) -> DFResult<PostgresType> {
     match pg_type {
         &Type::INT2 => Ok(PostgresType::Int2),
         &Type::INT4 => Ok(PostgresType::Int4),
         &Type::INT8 => Ok(PostgresType::Int8),
         &Type::FLOAT4 => Ok(PostgresType::Float4),
         &Type::FLOAT8 => Ok(PostgresType::Float8),
-        &Type::NUMERIC => {
-            let v: Option<BigDecimalFromSql> = row.try_get(idx).map_err(|e| {
-                DataFusionError::Execution(format!("Failed to get BigDecimal value: {e:?}"))
-            })?;
-            let scale = match v {
-                Some(v) => v.scale,
-                None => 0,
-            };
-            assert!((scale as u32) <= (i8::MAX as u32));
-            Ok(PostgresType::Numeric(scale.try_into().unwrap_or_default()))
-        }
         &Type::OID => Ok(PostgresType::Oid),
         &Type::NAME => Ok(PostgresType::Name),
         &Type::VARCHAR => Ok(PostgresType::Varchar),
@@ -349,16 +383,44 @@ fn pg_type_to_remote_type(pg_type: &Type, row: &Row, idx: usize) -> DFResult<Pos
     }
 }
 
-fn build_remote_schema_for_query(row: &Row) -> DFResult<RemoteSchema> {
-    let mut remote_fields = vec![];
-    for (idx, col) in row.columns().iter().enumerate() {
-        remote_fields.push(RemoteField::new(
-            col.name(),
-            RemoteType::Postgres(pg_type_to_remote_type(col.type_(), row, idx)?),
-            true,
-        ));
+async fn infer_pg_numeric_type(
+    row_stream: RowStream,
+    col_indexes: &[usize],
+) -> DFResult<Vec<PostgresType>> {
+    pin_mut!(row_stream);
+
+    let mut remote_type_map = BTreeMap::new();
+    while let Some(row) = row_stream.next().await {
+        let row = row.map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get row from stream: {e:?}"))
+        })?;
+        for col_idx in col_indexes {
+            if remote_type_map.contains_key(col_idx) {
+                continue;
+            }
+            let v: Option<rust_decimal::Decimal> = row.try_get(*col_idx).map_err(|e| {
+                DataFusionError::Execution(format!("Failed to get decimal value: {e:?}"))
+            })?;
+            if let Some(v) = v {
+                let scale = v.scale();
+                remote_type_map.insert(*col_idx, PostgresType::Numeric(scale as i8));
+            }
+        }
+        if remote_type_map.len() == col_indexes.len() {
+            break;
+        }
     }
-    Ok(RemoteSchema::new(remote_fields))
+
+    if remote_type_map.len() != col_indexes.len() {
+        let missing_cols = col_indexes
+            .iter()
+            .filter(|col_idx| !remote_type_map.contains_key(col_idx))
+            .collect::<Vec<_>>();
+        return Err(DataFusionError::Execution(format!(
+            "Failed to infer numeric type for col indexes: {missing_cols:?} as these columns have no non-null values",
+        )));
+    }
+    Ok(remote_type_map.into_values().collect())
 }
 
 fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
@@ -528,92 +590,6 @@ macro_rules! handle_primitive_array_type {
     }};
 }
 
-#[derive(Debug)]
-struct BigDecimalFromSql {
-    inner: BigDecimal,
-    scale: u16,
-}
-
-impl BigDecimalFromSql {
-    fn to_decimal_128(&self) -> Option<i128> {
-        big_decimal_to_i128(&self.inner, Some(self.scale as i32))
-    }
-}
-
-#[allow(clippy::cast_sign_loss)]
-#[allow(clippy::cast_possible_wrap)]
-#[allow(clippy::cast_possible_truncation)]
-impl<'a> FromSql<'a> for BigDecimalFromSql {
-    fn from_sql(
-        _ty: &Type,
-        raw: &'a [u8],
-    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
-        let raw_u16: Vec<u16> = raw
-            .chunks(2)
-            .map(|chunk| {
-                if chunk.len() == 2 {
-                    u16::from_be_bytes([chunk[0], chunk[1]])
-                } else {
-                    u16::from_be_bytes([chunk[0], 0])
-                }
-            })
-            .collect();
-
-        let base_10_000_digit_count = raw_u16[0];
-        let weight = raw_u16[1] as i16;
-        let sign = raw_u16[2];
-        let scale = raw_u16[3];
-
-        let mut base_10_000_digits = Vec::new();
-        for i in 4..4 + base_10_000_digit_count {
-            base_10_000_digits.push(raw_u16[i as usize]);
-        }
-
-        let mut u8_digits = Vec::new();
-        for &base_10_000_digit in base_10_000_digits.iter().rev() {
-            let mut base_10_000_digit = base_10_000_digit;
-            let mut temp_result = Vec::new();
-            while base_10_000_digit > 0 {
-                temp_result.push((base_10_000_digit % 10) as u8);
-                base_10_000_digit /= 10;
-            }
-            while temp_result.len() < 4 {
-                temp_result.push(0);
-            }
-            u8_digits.extend(temp_result);
-        }
-        u8_digits.reverse();
-
-        let value_scale = 4 * (i64::from(base_10_000_digit_count) - i64::from(weight) - 1);
-        let size = i64::try_from(u8_digits.len())? + i64::from(scale) - value_scale;
-        u8_digits.resize(size as usize, 0);
-
-        let sign = match sign {
-            0x4000 => Sign::Minus,
-            0x0000 => Sign::Plus,
-            _ => {
-                return Err(Box::new(DataFusionError::Execution(
-                    "Failed to parse big decimal from postgres numeric value".to_string(),
-                )));
-            }
-        };
-
-        let Some(digits) = BigInt::from_radix_be(sign, u8_digits.as_slice(), 10) else {
-            return Err(Box::new(DataFusionError::Execution(
-                "Failed to parse big decimal from postgres numeric value".to_string(),
-            )));
-        };
-        Ok(BigDecimalFromSql {
-            inner: BigDecimal::new(digits, i64::from(scale)),
-            scale,
-        })
-    }
-
-    fn accepts(ty: &Type) -> bool {
-        matches!(*ty, Type::NUMERIC)
-    }
-}
-
 // interval_send - Postgres C (https://github.com/postgres/postgres/blob/master/src/backend/utils/adt/timestamp.c#L1032)
 // interval values are internally stored as three integral fields: months, days, and microseconds
 #[derive(Debug)]
@@ -775,16 +751,10 @@ fn rows_to_batch(
                         field,
                         col,
                         Decimal128Builder,
-                        BigDecimalFromSql,
+                        rust_decimal::Decimal,
                         row,
                         idx,
-                        |v: BigDecimalFromSql| {
-                            v.to_decimal_128().ok_or_else(|| {
-                                DataFusionError::Execution(format!(
-                                    "Failed to convert BigDecimal {v:?} to i128",
-                                ))
-                            })
-                        }
+                        |v: rust_decimal::Decimal| { Ok::<_, DataFusionError>(v.mantissa()) }
                     );
                 }
                 DataType::Utf8 => {

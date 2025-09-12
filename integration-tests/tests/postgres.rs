@@ -221,7 +221,7 @@ pub async fn table_projection(#[case] source: RemoteSource) {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 async fn empty_projection() {
     setup_postgres_db().await;
 
@@ -253,7 +253,30 @@ async fn empty_projection() {
     assert_eq!(batch.num_rows(), 3);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn numeric_type_inference_for_query() {
+    setup_postgres_db().await;
+    assert_result(
+        RemoteDbType::Postgres,
+        "SELECT * FROM numeric_type_inference",
+        "SELECT * FROM remote_table",
+        r#"+--------------+--------------+
+| numeric_col0 | numeric_col1 |
++--------------+--------------+
+|              |              |
+| 1.10         |              |
+|              | 1.200        |
++--------------+--------------+"#,
+    )
+    .await;
+
+    let options = build_conn_options(RemoteDbType::Postgres);
+    let result = RemoteTable::try_new(options, "SELECT * FROM numeric_type_cannot_inference").await;
+    println!("result: {:#?}", result);
+    assert!(result.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 pub async fn insert_supported_postgres_types() {
     setup_postgres_db().await;
     assert_result(RemoteDbType::Postgres, vec!["insert_supported_data_types"],

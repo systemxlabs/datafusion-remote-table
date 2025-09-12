@@ -173,3 +173,17 @@ INSERT INTO timestamp_test VALUES (
     NULL,
     NULL
 );
+
+CREATE TABLE numeric_type_inference (
+    numeric_col0 NUMERIC(10, 2),
+    numeric_col1 NUMERIC(11, 3)
+);
+
+INSERT INTO numeric_type_inference VALUES (NULL, NULL), (1.1, NULL), (NULL, 1.2);
+
+CREATE TABLE numeric_type_cannot_inference (
+    numeric_col0 NUMERIC(10, 2),
+    numeric_col1 NUMERIC(11, 3)
+);
+
+INSERT INTO numeric_type_cannot_inference VALUES (NULL, NULL), (1.1, NULL);
