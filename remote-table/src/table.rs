@@ -76,6 +76,12 @@ impl From<Vec<&str>> for RemoteSource {
     }
 }
 
+impl From<Vec<&String>> for RemoteSource {
+    fn from(table_identifiers: Vec<&String>) -> Self {
+        RemoteSource::Table(table_identifiers.into_iter().cloned().collect())
+    }
+}
+
 #[derive(Debug)]
 pub struct RemoteTable {
     pub(crate) conn_options: ConnectionOptions,
