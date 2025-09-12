@@ -448,6 +448,8 @@ fn parse_pg_type(
         "ARRAY_bool" => Ok(PostgresType::BoolArray),
         "xml" => Ok(PostgresType::Xml),
         "uuid" => Ok(PostgresType::Uuid),
+        "oid" => Ok(PostgresType::Oid),
+        "name" => Ok(PostgresType::Name),
         _ => Err(DataFusionError::Execution(format!(
             "Unsupported postgres type {pg_type}"
         ))),
