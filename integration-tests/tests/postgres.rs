@@ -12,8 +12,8 @@ use integration_tests::utils::{
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from supported_data_types"))]
-#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[case("SELECT * from supported_data_types".into())]
+#[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn supported_postgres_types(#[case] source: RemoteSource) {
     setup_postgres_db().await;
@@ -31,8 +31,8 @@ pub async fn supported_postgres_types(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * FROM timestamp_test"))]
-#[case(RemoteSource::from(vec!["timestamp_test"]))]
+#[case("SELECT * FROM timestamp_test".into())]
+#[case(vec!["timestamp_test"].into())]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn supported_postgres_timestamp_type(#[case] source: RemoteSource) {
     setup_postgres_db().await;
@@ -110,8 +110,8 @@ pub async fn various_sqls() {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from simple_table"))]
-#[case(RemoteSource::from(vec!["simple_table"]))]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_limit(#[case] source: RemoteSource) {
     setup_postgres_db().await;
@@ -133,8 +133,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from simple_table"))]
-#[case(RemoteSource::from(vec!["simple_table"]))]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_filters(#[case] source: RemoteSource) {
     setup_postgres_db().await;
@@ -156,8 +156,8 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from simple_table"))]
-#[case(RemoteSource::from(vec!["simple_table"]))]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn count1_agg(#[case] source: RemoteSource) {
     setup_postgres_db().await;
@@ -202,8 +202,8 @@ async fn count1_agg(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from supported_data_types"))]
-#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[case("SELECT * from supported_data_types".into())]
+#[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn table_projection(#[case] source: RemoteSource) {
     setup_postgres_db().await;

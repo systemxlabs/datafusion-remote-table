@@ -18,8 +18,8 @@ use std::any::Any;
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from supported_data_types"))]
-#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[case("SELECT * from supported_data_types".into())]
+#[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn transform(#[case] source: RemoteSource) {
     let db_path = setup_sqlite_db();
@@ -54,8 +54,8 @@ async fn transform(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from supported_data_types"))]
-#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[case("SELECT * from supported_data_types".into())]
+#[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn transform_serialization(#[case] source: RemoteSource) {
     let db_path = setup_sqlite_db();

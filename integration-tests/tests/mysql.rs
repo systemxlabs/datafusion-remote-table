@@ -9,8 +9,8 @@ use integration_tests::utils::{
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from supported_data_types"))]
-#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[case("SELECT * from supported_data_types".into())]
+#[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn supported_mysql_types(#[case] source: RemoteSource) {
     setup_mysql_db().await;
@@ -59,8 +59,8 @@ pub async fn various_sqls() {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from simple_table"))]
-#[case(RemoteSource::from(vec!["simple_table"]))]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_limit(#[case] source: RemoteSource) {
     setup_mysql_db().await;
@@ -96,8 +96,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from simple_table"))]
-#[case(RemoteSource::from(vec!["simple_table"]))]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_filters(#[case] source: RemoteSource) {
     setup_mysql_db().await;
@@ -140,8 +140,8 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from simple_table"))]
-#[case(RemoteSource::from(vec!["simple_table"]))]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn count1_agg(#[case] source: RemoteSource) {
     setup_mysql_db().await;
@@ -219,8 +219,8 @@ async fn empty_projection() {
 }
 
 #[rstest::rstest]
-#[case(RemoteSource::from("SELECT * from empty_table"))]
-#[case(RemoteSource::from(vec!["empty_table"]))]
+#[case("SELECT * from empty_table".into())]
+#[case(vec!["empty_table"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn empty_table(#[case] source: RemoteSource) {
     setup_mysql_db().await;
