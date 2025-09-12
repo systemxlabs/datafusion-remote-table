@@ -109,21 +109,12 @@ impl Connection for OracleConnection {
     }
 
     async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
-        match source {
-            TableSource::Table(_table) => Err(DataFusionError::Execution(
-                "Oracle does not support infer schema for table".to_string(),
-            )),
-            TableSource::Query(_query) => {
-                let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
-                let result_set = self.conn.query(&sql, &[]).map_err(|e| {
-                    DataFusionError::Execution(format!(
-                        "Failed to execute query {sql} on oracle: {e:?}"
-                    ))
-                })?;
-                let remote_schema = Arc::new(build_remote_schema(&result_set)?);
-                Ok(remote_schema)
-            }
-        }
+        let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
+        let result_set = self.conn.query(&sql, &[]).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to execute query {sql} on oracle: {e:?}"))
+        })?;
+        let remote_schema = Arc::new(build_remote_schema(&result_set)?);
+        Ok(remote_schema)
     }
 
     async fn query(

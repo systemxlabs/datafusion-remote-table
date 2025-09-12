@@ -4,17 +4,20 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
     ConnectionOptions, RemoteDbType, RemoteField, RemoteSchema, RemoteTable, RemoteType,
-    SqliteConnectionOptions, SqliteType,
+    SqliteConnectionOptions, SqliteType, TableSource,
 };
 use integration_tests::setup_sqlite_db;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
 use std::sync::Arc;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-pub async fn supported_sqlite_types() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from supported_data_types"))]
+#[case(TableSource::from(vec!["supported_data_types"]))]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn supported_sqlite_types(#[case] source: TableSource) {
     assert_result(
         RemoteDbType::Sqlite,
-        "select * from supported_data_types",
+        source,
         "select * from remote_table",
         r#"+-------------+--------------+---------+------------+----------+----------+----------+-----------+------------+----------+--------------------+--------------------------+-------------+-----------------------+-----------------------------+----------+--------------+-------------+-----------------+----------+--------------+------------+----------------+---------------+-------------------+----------+
 | tinyint_col | smallint_col | int_col | bigint_col | int2_col | int4_col | int8_col | float_col | double_col | real_col | real_precision_col | real_precision_scale_col | numeric_col | numeric_precision_col | numeric_precision_scale_col | char_col | char_len_col | varchar_col | varchar_len_col | text_col | text_len_col | binary_col | binary_len_col | varbinary_col | varbinary_len_col | blob_col |
@@ -38,15 +41,16 @@ pub async fn supported_sqlite_types() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn streaming_execution() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn streaming_execution(#[case] source: TableSource) {
     let db_path = setup_sqlite_db();
     let options = ConnectionOptions::Sqlite(
         SqliteConnectionOptions::new(db_path.clone()).with_stream_chunk_size(1usize),
     );
-    let table = RemoteTable::try_new(options, "select * from simple_table")
-        .await
-        .unwrap();
+    let table = RemoteTable::try_new(options, source).await.unwrap();
     println!("remote schema: {:#?}", table.remote_schema());
 
     let ctx = SessionContext::new();
@@ -74,13 +78,19 @@ async fn streaming_execution() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_limit() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_limit(#[case] source: TableSource) {
     assert_plan_and_result(
         RemoteDbType::Sqlite,
-        "select * from simple_table",
+        source,
         "select * from remote_table limit 1",
-        "RemoteTableExec: source=query, limit=1\n",
+        vec![
+            "RemoteTableExec: source=query, limit=1\n",
+            "RemoteTableExec: source=simple_table, limit=1\n",
+        ],
         r#"+----+------+
 | id | name |
 +----+------+
@@ -90,13 +100,19 @@ async fn pushdown_limit() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_filters() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_filters(#[case] source: TableSource) {
     assert_plan_and_result(
         RemoteDbType::Sqlite,
-        "select * from simple_table",
+        source,
         "select * from remote_table where id = 1",
-        "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
+        vec![
+            "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
+            "RemoteTableExec: source=simple_table, filters=[(`id` = 1)]\n",
+        ],
         r#"+----+------+
 | id | name |
 +----+------+
@@ -106,13 +122,16 @@ async fn pushdown_filters() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn count1_agg() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn count1_agg(#[case] source: TableSource) {
     assert_plan_and_result(
         RemoteDbType::Sqlite,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from remote_table",
-        "ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -123,9 +142,9 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Sqlite,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from remote_table where id > 1",
-        "ProjectionExec: expr=[2 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[2 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -136,9 +155,9 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Sqlite,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from (select * from remote_table where id > 1 limit 1)",
-        "ProjectionExec: expr=[1 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[1 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -148,12 +167,13 @@ async fn count1_agg() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn empty_projection() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_projection(#[case] source: TableSource) {
     let options = build_conn_options(RemoteDbType::Sqlite);
-    let table = RemoteTable::try_new(options, "select * from simple_table")
-        .await
-        .unwrap();
+    let table = RemoteTable::try_new(options, source).await.unwrap();
 
     let config = SessionConfig::new().with_target_partitions(12);
     let ctx = SessionContext::new_with_config(config);
@@ -166,9 +186,12 @@ async fn empty_projection() {
         .indent(true)
         .to_string();
     println!("{plan_display}");
-    assert_eq!(
-        plan_display,
-        "RemoteTableExec: source=query, projection=[]\n"
+    assert!(
+        [
+            "RemoteTableExec: source=query, projection=[]\n",
+            "RemoteTableExec: source=simple_table, projection=[]\n"
+        ]
+        .contains(&plan_display.as_str())
     );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
@@ -178,7 +201,7 @@ async fn empty_projection() {
     assert_eq!(batch.num_rows(), 3);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn insert_supported_sqlite_types() {
     assert_result(
         RemoteDbType::Sqlite,
@@ -208,7 +231,7 @@ pub async fn insert_supported_sqlite_types() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn insert_table_with_primary_key() {
     let db_path = setup_sqlite_db();
     let options = ConnectionOptions::Sqlite(SqliteConnectionOptions::new(db_path.clone()));

@@ -40,13 +40,13 @@ pub async fn assert_result(
 
 pub async fn assert_plan_and_result(
     database: RemoteDbType,
-    remote_sql: &str,
+    source: impl Into<TableSource>,
     df_sql: &str,
-    expected_plan: &str,
+    expected_plans: Vec<&str>,
     expected_result: &str,
 ) {
     let options = build_conn_options(database);
-    let table = RemoteTable::try_new(options, remote_sql).await.unwrap();
+    let table = RemoteTable::try_new(options, source).await.unwrap();
     println!("remote schema: {:#?}", table.remote_schema());
 
     let config = SessionConfig::new().with_target_partitions(12);
@@ -55,16 +55,11 @@ pub async fn assert_plan_and_result(
 
     let df = ctx.sql(df_sql).await.unwrap();
     let exec_plan = df.create_physical_plan().await.unwrap();
-    println!(
-        "{}",
-        DisplayableExecutionPlan::new(exec_plan.as_ref()).indent(true)
-    );
-    assert_eq!(
-        DisplayableExecutionPlan::new(exec_plan.as_ref())
-            .indent(true)
-            .to_string(),
-        expected_plan
-    );
+    let exec_plan_str = DisplayableExecutionPlan::new(exec_plan.as_ref())
+        .indent(true)
+        .to_string();
+    println!("{exec_plan_str}");
+    assert!(expected_plans.contains(&exec_plan_str.as_str()));
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
     println!("{}", pretty_format_batches(&result).unwrap());
@@ -75,13 +70,15 @@ pub async fn assert_plan_and_result(
     );
 }
 
-pub async fn assert_sqls(database: RemoteDbType, remote_sqls: Vec<&str>) {
+pub async fn assert_sqls(database: RemoteDbType, remote_sources: Vec<TableSource>) {
     let options = build_conn_options(database);
 
-    for sql in remote_sqls.into_iter() {
-        println!("Testing sql: {sql}");
+    for source in remote_sources.into_iter() {
+        println!("Testing source: {source}");
 
-        let table = RemoteTable::try_new(options.clone(), sql).await.unwrap();
+        let table = RemoteTable::try_new(options.clone(), source.clone())
+            .await
+            .unwrap();
         println!("remote schema: {:#?}", table.remote_schema());
 
         let ctx = SessionContext::new();

@@ -3,7 +3,7 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    PostgresType, RemoteDbType, RemoteField, RemoteSchema, RemoteTable, RemoteType,
+    PostgresType, RemoteDbType, RemoteField, RemoteSchema, RemoteTable, RemoteType, TableSource,
 };
 use integration_tests::setup_postgres_db;
 use integration_tests::utils::{
@@ -11,12 +11,15 @@ use integration_tests::utils::{
 };
 use std::sync::Arc;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-pub async fn supported_postgres_types() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from supported_data_types"))]
+#[case(TableSource::from(vec!["supported_data_types"]))]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn supported_postgres_types(#[case] source: TableSource) {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
-        "SELECT * from supported_data_types",
+        source,
         "SELECT * FROM remote_table",
         r#"+--------------+-------------+------------+----------+------------+-------------+------------+-------------+------------+----------+-----------+------------+----------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+
 | smallint_col | integer_col | bigint_col | real_col | double_col | numeric_col | char_col   | varchar_col | bpchar_col | text_col | bytea_col | date_col   | time_col | interval_col   | boolean_col | json_col          | jsonb_col         | geometry_col                                       | smallint_array_col | integer_array_col | bigint_array_col | real_array_col | double_array_col | char_array_col           | varchar_array_col    | bpchar_array_col   | text_array_col | bool_array_col | xml_col        | uuid_col                         |
@@ -27,12 +30,15 @@ pub async fn supported_postgres_types() {
    ).await;
 }
 
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * FROM timestamp_test"))]
+#[case(TableSource::from(vec!["timestamp_test"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_postgres_timestamp_type() {
+pub async fn supported_postgres_timestamp_type(#[case] source: TableSource) {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
-        "SELECT * FROM timestamp_test",
+        source,
         "SELECT * FROM remote_table",
         r#"+----------------------------+-----------------------------+---------------------+-------------------------+----------------------------+
 | timestamp_col              | timestamptz_col             | timestamp_0         | timestamp_3             | timestamp_6                |
@@ -49,7 +55,7 @@ pub async fn supported_postgres_timestamp_type() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn table_columns() {
     setup_postgres_db().await;
     let sql = format!(
@@ -89,25 +95,34 @@ ORDER BY
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn various_sqls() {
     setup_postgres_db().await;
 
     assert_sqls(
         RemoteDbType::Postgres,
-        vec!["select * from pg_catalog.pg_stat_all_tables"],
+        vec![
+            "select * from pg_catalog.pg_stat_all_tables".into(),
+            vec!["pg_catalog", "pg_stat_all_tables"].into(),
+        ],
     )
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_limit() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_limit(#[case] source: TableSource) {
     setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
-        "select * from simple_table",
+        source,
         "select * from remote_table limit 1",
-        "RemoteTableExec: source=query, limit=1\n",
+        vec![
+            "RemoteTableExec: source=query, limit=1\n",
+            "RemoteTableExec: source=simple_table, limit=1\n",
+        ],
         r#"+----+------+
 | id | name |
 +----+------+
@@ -117,14 +132,20 @@ async fn pushdown_limit() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_filters() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_filters(#[case] source: TableSource) {
     setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
-        "select * from simple_table",
+        source,
         "select * from remote_table where id = 1",
-        "RemoteTableExec: source=query, filters=[(\"id\" = 1)]\n",
+        vec![
+            "RemoteTableExec: source=query, filters=[(\"id\" = 1)]\n",
+            "RemoteTableExec: source=simple_table, filters=[(\"id\" = 1)]\n",
+        ],
         r#"+----+------+
 | id | name |
 +----+------+
@@ -134,14 +155,17 @@ async fn pushdown_filters() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn count1_agg() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn count1_agg(#[case] source: TableSource) {
     setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from remote_table",
-        "ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -152,9 +176,9 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Postgres,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from remote_table where id > 1",
-        "ProjectionExec: expr=[2 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[2 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -165,9 +189,9 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Postgres,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from (select * from remote_table where id > 1 limit 1)",
-        "ProjectionExec: expr=[1 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[1 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -177,12 +201,15 @@ async fn count1_agg() {
     .await;
 }
 
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from supported_data_types"))]
+#[case(TableSource::from(vec!["supported_data_types"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn table_projection() {
+pub async fn table_projection(#[case] source: TableSource) {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
-        "SELECT * from supported_data_types",
+        source,
         "SELECT integer_col, varchar_col FROM remote_table",
         r#"+-------------+-------------+
 | integer_col | varchar_col |

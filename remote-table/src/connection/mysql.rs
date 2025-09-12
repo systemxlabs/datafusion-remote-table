@@ -110,23 +110,14 @@ impl Connection for MysqlConnection {
     }
 
     async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
-        match source {
-            TableSource::Table(_table) => Err(DataFusionError::Execution(
-                "Mysql does not support infer schema for table".to_string(),
-            )),
-            TableSource::Query(_query) => {
-                let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source);
-                let mut conn = self.conn.lock().await;
-                let conn = &mut *conn;
-                let stmt = conn.prep(&sql).await.map_err(|e| {
-                    DataFusionError::Execution(format!(
-                        "Failed to prepare query {sql} on mysql: {e:?}"
-                    ))
-                })?;
-                let remote_schema = Arc::new(build_remote_schema(&stmt)?);
-                Ok(remote_schema)
-            }
-        }
+        let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source);
+        let mut conn = self.conn.lock().await;
+        let conn = &mut *conn;
+        let stmt = conn.prep(&sql).await.map_err(|e| {
+            DataFusionError::Execution(format!("Failed to prepare query {sql} on mysql: {e:?}"))
+        })?;
+        let remote_schema = Arc::new(build_remote_schema(&stmt)?);
+        Ok(remote_schema)
     }
 
     async fn query(

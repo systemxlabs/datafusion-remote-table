@@ -1,19 +1,22 @@
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use datafusion_remote_table::{RemoteDbType, RemoteTable};
+use datafusion_remote_table::{RemoteDbType, RemoteTable, TableSource};
 use integration_tests::setup_mysql_db;
 use integration_tests::utils::{
     assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
 };
 use std::sync::Arc;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-pub async fn supported_mysql_types() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from supported_data_types"))]
+#[case(TableSource::from(vec!["supported_data_types"]))]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn supported_mysql_types(#[case] source: TableSource) {
     setup_mysql_db().await;
     assert_result(
         RemoteDbType::Mysql,
-        "select * from supported_data_types",
+        source,
         "SELECT * FROM remote_table",
         r#"+-------------+----------------------+--------------+-----------------------+-------------+----------------------+---------------+------------------------+------------+---------------------+-----------+------------+--------------+------------+---------------------+----------+----------------------+----------+----------+-------------+----------------------+----------------------+---------------+--------------+----------+----------------+--------------+--------------+----------+----------------+--------------+------------------+----------------------------------------------------+
 | tinyint_col | tinyint_unsigned_col | smallint_col | smallint_unsigned_col | integer_col | integer_unsigned_col | mediumint_col | mediumint_unsigned_col | bigint_col | bigint_unsigned_col | float_col | double_col | decimal_col  | date_col   | datetime_col        | time_col | timestamp_col        | year_col | char_col | varchar_col | varchar_utf8_bin_col | binary_col           | varbinary_col | tinytext_col | text_col | mediumtext_col | longtext_col | tinyblob_col | blob_col | mediumblob_col | longblob_col | json_col         | geometry_col                                       |
@@ -24,7 +27,7 @@ pub async fn supported_mysql_types() {
     ).await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn describe_table() {
     setup_mysql_db().await;
     assert_result(
@@ -41,25 +44,35 @@ pub async fn describe_table() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn various_sqls() {
     setup_mysql_db().await;
 
     assert_sqls(
         RemoteDbType::Mysql,
-        vec!["select * from mysql.innodb_table_stats"],
+        vec![
+            "select * from mysql.innodb_table_stats".into(),
+            vec!["mysql", "innodb_table_stats"].into(),
+        ],
     )
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_limit() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_limit(#[case] source: TableSource) {
     setup_mysql_db().await;
 
-    assert_result(
+    assert_plan_and_result(
         RemoteDbType::Mysql,
-        "select * from simple_table",
+        source,
         "select * from remote_table limit 1",
+        vec![
+            "RemoteTableExec: source=query, limit=1\n",
+            "RemoteTableExec: source=simple_table, limit=1\n",
+        ],
         r#"+----+------+
 | id | name |
 +----+------+
@@ -82,15 +95,21 @@ async fn pushdown_limit() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_filters() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_filters(#[case] source: TableSource) {
     setup_mysql_db().await;
 
     assert_plan_and_result(
         RemoteDbType::Mysql,
-        "select * from simple_table",
+        source,
         "select * from remote_table where id = 1",
-        "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
+        vec![
+            "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
+            "RemoteTableExec: source=simple_table, filters=[(`id` = 1)]\n",
+        ],
         r#"+----+------+
 | id | name |
 +----+------+
@@ -104,11 +123,13 @@ async fn pushdown_filters() {
         RemoteDbType::Mysql,
         "describe simple_table",
         r#"SELECT * FROM remote_table where "Key" = 'PRI'"#,
-        r#"CoalesceBatchesExec: target_batch_size=8192
+        vec![
+            r#"CoalesceBatchesExec: target_batch_size=8192
   FilterExec: Key@3 = PRI
     RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
       RemoteTableExec: source=query
 "#,
+        ],
         r#"+-------+------+------+-----+---------+-------+
 | Field | Type | Null | Key | Default | Extra |
 +-------+------+------+-----+---------+-------+
@@ -118,15 +139,18 @@ async fn pushdown_filters() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn count1_agg() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from simple_table"))]
+#[case(TableSource::from(vec!["simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn count1_agg(#[case] source: TableSource) {
     setup_mysql_db().await;
 
     assert_plan_and_result(
         RemoteDbType::Mysql,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from remote_table",
-        "ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -137,9 +161,9 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Mysql,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from remote_table where id > 1",
-        "ProjectionExec: expr=[2 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[2 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -150,9 +174,9 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Mysql,
-        "select * from simple_table",
+        source.clone(),
         "select count(*) from (select * from remote_table where id > 1 limit 1)",
-        "ProjectionExec: expr=[1 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[1 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -162,7 +186,7 @@ async fn count1_agg() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 async fn empty_projection() {
     setup_mysql_db().await;
 
@@ -194,13 +218,16 @@ async fn empty_projection() {
     assert_eq!(batch.num_rows(), 3);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn empty_table() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from empty_table"))]
+#[case(TableSource::from(vec!["empty_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_table(#[case] source: TableSource) {
     setup_mysql_db().await;
 
     assert_result(
         RemoteDbType::Mysql,
-        "select * from empty_table",
+        source,
         "SELECT * FROM remote_table",
         "++\n++",
     )

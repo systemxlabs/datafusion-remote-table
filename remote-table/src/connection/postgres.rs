@@ -126,7 +126,7 @@ impl Connection for PostgresConnection {
         match source {
             TableSource::Table(table) => {
                 let db_type = RemoteDbType::Postgres;
-                let where_clause = if table.len() == 1 {
+                let where_condition = if table.len() == 1 {
                     format!("table_name = {}", db_type.sql_string_literal(&table[0]))
                 } else if table.len() == 2 {
                     format!(
@@ -160,7 +160,7 @@ select
 from information_schema.columns
 where {}
 order by ordinal_position",
-                    where_clause
+                    where_condition
                 );
                 let rows = self.conn.query(&sql, &[]).await.map_err(|e| {
                     DataFusionError::Execution(format!(

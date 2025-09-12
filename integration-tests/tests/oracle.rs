@@ -1,19 +1,22 @@
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use datafusion_remote_table::{RemoteDbType, RemoteTable};
+use datafusion_remote_table::{RemoteDbType, RemoteTable, TableSource};
 use integration_tests::setup_oracle_db;
 use integration_tests::utils::{
     assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
 };
 use std::sync::Arc;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-pub async fn supported_oracle_types() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.supported_data_types"))]
+#[case(TableSource::from(vec!["SYS", "supported_data_types"]))]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn supported_oracle_types(#[case] source: TableSource) {
     setup_oracle_db().await;
     assert_result(
         RemoteDbType::Oracle,
-        "SELECT * from SYS.supported_data_types",
+        source,
         "SELECT * FROM remote_table",
         r#"+-------------+--------------+-------------+------------------+-------------------+------------+----------+-----------+--------------+---------------+------------+------------+----------+-----------+---------+------------------+----------+---------------------+----------------------------+
 | BOOLEAN_COL | SMALLINT_COL | INTEGER_COL | BINARY_FLOAT_COL | BINARY_DOUBLE_COL | NUMBER_COL | REAL_COL | FLOAT_COL | VARCHAR2_COL | NVARCHAR2_COL | CHAR_COL   | NCHAR_COL  | CLOB_COL | NCLOB_COL | RAW_COL | LONG_RAW_COL     | BLOB_COL | DATE_COL            | TIMESTAMP_COL              |
@@ -25,12 +28,15 @@ pub async fn supported_oracle_types() {
 }
 
 // ORA-01754: a table may contain only one column of type LONG
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-pub async fn supported_oracle_types2() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.supported_data_types2"))]
+#[case(TableSource::from(vec!["SYS", "supported_data_types2"]))]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn supported_oracle_types2(#[case] source: TableSource) {
     setup_oracle_db().await;
     assert_result(
         RemoteDbType::Oracle,
-        "SELECT * from SYS.supported_data_types2",
+        source,
         "SELECT * FROM remote_table",
         r#"+----------+
 | LONG_COL |
@@ -42,21 +48,34 @@ pub async fn supported_oracle_types2() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn various_sqls() {
     setup_oracle_db().await;
 
-    assert_sqls(RemoteDbType::Oracle, vec!["select * from USER_TABLES"]).await;
+    assert_sqls(
+        RemoteDbType::Oracle,
+        vec![
+            "select * from USER_TABLES".into(),
+            vec!["USER_TABLES"].into(),
+        ],
+    )
+    .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_limit() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_limit(#[case] source: TableSource) {
     setup_oracle_db().await;
     assert_plan_and_result(
         RemoteDbType::Oracle,
-        "select * from SYS.simple_table",
+        source,
         "select * from remote_table limit 1",
-        "RemoteTableExec: source=query, limit=1\n",
+        vec![
+            "RemoteTableExec: source=query, limit=1\n",
+            "RemoteTableExec: source=SYS.simple_table, limit=1\n",
+        ],
         r#"+----+------+
 | ID | NAME |
 +----+------+
@@ -66,14 +85,18 @@ async fn pushdown_limit() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn pushdown_filters() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_filters(#[case] source: TableSource) {
     setup_oracle_db().await;
     assert_plan_and_result(
         RemoteDbType::Oracle,
-        "select * from SYS.simple_table",
+        source,
         r#"select * from remote_table where "ID" = 1"#,
-        "CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: source=query\n",
+        vec!["CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: source=query\n", 
+        "CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: source=SYS.simple_table\n"],
         r#"+----+------+
 | ID | NAME |
 +----+------+
@@ -83,15 +106,18 @@ async fn pushdown_filters() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn count1_agg() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn count1_agg(#[case] source: TableSource) {
     setup_oracle_db().await;
 
     assert_plan_and_result(
         RemoteDbType::Oracle,
-        "select * from SYS.simple_table",
+        source.clone(),
         "select count(*) from remote_table",
-        "ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n",
+        vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
 | count(*) |
 +----------+
@@ -102,9 +128,10 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Oracle,
-        "select * from SYS.simple_table",
+        source.clone(),
         r#"select count(*) from remote_table where "ID" > 1"#,
-        r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
+        vec![
+            r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
@@ -114,6 +141,17 @@ async fn count1_agg() {
               FilterExec: ID@0 > Some(1),38,0
                 RemoteTableExec: source=query, projection=[ID]
 "#,
+            r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
+  AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
+    CoalescePartitionsExec
+      AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
+        RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
+          ProjectionExec: expr=[]
+            CoalesceBatchesExec: target_batch_size=8192
+              FilterExec: ID@0 > Some(1),38,0
+                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+"#,
+        ],
         r#"+----------+
 | count(*) |
 +----------+
@@ -124,9 +162,10 @@ async fn count1_agg() {
 
     assert_plan_and_result(
         RemoteDbType::Oracle,
-        "select * from SYS.simple_table",
+        source.clone(),
         r#"select count(*) from (select * from remote_table where "ID" > 1 limit 1)"#,
-        r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
+        vec![
+            r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
@@ -136,6 +175,17 @@ async fn count1_agg() {
               FilterExec: ID@0 > Some(1),38,0
                 RemoteTableExec: source=query, projection=[ID]
 "#,
+            r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
+  AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
+    CoalescePartitionsExec
+      AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
+        RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
+          ProjectionExec: expr=[]
+            CoalesceBatchesExec: target_batch_size=8192, fetch=1
+              FilterExec: ID@0 > Some(1),38,0
+                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+"#,
+        ],
         r#"+----------+
 | count(*) |
 +----------+
@@ -145,14 +195,15 @@ async fn count1_agg() {
     .await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn empty_projection() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_projection(#[case] source: TableSource) {
     setup_oracle_db().await;
 
     let options = build_conn_options(RemoteDbType::Oracle);
-    let table = RemoteTable::try_new(options, "select * from SYS.simple_table")
-        .await
-        .unwrap();
+    let table = RemoteTable::try_new(options, source).await.unwrap();
 
     let config = SessionConfig::new().with_target_partitions(12);
     let ctx = SessionContext::new_with_config(config);
@@ -165,9 +216,12 @@ async fn empty_projection() {
         .indent(true)
         .to_string();
     println!("{plan_display}");
-    assert_eq!(
-        plan_display,
-        "RemoteTableExec: source=query, projection=[]\n"
+    assert!(
+        [
+            "RemoteTableExec: source=query, projection=[]\n",
+            "RemoteTableExec: source=SYS.simple_table, projection=[]\n"
+        ]
+        .contains(&plan_display.as_str())
     );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
@@ -177,13 +231,16 @@ async fn empty_projection() {
     assert_eq!(batch.num_rows(), 3);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn empty_table() {
+#[rstest::rstest]
+#[case(TableSource::from("SELECT * from SYS.empty_table"))]
+#[case(TableSource::from(vec!["SYS", "empty_table"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_table(#[case] source: TableSource) {
     setup_oracle_db().await;
 
     assert_result(
         RemoteDbType::Oracle,
-        "select * from SYS.empty_table",
+        source,
         "SELECT * FROM remote_table",
         "++\n++",
     )

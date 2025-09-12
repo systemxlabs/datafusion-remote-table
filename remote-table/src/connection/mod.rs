@@ -283,11 +283,13 @@ impl RemoteDbType {
     pub(crate) fn sql_identifier(&self, identifier: &str) -> String {
         match self {
             RemoteDbType::Postgres
-            | RemoteDbType::Mysql
             | RemoteDbType::Oracle
             | RemoteDbType::Sqlite
             | RemoteDbType::Dm => {
                 format!("\"{identifier}\"")
+            }
+            RemoteDbType::Mysql => {
+                format!("`{identifier}`")
             }
         }
     }
