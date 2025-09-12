@@ -9,7 +9,7 @@ use integration_tests::utils::{
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.supported_data_types"))]
+#[case(TableSource::from("SELECT * from SYS.\"supported_data_types\""))]
 #[case(TableSource::from(vec!["SYS", "supported_data_types"]))]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn supported_oracle_types(#[case] source: TableSource) {
@@ -29,7 +29,7 @@ pub async fn supported_oracle_types(#[case] source: TableSource) {
 
 // ORA-01754: a table may contain only one column of type LONG
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.supported_data_types2"))]
+#[case(TableSource::from("SELECT * from SYS.\"supported_data_types2\""))]
 #[case(TableSource::from(vec!["SYS", "supported_data_types2"]))]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn supported_oracle_types2(#[case] source: TableSource) {
@@ -63,7 +63,7 @@ pub async fn various_sqls() {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
 #[case(TableSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_limit(#[case] source: TableSource) {
@@ -86,7 +86,7 @@ async fn pushdown_limit(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
 #[case(TableSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_filters(#[case] source: TableSource) {
@@ -107,7 +107,7 @@ async fn pushdown_filters(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
 #[case(TableSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
 async fn count1_agg(#[case] source: TableSource) {
@@ -196,7 +196,7 @@ async fn count1_agg(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.simple_table"))]
+#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
 #[case(TableSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
 async fn empty_projection(#[case] source: TableSource) {
@@ -232,7 +232,7 @@ async fn empty_projection(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.empty_table"))]
+#[case(TableSource::from("SELECT * from SYS.\"empty_table\""))]
 #[case(TableSource::from(vec!["SYS", "empty_table"]))]
 #[tokio::test(flavor = "multi_thread")]
 async fn empty_table(#[case] source: TableSource) {
