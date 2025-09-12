@@ -25,7 +25,7 @@ pub struct RemoteTableScanExec {
     #[prost(message, optional, tag = "1")]
     pub conn_options: ::core::option::Option<ConnectionOptions>,
     #[prost(message, optional, tag = "2")]
-    pub source: ::core::option::Option<TableSource>,
+    pub source: ::core::option::Option<RemoteSource>,
     #[prost(message, optional, tag = "3")]
     pub table_schema: ::core::option::Option<::datafusion_proto::protobuf::Schema>,
     #[prost(message, optional, tag = "4")]
@@ -95,14 +95,14 @@ pub mod connection_options {
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TableSource {
-    #[prost(oneof = "table_source::TableSource", tags = "1, 2")]
-    pub table_source: ::core::option::Option<table_source::TableSource>,
+pub struct RemoteSource {
+    #[prost(oneof = "remote_source::Source", tags = "1, 2")]
+    pub source: ::core::option::Option<remote_source::Source>,
 }
-/// Nested message and enum types in `TableSource`.
-pub mod table_source {
+/// Nested message and enum types in `RemoteSource`.
+pub mod remote_source {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum TableSource {
+    pub enum Source {
         #[prost(string, tag = "1")]
         Query(::prost::alloc::string::String),
         #[prost(message, tag = "2")]

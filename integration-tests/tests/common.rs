@@ -10,25 +10,24 @@ use datafusion::prelude::SessionContext;
 use datafusion_proto::physical_plan::AsExecutionPlan;
 use datafusion_proto::protobuf::PhysicalPlanNode;
 use datafusion_remote_table::{
-    RemotePhysicalCodec, RemoteTable, SqliteConnectionOptions, Transform, TransformArgs,
-    TransformCodec,
+    RemotePhysicalCodec, RemoteSource, RemoteTable, SqliteConnectionOptions, Transform,
+    TransformArgs, TransformCodec,
 };
 use integration_tests::setup_sqlite_db;
 use std::any::Any;
 use std::sync::Arc;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn transform() {
+#[rstest::rstest]
+#[case(RemoteSource::from("SELECT * from supported_data_types"))]
+#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn transform(#[case] source: RemoteSource) {
     let db_path = setup_sqlite_db();
     let options = SqliteConnectionOptions::new(db_path.clone());
 
-    let table = RemoteTable::try_new_with_transform(
-        options,
-        "SELECT * from supported_data_types",
-        Arc::new(MyTransform {}),
-    )
-    .await
-    .unwrap();
+    let table = RemoteTable::try_new_with_transform(options, source, Arc::new(MyTransform {}))
+        .await
+        .unwrap();
     println!("remote schema: {:#?}", table.remote_schema());
 
     let ctx = SessionContext::new();
@@ -54,18 +53,17 @@ async fn transform() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn transform_serialization() {
+#[rstest::rstest]
+#[case(RemoteSource::from("SELECT * from supported_data_types"))]
+#[case(RemoteSource::from(vec!["supported_data_types"]))]
+#[tokio::test(flavor = "multi_thread")]
+async fn transform_serialization(#[case] source: RemoteSource) {
     let db_path = setup_sqlite_db();
     let options = SqliteConnectionOptions::new(db_path.clone());
 
-    let table = RemoteTable::try_new_with_transform(
-        options,
-        "select * from supported_data_types",
-        Arc::new(MyTransform {}),
-    )
-    .await
-    .unwrap();
+    let table = RemoteTable::try_new_with_transform(options, source, Arc::new(MyTransform {}))
+        .await
+        .unwrap();
     println!("remote schema: {:#?}", table.remote_schema());
 
     let ctx = SessionContext::new();

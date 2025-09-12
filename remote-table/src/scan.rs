@@ -1,5 +1,5 @@
 use crate::{
-    Connection, ConnectionOptions, DFResult, RemoteSchemaRef, TableSource, Transform,
+    Connection, ConnectionOptions, DFResult, RemoteSchemaRef, RemoteSource, Transform,
     TransformStream, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
@@ -22,7 +22,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct RemoteTableScanExec {
     pub(crate) conn_options: ConnectionOptions,
-    pub(crate) source: TableSource,
+    pub(crate) source: RemoteSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
     pub(crate) projection: Option<Vec<usize>>,
@@ -37,7 +37,7 @@ impl RemoteTableScanExec {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         conn_options: ConnectionOptions,
-        source: TableSource,
+        source: RemoteSource,
         table_schema: SchemaRef,
         remote_schema: Option<RemoteSchemaRef>,
         projection: Option<Vec<usize>>,
@@ -135,7 +135,7 @@ impl ExecutionPlan for RemoteTableScanExec {
         };
         let real_sql = db_type.rewrite_query(&self.source, &self.unparsed_filters, limit);
 
-        if let Some(count1_query) = db_type.try_count1_query(&TableSource::Query(real_sql)) {
+        if let Some(count1_query) = db_type.try_count1_query(&RemoteSource::Query(real_sql)) {
             let conn = self.conn.clone();
             let conn_options = self.conn_options.clone();
             let row_count_result = tokio::task::block_in_place(|| {
@@ -198,7 +198,7 @@ impl ExecutionPlan for RemoteTableScanExec {
 async fn build_and_transform_stream(
     conn: Arc<dyn Connection>,
     conn_options: ConnectionOptions,
-    source: TableSource,
+    source: RemoteSource,
     table_schema: SchemaRef,
     remote_schema: Option<RemoteSchemaRef>,
     projection: Option<Vec<usize>>,
@@ -241,8 +241,8 @@ impl DisplayAs for RemoteTableScanExec {
             f,
             "RemoteTableExec: source={}",
             match &self.source {
-                TableSource::Query(_query) => "query".to_string(),
-                TableSource::Table(table) => table.join("."),
+                RemoteSource::Query(_query) => "query".to_string(),
+                RemoteSource::Table(table) => table.join("."),
             }
         )?;
         let projected_schema = self.schema();

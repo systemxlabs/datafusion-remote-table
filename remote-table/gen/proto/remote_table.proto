@@ -15,7 +15,7 @@ message RemoteTablePhysicalPlanNode {
 
 message RemoteTableScanExec {
   ConnectionOptions conn_options = 1;
-  TableSource source = 2;
+  RemoteSource source = 2;
   datafusion_common.Schema table_schema = 3;
   RemoteSchema remote_schema = 4;
   Projection projection = 5;
@@ -52,8 +52,8 @@ message ConnectionOptions {
   }
 }
 
-message TableSource {
-  oneof table_source {
+message RemoteSource {
+  oneof source {
     string query = 1;
     Identifiers table = 2;
   }

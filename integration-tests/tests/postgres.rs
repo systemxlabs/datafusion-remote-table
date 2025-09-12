@@ -3,7 +3,7 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    PostgresType, RemoteDbType, RemoteField, RemoteSchema, RemoteTable, RemoteType, TableSource,
+    PostgresType, RemoteDbType, RemoteField, RemoteSchema, RemoteSource, RemoteTable, RemoteType,
 };
 use integration_tests::setup_postgres_db;
 use integration_tests::utils::{
@@ -12,10 +12,10 @@ use integration_tests::utils::{
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from supported_data_types"))]
-#[case(TableSource::from(vec!["supported_data_types"]))]
+#[case(RemoteSource::from("SELECT * from supported_data_types"))]
+#[case(RemoteSource::from(vec!["supported_data_types"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_postgres_types(#[case] source: TableSource) {
+pub async fn supported_postgres_types(#[case] source: RemoteSource) {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
@@ -31,10 +31,10 @@ pub async fn supported_postgres_types(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * FROM timestamp_test"))]
-#[case(TableSource::from(vec!["timestamp_test"]))]
+#[case(RemoteSource::from("SELECT * FROM timestamp_test"))]
+#[case(RemoteSource::from(vec!["timestamp_test"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_postgres_timestamp_type(#[case] source: TableSource) {
+pub async fn supported_postgres_timestamp_type(#[case] source: RemoteSource) {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
@@ -110,10 +110,10 @@ pub async fn various_sqls() {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from simple_table"))]
-#[case(TableSource::from(vec!["simple_table"]))]
+#[case(RemoteSource::from("SELECT * from simple_table"))]
+#[case(RemoteSource::from(vec!["simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn pushdown_limit(#[case] source: TableSource) {
+async fn pushdown_limit(#[case] source: RemoteSource) {
     setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
@@ -133,10 +133,10 @@ async fn pushdown_limit(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from simple_table"))]
-#[case(TableSource::from(vec!["simple_table"]))]
+#[case(RemoteSource::from("SELECT * from simple_table"))]
+#[case(RemoteSource::from(vec!["simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn pushdown_filters(#[case] source: TableSource) {
+async fn pushdown_filters(#[case] source: RemoteSource) {
     setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
@@ -156,10 +156,10 @@ async fn pushdown_filters(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from simple_table"))]
-#[case(TableSource::from(vec!["simple_table"]))]
+#[case(RemoteSource::from("SELECT * from simple_table"))]
+#[case(RemoteSource::from(vec!["simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn count1_agg(#[case] source: TableSource) {
+async fn count1_agg(#[case] source: RemoteSource) {
     setup_postgres_db().await;
     assert_plan_and_result(
         RemoteDbType::Postgres,
@@ -202,10 +202,10 @@ async fn count1_agg(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from supported_data_types"))]
-#[case(TableSource::from(vec!["supported_data_types"]))]
+#[case(RemoteSource::from("SELECT * from supported_data_types"))]
+#[case(RemoteSource::from(vec!["supported_data_types"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn table_projection(#[case] source: TableSource) {
+pub async fn table_projection(#[case] source: RemoteSource) {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,

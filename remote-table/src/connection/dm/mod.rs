@@ -3,7 +3,7 @@ use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
     Connection, ConnectionOptions, DFResult, DmType, Pool, RemoteDbType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, TableSource, Unparse,
+    RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -110,12 +110,12 @@ impl Connection for DmConnection {
         self
     }
 
-    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+    async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         match source {
-            TableSource::Table(_table) => Err(DataFusionError::Execution(
+            RemoteSource::Table(_table) => Err(DataFusionError::Execution(
                 "Dm does not support infer schema for table".to_string(),
             )),
-            TableSource::Query(_query) => {
+            RemoteSource::Query(_query) => {
                 let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
                 let conn = self.conn.lock().await;
                 let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
@@ -137,7 +137,7 @@ impl Connection for DmConnection {
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        source: &TableSource,
+        source: &RemoteSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],

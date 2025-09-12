@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, OracleType, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, TableSource, Unparse,
+    RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
@@ -108,7 +108,7 @@ impl Connection for OracleConnection {
         self
     }
 
-    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+    async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
         let result_set = self.conn.query(&sql, &[]).map_err(|e| {
             DataFusionError::Execution(format!("Failed to execute query {sql} on oracle: {e:?}"))
@@ -120,7 +120,7 @@ impl Connection for OracleConnection {
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        source: &TableSource,
+        source: &RemoteSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],

@@ -1,7 +1,7 @@
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use datafusion_remote_table::{RemoteDbType, RemoteTable, TableSource};
+use datafusion_remote_table::{RemoteDbType, RemoteSource, RemoteTable};
 use integration_tests::setup_mysql_db;
 use integration_tests::utils::{
     assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
@@ -9,10 +9,10 @@ use integration_tests::utils::{
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from supported_data_types"))]
-#[case(TableSource::from(vec!["supported_data_types"]))]
+#[case(RemoteSource::from("SELECT * from supported_data_types"))]
+#[case(RemoteSource::from(vec!["supported_data_types"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_mysql_types(#[case] source: TableSource) {
+pub async fn supported_mysql_types(#[case] source: RemoteSource) {
     setup_mysql_db().await;
     assert_result(
         RemoteDbType::Mysql,
@@ -59,10 +59,10 @@ pub async fn various_sqls() {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from simple_table"))]
-#[case(TableSource::from(vec!["simple_table"]))]
+#[case(RemoteSource::from("SELECT * from simple_table"))]
+#[case(RemoteSource::from(vec!["simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn pushdown_limit(#[case] source: TableSource) {
+async fn pushdown_limit(#[case] source: RemoteSource) {
     setup_mysql_db().await;
 
     assert_plan_and_result(
@@ -96,10 +96,10 @@ async fn pushdown_limit(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from simple_table"))]
-#[case(TableSource::from(vec!["simple_table"]))]
+#[case(RemoteSource::from("SELECT * from simple_table"))]
+#[case(RemoteSource::from(vec!["simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn pushdown_filters(#[case] source: TableSource) {
+async fn pushdown_filters(#[case] source: RemoteSource) {
     setup_mysql_db().await;
 
     assert_plan_and_result(
@@ -140,10 +140,10 @@ async fn pushdown_filters(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from simple_table"))]
-#[case(TableSource::from(vec!["simple_table"]))]
+#[case(RemoteSource::from("SELECT * from simple_table"))]
+#[case(RemoteSource::from(vec!["simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn count1_agg(#[case] source: TableSource) {
+async fn count1_agg(#[case] source: RemoteSource) {
     setup_mysql_db().await;
 
     assert_plan_and_result(
@@ -219,10 +219,10 @@ async fn empty_projection() {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from empty_table"))]
-#[case(TableSource::from(vec!["empty_table"]))]
+#[case(RemoteSource::from("SELECT * from empty_table"))]
+#[case(RemoteSource::from(vec!["empty_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn empty_table(#[case] source: TableSource) {
+async fn empty_table(#[case] source: RemoteSource) {
     setup_mysql_db().await;
 
     assert_result(

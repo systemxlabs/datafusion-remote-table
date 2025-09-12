@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, TableSource, Unparse, unparse_array,
+    RemoteSchemaRef, RemoteSource, RemoteType, Unparse, unparse_array,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
@@ -122,9 +122,9 @@ impl Connection for PostgresConnection {
         self
     }
 
-    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+    async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         match source {
-            TableSource::Table(table) => {
+            RemoteSource::Table(table) => {
                 let db_type = RemoteDbType::Postgres;
                 let where_condition = if table.len() == 1 {
                     format!("table_name = {}", db_type.sql_string_literal(&table[0]))
@@ -170,7 +170,7 @@ order by ordinal_position",
                 let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
                 Ok(remote_schema)
             }
-            TableSource::Query(_query) => {
+            RemoteSource::Query(_query) => {
                 let sql = RemoteDbType::Postgres.limit_1_query_if_possible(source);
                 let row = self.conn.query_one(&sql, &[]).await.map_err(|e| {
                     DataFusionError::Execution(format!(
@@ -186,7 +186,7 @@ order by ordinal_position",
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        source: &TableSource,
+        source: &RemoteSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],

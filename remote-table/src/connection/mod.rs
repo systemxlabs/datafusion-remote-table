@@ -21,7 +21,7 @@ pub use postgres::*;
 pub use sqlite::*;
 use std::any::Any;
 
-use crate::{DFResult, RemoteSchemaRef, TableSource, Unparse, extract_primitive_array};
+use crate::{DFResult, RemoteSchemaRef, RemoteSource, Unparse, extract_primitive_array};
 use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
 use datafusion::common::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
@@ -43,12 +43,12 @@ pub trait Pool: Debug + Send + Sync {
 pub trait Connection: Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
 
-    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef>;
+    async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef>;
 
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        source: &TableSource,
+        source: &RemoteSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],
@@ -172,10 +172,10 @@ pub enum RemoteDbType {
 }
 
 impl RemoteDbType {
-    pub(crate) fn support_rewrite_with_filters_limit(&self, source: &TableSource) -> bool {
+    pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
         match source {
-            TableSource::Table(_) => true,
-            TableSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+            RemoteSource::Table(_) => true,
+            RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
         }
     }
 
@@ -195,12 +195,12 @@ impl RemoteDbType {
 
     pub(crate) fn rewrite_query(
         &self,
-        source: &TableSource,
+        source: &RemoteSource,
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> String {
         match source {
-            TableSource::Table(table) => match self {
+            RemoteSource::Table(table) => match self {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
@@ -236,7 +236,7 @@ impl RemoteDbType {
                     format!("{}{where_clause}", self.select_all_query(table))
                 }
             },
-            TableSource::Query(query) => match self {
+            RemoteSource::Query(query) => match self {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
@@ -327,20 +327,20 @@ impl RemoteDbType {
         }
     }
 
-    pub(crate) fn limit_1_query_if_possible(&self, source: &TableSource) -> String {
+    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> String {
         if !self.support_rewrite_with_filters_limit(source) {
             return source.query(*self);
         }
         self.rewrite_query(source, &[], Some(1))
     }
 
-    pub(crate) fn try_count1_query(&self, source: &TableSource) -> Option<String> {
+    pub(crate) fn try_count1_query(&self, source: &RemoteSource) -> Option<String> {
         if !self.support_rewrite_with_filters_limit(source) {
             return None;
         }
         match source {
-            TableSource::Table(table) => Some(self.select_all_query(table)),
-            TableSource::Query(query) => match self {
+            RemoteSource::Table(table) => Some(self.select_all_query(table)),
+            RemoteSource::Query(query) => match self {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
@@ -364,7 +364,7 @@ impl RemoteDbType {
         let stream = conn
             .query(
                 conn_options,
-                &TableSource::Query(count1_query.to_string()),
+                &RemoteSource::Query(count1_query.to_string()),
                 count1_schema,
                 None,
                 &[],

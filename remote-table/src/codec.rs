@@ -11,8 +11,9 @@ use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
     Connection, ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, DmType, MysqlType,
-    OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec,
-    RemoteTableScanExec, RemoteType, SqliteType, TableSource, Transform, Unparse, connect,
+    OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
+    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform, Unparse,
+    connect,
 };
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{Schema, SchemaRef};
@@ -196,8 +197,8 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     self.transform_codec.try_decode(&proto.transform)?
                 };
 
-                let source = parse_table_source(proto.source.as_ref().ok_or(DataFusionError::Internal(
-                    "table source is not set".to_string(),
+                let source = parse_remote_source(proto.source.as_ref().ok_or(DataFusionError::Internal(
+                    "remote source is not set".to_string(),
                 ))?)?;
 
                 let table_schema: SchemaRef = Arc::new(convert_required!(&proto.table_schema)?);
@@ -322,7 +323,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 .connection_codec
                 .try_encode(exec.conn.as_ref(), &exec.conn_options)?;
 
-            let serialized_source = serialize_table_source(&exec.source);
+            let serialized_source = serialize_remote_source(&exec.source);
 
             let proto = protobuf::RemoteTablePhysicalPlanNode {
                 remote_table_physical_plan_type: Some(
@@ -1315,13 +1316,13 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
     }
 }
 
-fn serialize_table_source(source: &TableSource) -> protobuf::TableSource {
+fn serialize_remote_source(source: &RemoteSource) -> protobuf::RemoteSource {
     match source {
-        TableSource::Query(query) => protobuf::TableSource {
-            table_source: Some(protobuf::table_source::TableSource::Query(query.clone())),
+        RemoteSource::Query(query) => protobuf::RemoteSource {
+            source: Some(protobuf::remote_source::Source::Query(query.clone())),
         },
-        TableSource::Table(table_identifiers) => protobuf::TableSource {
-            table_source: Some(protobuf::table_source::TableSource::Table(
+        RemoteSource::Table(table_identifiers) => protobuf::RemoteSource {
+            source: Some(protobuf::remote_source::Source::Table(
                 protobuf::Identifiers {
                     idents: table_identifiers.clone(),
                 },
@@ -1330,17 +1331,14 @@ fn serialize_table_source(source: &TableSource) -> protobuf::TableSource {
     }
 }
 
-fn parse_table_source(source: &protobuf::TableSource) -> DFResult<TableSource> {
-    let source = source
-        .table_source
-        .as_ref()
-        .ok_or(DataFusionError::Internal(
-            "table source is not set".to_string(),
-        ))?;
+fn parse_remote_source(source: &protobuf::RemoteSource) -> DFResult<RemoteSource> {
+    let source = source.source.as_ref().ok_or(DataFusionError::Internal(
+        "remote source is not set".to_string(),
+    ))?;
     match source {
-        protobuf::table_source::TableSource::Query(query) => Ok(TableSource::Query(query.clone())),
-        protobuf::table_source::TableSource::Table(table_identifiers) => {
-            Ok(TableSource::Table(table_identifiers.idents.clone()))
+        protobuf::remote_source::Source::Query(query) => Ok(RemoteSource::Query(query.clone())),
+        protobuf::remote_source::Source::Table(table_identifiers) => {
+            Ok(RemoteSource::Table(table_identifiers.idents.clone()))
         }
     }
 }

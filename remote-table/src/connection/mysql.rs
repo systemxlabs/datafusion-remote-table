@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, MysqlType, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteType, TableSource, Unparse,
+    RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
 };
 use async_stream::stream;
 use bigdecimal::{BigDecimal, num_bigint};
@@ -109,7 +109,7 @@ impl Connection for MysqlConnection {
         self
     }
 
-    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+    async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source);
         let mut conn = self.conn.lock().await;
         let conn = &mut *conn;
@@ -123,7 +123,7 @@ impl Connection for MysqlConnection {
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        source: &TableSource,
+        source: &RemoteSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],

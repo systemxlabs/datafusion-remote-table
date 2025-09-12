@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteType, SqliteType, TableSource, Unparse, unparse_array,
+    RemoteSource, RemoteType, SqliteType, Unparse, unparse_array,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -78,12 +78,12 @@ impl Connection for SqliteConnection {
         self
     }
 
-    async fn infer_schema(&self, source: &TableSource) -> DFResult<RemoteSchemaRef> {
+    async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
             DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
         })?;
         match source {
-            TableSource::Table(table) => {
+            RemoteSource::Table(table) => {
                 // TODO missing auto increment, could use sqlparser to parse create table sql
                 let sql = format!(
                     "PRAGMA table_info({})",
@@ -98,7 +98,7 @@ impl Connection for SqliteConnection {
                 let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
                 Ok(remote_schema)
             }
-            TableSource::Query(_query) => {
+            RemoteSource::Query(_query) => {
                 let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source);
                 let mut stmt = conn.prepare(&sql).map_err(|e| {
                     DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
@@ -119,7 +119,7 @@ impl Connection for SqliteConnection {
     async fn query(
         &self,
         conn_options: &ConnectionOptions,
-        source: &TableSource,
+        source: &RemoteSource,
         table_schema: SchemaRef,
         projection: Option<&Vec<usize>>,
         unparsed_filters: &[String],

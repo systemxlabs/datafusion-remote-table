@@ -1,7 +1,7 @@
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use datafusion_remote_table::{RemoteDbType, RemoteTable, TableSource};
+use datafusion_remote_table::{RemoteDbType, RemoteSource, RemoteTable};
 use integration_tests::setup_oracle_db;
 use integration_tests::utils::{
     assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
@@ -9,10 +9,10 @@ use integration_tests::utils::{
 use std::sync::Arc;
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"supported_data_types\""))]
-#[case(TableSource::from(vec!["SYS", "supported_data_types"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"supported_data_types\""))]
+#[case(RemoteSource::from(vec!["SYS", "supported_data_types"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_oracle_types(#[case] source: TableSource) {
+pub async fn supported_oracle_types(#[case] source: RemoteSource) {
     setup_oracle_db().await;
     assert_result(
         RemoteDbType::Oracle,
@@ -29,10 +29,10 @@ pub async fn supported_oracle_types(#[case] source: TableSource) {
 
 // ORA-01754: a table may contain only one column of type LONG
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"supported_data_types2\""))]
-#[case(TableSource::from(vec!["SYS", "supported_data_types2"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"supported_data_types2\""))]
+#[case(RemoteSource::from(vec!["SYS", "supported_data_types2"]))]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_oracle_types2(#[case] source: TableSource) {
+pub async fn supported_oracle_types2(#[case] source: RemoteSource) {
     setup_oracle_db().await;
     assert_result(
         RemoteDbType::Oracle,
@@ -63,10 +63,10 @@ pub async fn various_sqls() {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
-#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"simple_table\""))]
+#[case(RemoteSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn pushdown_limit(#[case] source: TableSource) {
+async fn pushdown_limit(#[case] source: RemoteSource) {
     setup_oracle_db().await;
     assert_plan_and_result(
         RemoteDbType::Oracle,
@@ -86,10 +86,10 @@ async fn pushdown_limit(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
-#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"simple_table\""))]
+#[case(RemoteSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn pushdown_filters(#[case] source: TableSource) {
+async fn pushdown_filters(#[case] source: RemoteSource) {
     setup_oracle_db().await;
     assert_plan_and_result(
         RemoteDbType::Oracle,
@@ -107,10 +107,10 @@ async fn pushdown_filters(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
-#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"simple_table\""))]
+#[case(RemoteSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn count1_agg(#[case] source: TableSource) {
+async fn count1_agg(#[case] source: RemoteSource) {
     setup_oracle_db().await;
 
     assert_plan_and_result(
@@ -196,10 +196,10 @@ async fn count1_agg(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"simple_table\""))]
-#[case(TableSource::from(vec!["SYS", "simple_table"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"simple_table\""))]
+#[case(RemoteSource::from(vec!["SYS", "simple_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn empty_projection(#[case] source: TableSource) {
+async fn empty_projection(#[case] source: RemoteSource) {
     setup_oracle_db().await;
 
     let options = build_conn_options(RemoteDbType::Oracle);
@@ -232,10 +232,10 @@ async fn empty_projection(#[case] source: TableSource) {
 }
 
 #[rstest::rstest]
-#[case(TableSource::from("SELECT * from SYS.\"empty_table\""))]
-#[case(TableSource::from(vec!["SYS", "empty_table"]))]
+#[case(RemoteSource::from("SELECT * from SYS.\"empty_table\""))]
+#[case(RemoteSource::from(vec!["SYS", "empty_table"]))]
 #[tokio::test(flavor = "multi_thread")]
-async fn empty_table(#[case] source: TableSource) {
+async fn empty_table(#[case] source: RemoteSource) {
     setup_oracle_db().await;
 
     assert_result(

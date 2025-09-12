@@ -1,4 +1,4 @@
-use crate::{ConnectionOptions, DFResult, RemoteTable, TableSource};
+use crate::{ConnectionOptions, DFResult, RemoteSource, RemoteTable};
 use datafusion::arrow::array::{
     Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch,
 };
@@ -14,7 +14,7 @@ pub async fn remote_collect(
     options: ConnectionOptions,
     sql: impl Into<String>,
 ) -> DFResult<Vec<RecordBatch>> {
-    let table = RemoteTable::try_new(options, TableSource::Query(sql.into())).await?;
+    let table = RemoteTable::try_new(options, RemoteSource::Query(sql.into())).await?;
     let ctx = SessionContext::new();
     ctx.read_table(Arc::new(table))?.collect().await
 }

@@ -5,13 +5,13 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
     ConnectionOptions, MysqlConnectionOptions, OracleConnectionOptions, PostgresConnectionOptions,
-    RemoteDbType, RemoteTable, SqliteConnectionOptions, TableSource,
+    RemoteDbType, RemoteSource, RemoteTable, SqliteConnectionOptions,
 };
 use std::sync::Arc;
 
 pub async fn assert_result(
     database: RemoteDbType,
-    source: impl Into<TableSource>,
+    source: impl Into<RemoteSource>,
     df_sql: &str,
     expected_result: &str,
 ) {
@@ -40,7 +40,7 @@ pub async fn assert_result(
 
 pub async fn assert_plan_and_result(
     database: RemoteDbType,
-    source: impl Into<TableSource>,
+    source: impl Into<RemoteSource>,
     df_sql: &str,
     expected_plans: Vec<&str>,
     expected_result: &str,
@@ -70,7 +70,7 @@ pub async fn assert_plan_and_result(
     );
 }
 
-pub async fn assert_sqls(database: RemoteDbType, remote_sources: Vec<TableSource>) {
+pub async fn assert_sqls(database: RemoteDbType, remote_sources: Vec<RemoteSource>) {
     let options = build_conn_options(database);
 
     for source in remote_sources.into_iter() {

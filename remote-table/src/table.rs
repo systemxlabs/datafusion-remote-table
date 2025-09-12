@@ -18,56 +18,56 @@ use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub enum TableSource {
+pub enum RemoteSource {
     Query(String),
     Table(Vec<String>),
 }
 
-impl TableSource {
+impl RemoteSource {
     pub fn query(&self, db_type: RemoteDbType) -> String {
         match self {
-            TableSource::Query(query) => query.clone(),
-            TableSource::Table(table_identifiers) => db_type.select_all_query(table_identifiers),
+            RemoteSource::Query(query) => query.clone(),
+            RemoteSource::Table(table_identifiers) => db_type.select_all_query(table_identifiers),
         }
     }
 }
 
-impl std::fmt::Display for TableSource {
+impl std::fmt::Display for RemoteSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TableSource::Query(query) => write!(f, "{query}"),
-            TableSource::Table(table) => write!(f, "{}", table.join(".")),
+            RemoteSource::Query(query) => write!(f, "{query}"),
+            RemoteSource::Table(table) => write!(f, "{}", table.join(".")),
         }
     }
 }
 
-impl From<String> for TableSource {
+impl From<String> for RemoteSource {
     fn from(query: String) -> Self {
-        TableSource::Query(query)
+        RemoteSource::Query(query)
     }
 }
 
-impl From<&String> for TableSource {
+impl From<&String> for RemoteSource {
     fn from(query: &String) -> Self {
-        TableSource::Query(query.clone())
+        RemoteSource::Query(query.clone())
     }
 }
 
-impl From<&str> for TableSource {
+impl From<&str> for RemoteSource {
     fn from(query: &str) -> Self {
-        TableSource::Query(query.to_string())
+        RemoteSource::Query(query.to_string())
     }
 }
 
-impl From<Vec<String>> for TableSource {
+impl From<Vec<String>> for RemoteSource {
     fn from(table_identifiers: Vec<String>) -> Self {
-        TableSource::Table(table_identifiers)
+        RemoteSource::Table(table_identifiers)
     }
 }
 
-impl From<Vec<&str>> for TableSource {
+impl From<Vec<&str>> for RemoteSource {
     fn from(table_identifiers: Vec<&str>) -> Self {
-        TableSource::Table(
+        RemoteSource::Table(
             table_identifiers
                 .into_iter()
                 .map(|s| s.to_string())
@@ -79,7 +79,7 @@ impl From<Vec<&str>> for TableSource {
 #[derive(Debug)]
 pub struct RemoteTable {
     pub(crate) conn_options: ConnectionOptions,
-    pub(crate) source: TableSource,
+    pub(crate) source: RemoteSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) transformed_table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
@@ -91,7 +91,7 @@ pub struct RemoteTable {
 impl RemoteTable {
     pub async fn try_new(
         conn_options: impl Into<ConnectionOptions>,
-        source: impl Into<TableSource>,
+        source: impl Into<RemoteSource>,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
             conn_options,
@@ -106,7 +106,7 @@ impl RemoteTable {
 
     pub async fn try_new_with_schema(
         conn_options: impl Into<ConnectionOptions>,
-        source: impl Into<TableSource>,
+        source: impl Into<RemoteSource>,
         table_schema: SchemaRef,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
@@ -122,7 +122,7 @@ impl RemoteTable {
 
     pub async fn try_new_with_remote_schema(
         conn_options: impl Into<ConnectionOptions>,
-        source: impl Into<TableSource>,
+        source: impl Into<RemoteSource>,
         remote_schema: RemoteSchemaRef,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
@@ -138,7 +138,7 @@ impl RemoteTable {
 
     pub async fn try_new_with_transform(
         conn_options: impl Into<ConnectionOptions>,
-        source: impl Into<TableSource>,
+        source: impl Into<RemoteSource>,
         transform: Arc<dyn Transform>,
     ) -> DFResult<Self> {
         Self::try_new_with_schema_transform_unparser(
@@ -154,7 +154,7 @@ impl RemoteTable {
 
     pub async fn try_new_with_schema_transform_unparser(
         conn_options: impl Into<ConnectionOptions>,
-        source: impl Into<TableSource>,
+        source: impl Into<RemoteSource>,
         table_schema: Option<SchemaRef>,
         remote_schema: Option<RemoteSchemaRef>,
         transform: Arc<dyn Transform>,
@@ -163,7 +163,7 @@ impl RemoteTable {
         let conn_options = conn_options.into();
         let source = source.into();
 
-        if let TableSource::Table(table) = &source
+        if let RemoteSource::Table(table) = &source
             && table.is_empty()
         {
             return Err(DataFusionError::Plan(
@@ -183,7 +183,7 @@ impl RemoteTable {
                 (Some(table_schema), Some(remote_schema)) => (table_schema, Some(remote_schema)),
                 (Some(table_schema), None) => {
                     let remote_schema = if transform.as_any().is::<DefaultTransform>()
-                        && matches!(source, TableSource::Query(_))
+                        && matches!(source, RemoteSource::Query(_))
                     {
                         None
                     } else {
@@ -390,7 +390,7 @@ impl TableProvider for RemoteTable {
             ))?
             .clone();
 
-        let TableSource::Table(table) = &self.source else {
+        let RemoteSource::Table(table) = &self.source else {
             return Err(DataFusionError::Execution(
                 "Only support insert operation for table".to_string(),
             ));
