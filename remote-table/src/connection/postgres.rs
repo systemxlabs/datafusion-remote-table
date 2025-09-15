@@ -74,7 +74,7 @@ impl From<PostgresConnectionOptions> for ConnectionOptions {
 #[derive(Debug)]
 pub struct PostgresPool {
     pool: bb8::Pool<PostgresConnectionManager<NoTls>>,
-    options: PostgresConnectionOptions,
+    options: Arc<PostgresConnectionOptions>,
 }
 
 #[async_trait::async_trait]
@@ -113,17 +113,16 @@ pub(crate) async fn connect_postgres(
             ))
         })?;
 
-    // TODO wrap options using Arc
     Ok(PostgresPool {
         pool,
-        options: options.clone(),
+        options: Arc::new(options.clone()),
     })
 }
 
 #[derive(Debug)]
 pub(crate) struct PostgresConnection {
     conn: bb8::PooledConnection<'static, PostgresConnectionManager<NoTls>>,
-    options: PostgresConnectionOptions,
+    options: Arc<PostgresConnectionOptions>,
 }
 
 #[async_trait::async_trait]
@@ -426,15 +425,13 @@ fn parse_pg_type(
     _numeric_precision: Option<i32>,
     numeric_scale: i32,
 ) -> DFResult<PostgresType> {
-    if pg_type.starts_with("numeric") {
-        return Ok(PostgresType::Numeric(numeric_scale as i8));
-    }
     match pg_type {
         "smallint" => Ok(PostgresType::Int2),
         "integer" => Ok(PostgresType::Int4),
         "bigint" => Ok(PostgresType::Int8),
         "real" => Ok(PostgresType::Float4),
         "double precision" => Ok(PostgresType::Float8),
+        "numeric" => Ok(PostgresType::Numeric(numeric_scale as i8)),
         "character varying" => Ok(PostgresType::Varchar),
         "character" => Ok(PostgresType::Bpchar),
         "text" => Ok(PostgresType::Text),
