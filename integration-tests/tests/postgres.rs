@@ -1,3 +1,4 @@
+use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
@@ -271,7 +272,7 @@ pub async fn unconstrained_numeric(#[case] source: RemoteSource) {
 
     assert_result(
         RemoteDbType::Postgres,
-        source,
+        source.clone(),
         "SELECT * FROM remote_table",
         r#"+------------------------+
 | numeric_col            |
@@ -283,6 +284,34 @@ pub async fn unconstrained_numeric(#[case] source: RemoteSource) {
 +------------------------+"#,
     )
     .await;
+
+    let options = build_conn_options(RemoteDbType::Postgres);
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "numeric_col",
+        DataType::Decimal128(38, 5),
+        true,
+    )]));
+    let table = RemoteTable::try_new_with_schema(options, source, schema)
+        .await
+        .unwrap();
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+    let df = ctx.sql("SELECT * FROM remote_table").await.unwrap();
+    let batches = df.collect().await.unwrap();
+    let table_str = pretty_format_batches(&batches).unwrap().to_string();
+    println!("{}", table_str);
+    assert_eq!(
+        table_str,
+        r#"+-------------------+
+| numeric_col       |
++-------------------+
+| 1.10000           |
+| 12.12000          |
+| 123.12300         |
+| 12345678901.12345 |
++-------------------+"#,
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
