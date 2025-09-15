@@ -5,7 +5,8 @@ use crate::{
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
-use bb8_postgres::tokio_postgres::{NoTls, Row, RowStream, Statement};
+use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
+use bigdecimal::FromPrimitive;
 use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
@@ -25,10 +26,9 @@ use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use derive_getters::Getters;
 use derive_with::With;
-use futures::{StreamExt, pin_mut};
+use futures::StreamExt;
 use log::debug;
 use std::any::Any;
-use std::collections::BTreeMap;
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -42,6 +42,7 @@ pub struct PostgresConnectionOptions {
     pub(crate) database: Option<String>,
     pub(crate) pool_max_size: usize,
     pub(crate) stream_chunk_size: usize,
+    pub(crate) default_numeric_scale: i8,
 }
 
 impl PostgresConnectionOptions {
@@ -59,6 +60,7 @@ impl PostgresConnectionOptions {
             database: None,
             pool_max_size: 10,
             stream_chunk_size: 2048,
+            default_numeric_scale: 10,
         }
     }
 }
@@ -72,6 +74,7 @@ impl From<PostgresConnectionOptions> for ConnectionOptions {
 #[derive(Debug)]
 pub struct PostgresPool {
     pool: bb8::Pool<PostgresConnectionManager<NoTls>>,
+    options: PostgresConnectionOptions,
 }
 
 #[async_trait::async_trait]
@@ -80,7 +83,10 @@ impl Pool for PostgresPool {
         let conn = self.pool.get_owned().await.map_err(|e| {
             DataFusionError::Execution(format!("Failed to get postgres connection due to {e:?}"))
         })?;
-        Ok(Arc::new(PostgresConnection { conn }))
+        Ok(Arc::new(PostgresConnection {
+            conn,
+            options: self.options.clone(),
+        }))
     }
 }
 
@@ -107,12 +113,17 @@ pub(crate) async fn connect_postgres(
             ))
         })?;
 
-    Ok(PostgresPool { pool })
+    // TODO wrap options using Arc
+    Ok(PostgresPool {
+        pool,
+        options: options.clone(),
+    })
 }
 
 #[derive(Debug)]
 pub(crate) struct PostgresConnection {
     conn: bb8::PooledConnection<'static, PostgresConnectionManager<NoTls>>,
+    options: PostgresConnectionOptions,
 }
 
 #[async_trait::async_trait]
@@ -166,7 +177,10 @@ order by ordinal_position",
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
-                let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
+                let remote_schema = Arc::new(build_remote_schema_for_table(
+                    rows,
+                    self.options.default_numeric_scale,
+                )?);
                 Ok(remote_schema)
             }
             RemoteSource::Query(_query) => {
@@ -176,7 +190,9 @@ order by ordinal_position",
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
-                let remote_schema = Arc::new(build_remote_schema_for_query(self, stmt).await?);
+                let remote_schema = Arc::new(
+                    build_remote_schema_for_query(stmt, self.options.default_numeric_scale).await?,
+                );
                 Ok(remote_schema)
             }
         }
@@ -298,58 +314,30 @@ order by ordinal_position",
 }
 
 async fn build_remote_schema_for_query(
-    conn: &PostgresConnection,
     stmt: Statement,
+    default_numeric_scale: i8,
 ) -> DFResult<RemoteSchema> {
-    let mut remote_field_map = BTreeMap::new();
-    let mut numeric_field_map = BTreeMap::new();
-    for (col_idx, col) in stmt.columns().iter().enumerate() {
+    let mut remote_fields = Vec::new();
+    for col in stmt.columns().iter() {
         let pg_type = col.type_();
-        match col.type_() {
-            &Type::NUMERIC => {
-                numeric_field_map.insert(col_idx, col.name());
-            }
-            _ => {
-                let remote_type = pg_type_to_remote_type(pg_type)?;
-                remote_field_map.insert(
-                    col_idx,
-                    RemoteField::new(col.name(), RemoteType::Postgres(remote_type), true),
-                );
-            }
-        }
+        let remote_type = pg_type_to_remote_type(pg_type, default_numeric_scale)?;
+        remote_fields.push(RemoteField::new(
+            col.name(),
+            RemoteType::Postgres(remote_type),
+            true,
+        ));
     }
-    if !numeric_field_map.is_empty() {
-        let row_stream = conn
-            .conn
-            .query_raw(&stmt, Vec::<String>::new())
-            .await
-            .map_err(|e| DataFusionError::Execution(format!("Failed to exec stmt: {e:?}")))?;
-        let numeric_types = infer_pg_numeric_type(
-            row_stream,
-            &numeric_field_map.keys().copied().collect::<Vec<_>>(),
-        )
-        .await?;
-        assert_eq!(numeric_field_map.len(), numeric_types.len());
-
-        for ((col_idx, name), remote_type) in
-            numeric_field_map.into_iter().zip(numeric_types.into_iter())
-        {
-            remote_field_map.insert(
-                col_idx,
-                RemoteField::new(name, RemoteType::Postgres(remote_type), true),
-            );
-        }
-    }
-    Ok(RemoteSchema::new(remote_field_map.into_values().collect()))
+    Ok(RemoteSchema::new(remote_fields))
 }
 
-fn pg_type_to_remote_type(pg_type: &Type) -> DFResult<PostgresType> {
+fn pg_type_to_remote_type(pg_type: &Type, default_numeric_scale: i8) -> DFResult<PostgresType> {
     match pg_type {
         &Type::INT2 => Ok(PostgresType::Int2),
         &Type::INT4 => Ok(PostgresType::Int4),
         &Type::INT8 => Ok(PostgresType::Int8),
         &Type::FLOAT4 => Ok(PostgresType::Float4),
         &Type::FLOAT8 => Ok(PostgresType::Float8),
+        &Type::NUMERIC => Ok(PostgresType::Numeric(default_numeric_scale)),
         &Type::OID => Ok(PostgresType::Oid),
         &Type::NAME => Ok(PostgresType::Name),
         &Type::VARCHAR => Ok(PostgresType::Varchar),
@@ -383,47 +371,10 @@ fn pg_type_to_remote_type(pg_type: &Type) -> DFResult<PostgresType> {
     }
 }
 
-async fn infer_pg_numeric_type(
-    row_stream: RowStream,
-    col_indexes: &[usize],
-) -> DFResult<Vec<PostgresType>> {
-    pin_mut!(row_stream);
-
-    let mut remote_type_map = BTreeMap::new();
-    while let Some(row) = row_stream.next().await {
-        let row = row.map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get row from stream: {e:?}"))
-        })?;
-        for col_idx in col_indexes {
-            if remote_type_map.contains_key(col_idx) {
-                continue;
-            }
-            let v: Option<rust_decimal::Decimal> = row.try_get(*col_idx).map_err(|e| {
-                DataFusionError::Execution(format!("Failed to get decimal value: {e:?}"))
-            })?;
-            if let Some(v) = v {
-                let scale = v.scale();
-                remote_type_map.insert(*col_idx, PostgresType::Numeric(scale as i8));
-            }
-        }
-        if remote_type_map.len() == col_indexes.len() {
-            break;
-        }
-    }
-
-    if remote_type_map.len() != col_indexes.len() {
-        let missing_cols = col_indexes
-            .iter()
-            .filter(|col_idx| !remote_type_map.contains_key(col_idx))
-            .collect::<Vec<_>>();
-        return Err(DataFusionError::Execution(format!(
-            "Failed to infer numeric type for col indexes: {missing_cols:?} as these columns have no non-null values",
-        )));
-    }
-    Ok(remote_type_map.into_values().collect())
-}
-
-fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
+fn build_remote_schema_for_table(
+    rows: Vec<Row>,
+    default_numeric_scale: i8,
+) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
     for row in rows {
         let columa_name = row.try_get::<_, String>(0).map_err(|e| {
@@ -442,7 +393,11 @@ fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
                 "Failed to get numeric scale from postgres row: {e:?}"
             ))
         })?;
-        let pg_type = parse_pg_type(&column_type, numeric_precision, numeric_scale)?;
+        let pg_type = parse_pg_type(
+            &column_type,
+            numeric_precision,
+            numeric_scale.unwrap_or(default_numeric_scale as i32),
+        )?;
         let is_nullable = row.try_get::<_, String>(4).map_err(|e| {
             DataFusionError::Execution(format!(
                 "Failed to get is_nullable from postgres row: {e:?}"
@@ -469,15 +424,10 @@ fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
 fn parse_pg_type(
     pg_type: &str,
     _numeric_precision: Option<i32>,
-    numeric_scale: Option<i32>,
+    numeric_scale: i32,
 ) -> DFResult<PostgresType> {
     if pg_type.starts_with("numeric") {
-        let Some(scale) = numeric_scale else {
-            return Err(DataFusionError::Execution(
-                "Failed to get numeric scale from postgres row".to_string(),
-            ));
-        };
-        return Ok(PostgresType::Numeric(scale as i8));
+        return Ok(PostgresType::Numeric(numeric_scale as i8));
     }
     match pg_type {
         "smallint" => Ok(PostgresType::Int2),
@@ -745,7 +695,7 @@ fn rows_to_batch(
                         just_return
                     );
                 }
-                DataType::Decimal128(_precision, _scale) => {
+                DataType::Decimal128(_precision, scale) => {
                     handle_primitive_type!(
                         builder,
                         field,
@@ -754,7 +704,25 @@ fn rows_to_batch(
                         rust_decimal::Decimal,
                         row,
                         idx,
-                        |v: rust_decimal::Decimal| { Ok::<_, DataFusionError>(v.mantissa()) }
+                        |v: rust_decimal::Decimal| {
+                            let num_scale = v.scale() as i32;
+                            let target_scale = *scale as i32;
+                            let v = if num_scale < target_scale {
+                                let power = target_scale - num_scale;
+                                let multiple = rust_decimal::Decimal::from_f32(10f32.powi(power))
+                                    .ok_or_else(|| {
+                                    DataFusionError::Execution(format!(
+                                        "Failed to create multiple decimal for 10^{power}"
+                                    ))
+                                })?;
+                                v.saturating_mul(multiple)
+                            } else if num_scale == target_scale {
+                                v
+                            } else {
+                                v.trunc_with_scale(target_scale as u32)
+                            };
+                            Ok::<_, DataFusionError>(v.mantissa())
+                        }
                     );
                 }
                 DataType::Utf8 => {

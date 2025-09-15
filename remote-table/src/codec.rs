@@ -446,6 +446,7 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     database: options.database.clone(),
                     pool_max_size: options.pool_max_size as u32,
                     stream_chunk_size: options.stream_chunk_size as u32,
+                    default_numeric_scale: options.default_numeric_scale as i32,
                 },
             )),
         },
@@ -515,6 +516,7 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 database: options.database,
                 pool_max_size: options.pool_max_size as usize,
                 stream_chunk_size: options.stream_chunk_size as usize,
+                default_numeric_scale: options.default_numeric_scale as i8,
             })
         }
         #[cfg(feature = "mysql")]

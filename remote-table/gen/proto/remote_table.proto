@@ -71,6 +71,7 @@ message PostgresConnectionOptions {
   optional string database = 5;
   uint32 pool_max_size = 6;
   uint32 stream_chunk_size = 7;
+  int32 default_numeric_scale = 8;
 }
 
 message MysqlConnectionOptions {

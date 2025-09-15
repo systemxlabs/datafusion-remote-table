@@ -174,16 +174,9 @@ INSERT INTO timestamp_test VALUES (
     NULL
 );
 
-CREATE TABLE numeric_type_inference (
-    numeric_col0 NUMERIC(10, 2),
-    numeric_col1 NUMERIC(11, 3)
+
+CREATE TABLE unconstrained_numeric (
+    numeric_col NUMERIC
 );
 
-INSERT INTO numeric_type_inference VALUES (NULL, NULL), (1.1, NULL), (NULL, 1.2);
-
-CREATE TABLE numeric_type_cannot_inference (
-    numeric_col0 NUMERIC(10, 2),
-    numeric_col1 NUMERIC(11, 3)
-);
-
-INSERT INTO numeric_type_cannot_inference VALUES (NULL, NULL), (1.1, NULL);
+INSERT INTO unconstrained_numeric VALUES (1.1), (12.12), (123.123), (12345678901.12345678901);

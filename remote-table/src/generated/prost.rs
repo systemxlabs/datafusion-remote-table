@@ -130,6 +130,8 @@ pub struct PostgresConnectionOptions {
     pub pool_max_size: u32,
     #[prost(uint32, tag = "7")]
     pub stream_chunk_size: u32,
+    #[prost(int32, tag = "8")]
+    pub default_numeric_scale: i32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MysqlConnectionOptions {

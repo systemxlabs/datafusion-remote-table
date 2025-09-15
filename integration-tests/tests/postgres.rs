@@ -11,15 +11,24 @@ use integration_tests::utils::{
 };
 use std::sync::Arc;
 
-#[rstest::rstest]
-#[case("SELECT * from supported_data_types".into())]
-#[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_postgres_types(#[case] source: RemoteSource) {
+pub async fn supported_postgres_types() {
     setup_postgres_db().await;
     assert_result(
         RemoteDbType::Postgres,
-        source,
+        "SELECT * FROM supported_data_types",
+        "SELECT * FROM remote_table",
+        r#"+--------------+-------------+------------+----------+------------+--------------+------------+-------------+------------+----------+-----------+------------+----------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+
+| smallint_col | integer_col | bigint_col | real_col | double_col | numeric_col  | char_col   | varchar_col | bpchar_col | text_col | bytea_col | date_col   | time_col | interval_col   | boolean_col | json_col          | jsonb_col         | geometry_col                                       | smallint_array_col | integer_array_col | bigint_array_col | real_array_col | double_array_col | char_array_col           | varchar_array_col    | bpchar_array_col   | text_array_col | bool_array_col | xml_col        | uuid_col                         |
++--------------+-------------+------------+----------+------------+--------------+------------+-------------+------------+----------+-----------+------------+----------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+
+| 1            | 2           | 3          | 1.1      | 2.2        | 3.3000000000 | char       | varchar     | bpchar     | text     | deadbeef  | 2023-10-01 | 12:34:56 | 3 mons 14 days | true        | {"key1":"value1"} | {"key2":"value2"} | 010100002038010000000000000000f03f000000000000f03f | [1, 2]             | [3, 4]            | [5, 6]           | [1.1, 2.2]     | [3.3, 4.4]       | [char0     , char1     ] | [varchar0, varchar1] | [bpchar0, bpchar1] | [text0, text1] | [true, false]  | <item>1</item> | a0eebc999c0b4ef8bb6d6bb9bd380a11 |
+|              |             |            |          |            |              |            |             |            |          |           |            |          |                |             |                   |                   |                                                    |                    |                   |                  |                |                  |                          |                      |                    |                |                |                |                                  |
++--------------+-------------+------------+----------+------------+--------------+------------+-------------+------------+----------+-----------+------------+----------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+"#,
+   ).await;
+
+    assert_result(
+        RemoteDbType::Postgres,
+        vec!["supported_data_types"],
         "SELECT * FROM remote_table",
         r#"+--------------+-------------+------------+----------+------------+-------------+------------+-------------+------------+----------+-----------+------------+----------+----------------+-------------+-------------------+-------------------+----------------------------------------------------+--------------------+-------------------+------------------+----------------+------------------+--------------------------+----------------------+--------------------+----------------+----------------+----------------+----------------------------------+
 | smallint_col | integer_col | bigint_col | real_col | double_col | numeric_col | char_col   | varchar_col | bpchar_col | text_col | bytea_col | date_col   | time_col | interval_col   | boolean_col | json_col          | jsonb_col         | geometry_col                                       | smallint_array_col | integer_array_col | bigint_array_col | real_array_col | double_array_col | char_array_col           | varchar_array_col    | bpchar_array_col   | text_array_col | bool_array_col | xml_col        | uuid_col                         |
@@ -253,27 +262,27 @@ async fn empty_projection() {
     assert_eq!(batch.num_rows(), 3);
 }
 
+#[rstest::rstest]
+#[case("SELECT * FROM unconstrained_numeric".into())]
+#[case(vec!["unconstrained_numeric"].into())]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn numeric_type_inference_for_query() {
+pub async fn unconstrained_numeric(#[case] source: RemoteSource) {
     setup_postgres_db().await;
+
     assert_result(
         RemoteDbType::Postgres,
-        "SELECT * FROM numeric_type_inference",
+        source,
         "SELECT * FROM remote_table",
-        r#"+--------------+--------------+
-| numeric_col0 | numeric_col1 |
-+--------------+--------------+
-|              |              |
-| 1.10         |              |
-|              | 1.200        |
-+--------------+--------------+"#,
+        r#"+------------------------+
+| numeric_col            |
++------------------------+
+| 1.1000000000           |
+| 12.1200000000          |
+| 123.1230000000         |
+| 12345678901.1234567890 |
++------------------------+"#,
     )
     .await;
-
-    let options = build_conn_options(RemoteDbType::Postgres);
-    let result = RemoteTable::try_new(options, "SELECT * FROM numeric_type_cannot_inference").await;
-    println!("result: {:#?}", result);
-    assert!(result.is_err());
 }
 
 #[tokio::test(flavor = "multi_thread")]
