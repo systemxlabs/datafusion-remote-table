@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct RemoteTableScanExec {
-    pub(crate) conn_options: ConnectionOptions,
+    pub(crate) conn_options: Arc<ConnectionOptions>,
     pub(crate) source: RemoteSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
@@ -36,7 +36,7 @@ pub struct RemoteTableScanExec {
 impl RemoteTableScanExec {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
-        conn_options: ConnectionOptions,
+        conn_options: Arc<ConnectionOptions>,
         source: RemoteSource,
         table_schema: SchemaRef,
         remote_schema: Option<RemoteSchemaRef>,
@@ -197,7 +197,7 @@ impl ExecutionPlan for RemoteTableScanExec {
 #[allow(clippy::too_many_arguments)]
 async fn build_and_transform_stream(
     conn: Arc<dyn Connection>,
-    conn_options: ConnectionOptions,
+    conn_options: Arc<ConnectionOptions>,
     source: RemoteSource,
     table_schema: SchemaRef,
     remote_schema: Option<RemoteSchemaRef>,

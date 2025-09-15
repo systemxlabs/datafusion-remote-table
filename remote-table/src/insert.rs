@@ -15,7 +15,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct RemoteTableInsertExec {
     pub(crate) input: Arc<dyn ExecutionPlan>,
-    pub(crate) conn_options: ConnectionOptions,
+    pub(crate) conn_options: Arc<ConnectionOptions>,
     pub(crate) unparser: Arc<dyn Unparse>,
     pub(crate) table: Vec<String>,
     pub(crate) remote_schema: RemoteSchemaRef,
@@ -26,7 +26,7 @@ pub struct RemoteTableInsertExec {
 impl RemoteTableInsertExec {
     pub fn new(
         input: Arc<dyn ExecutionPlan>,
-        conn_options: ConnectionOptions,
+        conn_options: Arc<ConnectionOptions>,
         unparser: Arc<dyn Unparse>,
         table: Vec<String>,
         remote_schema: RemoteSchemaRef,

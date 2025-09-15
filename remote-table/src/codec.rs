@@ -212,7 +212,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
                 let limit = proto.limit.map(|l| l as usize);
 
-                let conn_options = parse_connection_options(proto.conn_options.unwrap());
+                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
 
                 let now = std::time::Instant::now();
                 let conn = self
@@ -245,7 +245,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
                 let input = inputs[0].clone();
 
-                let conn_options = parse_connection_options(proto.conn_options.unwrap());
+                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
                 let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap()));
                 let table = proto.table.unwrap().idents;
 

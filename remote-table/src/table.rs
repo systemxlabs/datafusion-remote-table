@@ -84,7 +84,7 @@ impl From<Vec<&String>> for RemoteSource {
 
 #[derive(Debug)]
 pub struct RemoteTable {
-    pub(crate) conn_options: ConnectionOptions,
+    pub(crate) conn_options: Arc<ConnectionOptions>,
     pub(crate) source: RemoteSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) transformed_table_schema: SchemaRef,
@@ -238,7 +238,7 @@ impl RemoteTable {
         )?;
 
         Ok(RemoteTable {
-            conn_options,
+            conn_options: Arc::new(conn_options),
             source,
             table_schema,
             transformed_table_schema,
