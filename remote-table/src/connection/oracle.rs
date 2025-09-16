@@ -1,4 +1,5 @@
-use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
+use crate::connection::{RemoteDbType, just_return, projections_contains};
+use crate::utils::big_decimal_to_i128;
 use crate::{
     Connection, ConnectionOptions, DFResult, OracleType, Pool, RemoteField, RemoteSchema,
     RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
@@ -357,11 +358,7 @@ fn rows_to_batch(
                                     "Failed to parse BigDecimal from {v:?}: {e:?}",
                                 ))
                             })?;
-                            big_decimal_to_i128(&decimal, Some(*scale as i32)).ok_or_else(|| {
-                                DataFusionError::Execution(format!(
-                                    "Failed to convert BigDecimal to i128 for {decimal:?}",
-                                ))
-                            })
+                            big_decimal_to_i128(&decimal, Some(*scale as i32))
                         }
                     );
                 }

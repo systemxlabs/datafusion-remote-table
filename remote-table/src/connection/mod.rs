@@ -391,19 +391,6 @@ pub(crate) fn projections_contains(projection: Option<&Vec<usize>>, col_idx: usi
     }
 }
 
-#[cfg(any(feature = "mysql", feature = "oracle"))]
-fn big_decimal_to_i128(decimal: &bigdecimal::BigDecimal, scale: Option<i32>) -> Option<i128> {
-    use bigdecimal::{FromPrimitive, ToPrimitive};
-    let scale = scale.unwrap_or_else(|| {
-        decimal
-            .fractional_digit_count()
-            .try_into()
-            .unwrap_or_default()
-    });
-    let scale_decimal = bigdecimal::BigDecimal::from_f32(10f32.powi(scale))?;
-    (decimal * scale_decimal).to_i128()
-}
-
 #[allow(unused)]
 fn just_return<T>(v: T) -> DFResult<T> {
     Ok(v)
@@ -412,4 +399,9 @@ fn just_return<T>(v: T) -> DFResult<T> {
 #[allow(unused)]
 fn just_deref<T: Copy>(t: &T) -> DFResult<T> {
     Ok(*t)
+}
+
+#[test]
+fn tst_f32() {
+    println!("{}", 10f32.powi(40));
 }

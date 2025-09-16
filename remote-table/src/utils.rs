@@ -1,13 +1,16 @@
 use crate::{ConnectionOptions, DFResult, RemoteSource, RemoteTable};
+use bigdecimal::BigDecimal;
+use bigdecimal::ToPrimitive;
 use datafusion::arrow::array::{
     Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch,
 };
 use datafusion::arrow::datatypes::{
     ArrowPrimitiveType, BinaryType, BooleanType, ByteArrayType, LargeBinaryType, LargeUtf8Type,
-    Utf8Type,
+    Utf8Type, i256,
 };
 use datafusion::error::DataFusionError;
 use datafusion::prelude::SessionContext;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub async fn remote_collect(
@@ -128,9 +131,61 @@ pub fn extract_byte_array<T: ByteArrayType>(
     Ok(result)
 }
 
+pub fn gen_tenfold_scaling_factor(scale: i32) -> String {
+    if scale >= 0 {
+        format!("1{}", "0".repeat(scale as usize))
+    } else {
+        format!("0.{}{}", "0".repeat((-scale - 1) as usize), "1")
+    }
+}
+
+pub fn big_decimal_to_i128(decimal: &BigDecimal, scale: Option<i32>) -> DFResult<i128> {
+    let scale = scale.unwrap_or_else(|| {
+        decimal
+            .fractional_digit_count()
+            .try_into()
+            .unwrap_or_default()
+    });
+    let scale_str = gen_tenfold_scaling_factor(scale);
+    let scale_decimal = BigDecimal::from_str(&scale_str).map_err(|e| {
+        DataFusionError::Execution(format!(
+            "Failed to parse str {scale_str} to BigDecimal: {e:?}",
+        ))
+    })?;
+    (decimal * scale_decimal).to_i128().ok_or_else(|| {
+        DataFusionError::Execution(format!(
+            "Failed to convert BigDecimal to i128 for {decimal:?}",
+        ))
+    })
+}
+
+pub fn big_decimal_to_i256(decimal: &BigDecimal, scale: Option<i32>) -> DFResult<i256> {
+    let scale = scale.unwrap_or_else(|| {
+        decimal
+            .fractional_digit_count()
+            .try_into()
+            .unwrap_or_default()
+    });
+    let scale_str = gen_tenfold_scaling_factor(scale);
+    let scale_decimal = BigDecimal::from_str(&scale_str).map_err(|e| {
+        DataFusionError::Execution(format!(
+            "Failed to parse str {scale_str} to BigDecimal: {e:?}",
+        ))
+    })?;
+    let scaled_decimal = decimal * scale_decimal;
+
+    // remove the fractional part, only keep the integer part
+    let integer_part = scaled_decimal.with_scale(0);
+
+    // Convert to string and then parse as i256
+    integer_part.to_string().parse::<i256>().map_err(|e| {
+        DataFusionError::Execution(format!("Failed to parse str {integer_part} to i256: {e:?}",))
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{extract_boolean_array, extract_byte_array, extract_primitive_array};
+    use super::*;
     use datafusion::arrow::array::{BooleanArray, Int32Array, RecordBatch, StringArray};
     use datafusion::arrow::datatypes::{DataType, Field, Int32Type, Schema, Utf8Type};
     use std::sync::Arc;
@@ -175,5 +230,14 @@ mod tests {
         ];
         let result: Vec<Option<&str>> = extract_byte_array::<Utf8Type>(&batches, 0).unwrap();
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_gen_tenfold_scaling_factor() {
+        assert_eq!(gen_tenfold_scaling_factor(0), "1");
+        assert_eq!(gen_tenfold_scaling_factor(1), "10");
+        assert_eq!(gen_tenfold_scaling_factor(2), "100");
+        assert_eq!(gen_tenfold_scaling_factor(-1), "0.1");
+        assert_eq!(gen_tenfold_scaling_factor(-2), "0.01");
     }
 }

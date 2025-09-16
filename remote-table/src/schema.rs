@@ -89,7 +89,7 @@ impl PostgresType {
             PostgresType::Int8 => DataType::Int64,
             PostgresType::Float4 => DataType::Float32,
             PostgresType::Float8 => DataType::Float64,
-            PostgresType::Numeric(scale) => DataType::Decimal128(38, *scale),
+            PostgresType::Numeric(scale) => DataType::Decimal256((76i8 - *scale) as u8, *scale),
             PostgresType::Oid => DataType::UInt32,
             PostgresType::Name
             | PostgresType::Text

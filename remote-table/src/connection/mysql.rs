@@ -1,4 +1,5 @@
-use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
+use crate::connection::{RemoteDbType, just_return, projections_contains};
+use crate::utils::big_decimal_to_i128;
 use crate::{
     Connection, ConnectionOptions, DFResult, MysqlType, Pool, RemoteField, RemoteSchema,
     RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
@@ -474,13 +475,7 @@ fn rows_to_batch(
                         BigDecimal,
                         row,
                         idx,
-                        |v: BigDecimal| {
-                            big_decimal_to_i128(&v, Some(*scale as i32)).ok_or_else(|| {
-                                DataFusionError::Execution(format!(
-                                    "Failed to convert BigDecimal {v:?} to i128"
-                                ))
-                            })
-                        }
+                        |v: BigDecimal| { big_decimal_to_i128(&v, Some(*scale as i32)) }
                     );
                 }
                 DataType::Decimal256(_precision, _scale) => {

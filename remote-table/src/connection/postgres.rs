@@ -1,4 +1,5 @@
-use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
+use crate::connection::{RemoteDbType, just_return, projections_contains};
+use crate::utils::{big_decimal_to_i128, big_decimal_to_i256};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
     RemoteSchemaRef, RemoteSource, RemoteType, Unparse, unparse_array,
@@ -11,13 +12,14 @@ use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
-    FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int16Builder, Int32Builder,
-    Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder, RecordBatch,
-    RecordBatchOptions, StringBuilder, Time64MicrosecondBuilder, Time64NanosecondBuilder,
-    TimestampMicrosecondBuilder, TimestampNanosecondBuilder, UInt32Builder, make_builder,
+    Decimal256Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int16Builder,
+    Int32Builder, Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder,
+    RecordBatch, RecordBatchOptions, StringBuilder, Time64MicrosecondBuilder,
+    Time64NanosecondBuilder, TimestampMicrosecondBuilder, TimestampNanosecondBuilder,
+    UInt32Builder, make_builder,
 };
 use datafusion::arrow::datatypes::{
-    DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit,
+    DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit, i256,
 };
 
 use datafusion::common::project_schema;
@@ -544,8 +546,12 @@ struct BigDecimalFromSql {
 }
 
 impl BigDecimalFromSql {
-    fn to_decimal_128_with_scale(&self, scale: i32) -> Option<i128> {
+    fn to_i128_with_scale(&self, scale: i32) -> DFResult<i128> {
         big_decimal_to_i128(&self.inner, Some(scale))
+    }
+
+    fn to_i256_with_scale(&self, scale: i32) -> DFResult<i256> {
+        big_decimal_to_i256(&self.inner, Some(scale))
     }
 }
 
@@ -786,15 +792,19 @@ fn rows_to_batch(
                         BigDecimalFromSql,
                         row,
                         idx,
-                        |v: BigDecimalFromSql| {
-                            let v =
-                                v.to_decimal_128_with_scale(*scale as i32).ok_or_else(|| {
-                                    DataFusionError::Execution(format!(
-                                        "Failed to convert BigDecimal to i128 for {v:?}"
-                                    ))
-                                })?;
-                            Ok::<_, DataFusionError>(v)
-                        }
+                        |v: BigDecimalFromSql| { v.to_i128_with_scale(*scale as i32) }
+                    );
+                }
+                DataType::Decimal256(_precision, scale) => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        Decimal256Builder,
+                        BigDecimalFromSql,
+                        row,
+                        idx,
+                        |v: BigDecimalFromSql| { v.to_i256_with_scale(*scale as i32) }
                     );
                 }
                 DataType::Utf8 => {
