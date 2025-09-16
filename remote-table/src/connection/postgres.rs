@@ -19,7 +19,8 @@ use datafusion::arrow::array::{
     UInt32Builder, make_builder,
 };
 use datafusion::arrow::datatypes::{
-    DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit, i256,
+    DECIMAL256_MAX_PRECISION, DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit,
+    SchemaRef, TimeUnit, i256,
 };
 
 use datafusion::common::project_schema;
@@ -339,7 +340,10 @@ fn pg_type_to_remote_type(pg_type: &Type, default_numeric_scale: i8) -> DFResult
         &Type::INT8 => Ok(PostgresType::Int8),
         &Type::FLOAT4 => Ok(PostgresType::Float4),
         &Type::FLOAT8 => Ok(PostgresType::Float8),
-        &Type::NUMERIC => Ok(PostgresType::Numeric(default_numeric_scale)),
+        &Type::NUMERIC => Ok(PostgresType::Numeric(
+            DECIMAL256_MAX_PRECISION,
+            default_numeric_scale,
+        )),
         &Type::OID => Ok(PostgresType::Oid),
         &Type::NAME => Ok(PostgresType::Name),
         &Type::VARCHAR => Ok(PostgresType::Varchar),
@@ -425,7 +429,7 @@ fn build_remote_schema_for_table(
 
 fn parse_pg_type(
     pg_type: &str,
-    _numeric_precision: Option<i32>,
+    numeric_precision: Option<i32>,
     numeric_scale: i32,
 ) -> DFResult<PostgresType> {
     match pg_type {
@@ -434,7 +438,10 @@ fn parse_pg_type(
         "bigint" => Ok(PostgresType::Int8),
         "real" => Ok(PostgresType::Float4),
         "double precision" => Ok(PostgresType::Float8),
-        "numeric" => Ok(PostgresType::Numeric(numeric_scale as i8)),
+        "numeric" => Ok(PostgresType::Numeric(
+            numeric_precision.unwrap_or(DECIMAL256_MAX_PRECISION as i32) as u8,
+            numeric_scale as i8,
+        )),
         "character varying" => Ok(PostgresType::Varchar),
         "character" => Ok(PostgresType::Bpchar),
         "text" => Ok(PostgresType::Text),

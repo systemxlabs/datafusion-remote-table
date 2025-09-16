@@ -234,7 +234,8 @@ message PostgresInt8 {}
 message PostgresFloat4 {}
 message PostgresFloat8 {}
 message PostgresNumeric {
-  int32 scale = 1;
+  uint32 precision = 1;
+  int32 scale = 2;
 }
 message PostgresName {}
 message PostgresVarchar {}

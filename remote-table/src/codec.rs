@@ -622,9 +622,10 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
                 protobuf::PostgresFloat8 {},
             )),
         },
-        RemoteType::Postgres(PostgresType::Numeric(scale)) => protobuf::RemoteType {
+        RemoteType::Postgres(PostgresType::Numeric(precision, scale)) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresNumeric(
                 protobuf::PostgresNumeric {
+                    precision: *precision as u32,
                     scale: *scale as i32,
                 },
             )),
@@ -1135,9 +1136,9 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
         protobuf::remote_type::Type::PostgresFloat8(_) => {
             RemoteType::Postgres(PostgresType::Float8)
         }
-        protobuf::remote_type::Type::PostgresNumeric(numeric) => {
-            RemoteType::Postgres(PostgresType::Numeric(numeric.scale as i8))
-        }
+        protobuf::remote_type::Type::PostgresNumeric(numeric) => RemoteType::Postgres(
+            PostgresType::Numeric(numeric.precision as u8, numeric.scale as i8),
+        ),
         protobuf::remote_type::Type::PostgresName(_) => RemoteType::Postgres(PostgresType::Name),
         protobuf::remote_type::Type::PostgresVarchar(_) => {
             RemoteType::Postgres(PostgresType::Varchar)

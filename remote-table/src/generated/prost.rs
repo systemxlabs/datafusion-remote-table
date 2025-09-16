@@ -436,7 +436,9 @@ pub struct PostgresFloat4 {}
 pub struct PostgresFloat8 {}
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PostgresNumeric {
-    #[prost(int32, tag = "1")]
+    #[prost(uint32, tag = "1")]
+    pub precision: u32,
+    #[prost(int32, tag = "2")]
     pub scale: i32,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
