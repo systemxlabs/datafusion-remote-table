@@ -1,4 +1,4 @@
-use crate::connection::{RemoteDbType, just_return, projections_contains};
+use crate::connection::{RemoteDbType, big_decimal_to_i128, just_return, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
     RemoteSchemaRef, RemoteSource, RemoteType, Unparse, unparse_array,
@@ -6,7 +6,7 @@ use crate::{
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
 use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
-use bigdecimal::FromPrimitive;
+use bigdecimal::BigDecimal;
 use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
@@ -28,6 +28,7 @@ use derive_getters::Getters;
 use derive_with::With;
 use futures::StreamExt;
 use log::debug;
+use num_bigint::{BigInt, Sign};
 use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
@@ -537,6 +538,90 @@ macro_rules! handle_primitive_array_type {
     }};
 }
 
+#[derive(Debug)]
+struct BigDecimalFromSql {
+    inner: BigDecimal,
+}
+
+impl BigDecimalFromSql {
+    fn to_decimal_128_with_scale(&self, scale: i32) -> Option<i128> {
+        big_decimal_to_i128(&self.inner, Some(scale))
+    }
+}
+
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_possible_truncation)]
+impl<'a> FromSql<'a> for BigDecimalFromSql {
+    fn from_sql(
+        _ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        let raw_u16: Vec<u16> = raw
+            .chunks(2)
+            .map(|chunk| {
+                if chunk.len() == 2 {
+                    u16::from_be_bytes([chunk[0], chunk[1]])
+                } else {
+                    u16::from_be_bytes([chunk[0], 0])
+                }
+            })
+            .collect();
+
+        let base_10_000_digit_count = raw_u16[0];
+        let weight = raw_u16[1] as i16;
+        let sign = raw_u16[2];
+        let scale = raw_u16[3];
+
+        let mut base_10_000_digits = Vec::new();
+        for i in 4..4 + base_10_000_digit_count {
+            base_10_000_digits.push(raw_u16[i as usize]);
+        }
+
+        let mut u8_digits = Vec::new();
+        for &base_10_000_digit in base_10_000_digits.iter().rev() {
+            let mut base_10_000_digit = base_10_000_digit;
+            let mut temp_result = Vec::new();
+            while base_10_000_digit > 0 {
+                temp_result.push((base_10_000_digit % 10) as u8);
+                base_10_000_digit /= 10;
+            }
+            while temp_result.len() < 4 {
+                temp_result.push(0);
+            }
+            u8_digits.extend(temp_result);
+        }
+        u8_digits.reverse();
+
+        let value_scale = 4 * (i64::from(base_10_000_digit_count) - i64::from(weight) - 1);
+        let size = i64::try_from(u8_digits.len())? + i64::from(scale) - value_scale;
+        u8_digits.resize(size as usize, 0);
+
+        let sign = match sign {
+            0x4000 => Sign::Minus,
+            0x0000 => Sign::Plus,
+            _ => {
+                return Err(Box::new(DataFusionError::Execution(
+                    "Failed to parse big decimal from postgres numeric value".to_string(),
+                )));
+            }
+        };
+
+        let Some(digits) = BigInt::from_radix_be(sign, u8_digits.as_slice(), 10) else {
+            return Err(Box::new(DataFusionError::Execution(
+                "Failed to parse big decimal from postgres numeric value".to_string(),
+            )));
+        };
+        Ok(BigDecimalFromSql {
+            inner: BigDecimal::new(digits, i64::from(scale)),
+        })
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        matches!(*ty, Type::NUMERIC)
+    }
+}
+
 // interval_send - Postgres C (https://github.com/postgres/postgres/blob/master/src/backend/utils/adt/timestamp.c#L1032)
 // interval values are internally stored as three integral fields: months, days, and microseconds
 #[derive(Debug)]
@@ -698,27 +783,17 @@ fn rows_to_batch(
                         field,
                         col,
                         Decimal128Builder,
-                        rust_decimal::Decimal,
+                        BigDecimalFromSql,
                         row,
                         idx,
-                        |v: rust_decimal::Decimal| {
-                            let num_scale = v.scale() as i32;
-                            let target_scale = *scale as i32;
-                            let v = if num_scale < target_scale {
-                                let power = target_scale - num_scale;
-                                let multiple = rust_decimal::Decimal::from_f32(10f32.powi(power))
-                                    .ok_or_else(|| {
+                        |v: BigDecimalFromSql| {
+                            let v =
+                                v.to_decimal_128_with_scale(*scale as i32).ok_or_else(|| {
                                     DataFusionError::Execution(format!(
-                                        "Failed to create multiple decimal for 10^{power}"
+                                        "Failed to convert BigDecimal to i128 for {v:?}"
                                     ))
                                 })?;
-                                v.saturating_mul(multiple)
-                            } else if num_scale == target_scale {
-                                v
-                            } else {
-                                v.trunc_with_scale(target_scale as u32)
-                            };
-                            Ok::<_, DataFusionError>(v.mantissa())
+                            Ok::<_, DataFusionError>(v)
                         }
                     );
                 }
