@@ -95,8 +95,18 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         RemoteDbType::Oracle,
         source,
         r#"select * from remote_table where "ID" = 1"#,
-        vec!["CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: source=query\n", 
-        "CoalesceBatchesExec: target_batch_size=8192\n  FilterExec: ID@0 = Some(1),38,0\n    RemoteTableExec: source=SYS.simple_table\n"],
+        vec![
+            r#"CoalesceBatchesExec: target_batch_size=8192
+  FilterExec: ID@0 = Some(1),38,0
+    CooperativeExec
+      RemoteTableExec: source=query
+"#,
+            r#"CoalesceBatchesExec: target_batch_size=8192
+  FilterExec: ID@0 = Some(1),38,0
+    CooperativeExec
+      RemoteTableExec: source=SYS.simple_table
+"#,
+        ],
         r#"+----+------+
 | ID | NAME |
 +----+------+
@@ -139,7 +149,8 @@ async fn count1_agg(#[case] source: RemoteSource) {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: source=query, projection=[ID]
+                CooperativeExec
+                  RemoteTableExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
@@ -149,7 +160,8 @@ async fn count1_agg(#[case] source: RemoteSource) {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+                CooperativeExec
+                  RemoteTableExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
@@ -173,7 +185,8 @@ async fn count1_agg(#[case] source: RemoteSource) {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192, fetch=1
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: source=query, projection=[ID]
+                CooperativeExec
+                  RemoteTableExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
@@ -183,7 +196,8 @@ async fn count1_agg(#[case] source: RemoteSource) {
           ProjectionExec: expr=[]
             CoalesceBatchesExec: target_batch_size=8192, fetch=1
               FilterExec: ID@0 > Some(1),38,0
-                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+                CooperativeExec
+                  RemoteTableExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
