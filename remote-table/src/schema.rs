@@ -1,5 +1,5 @@
 use datafusion::arrow::datatypes::{
-    DECIMAL128_MAX_PRECISION, DataType, Field, IntervalUnit, Schema, TimeUnit,
+    DECIMAL128_MAX_PRECISION, DataType, Field, Fields, IntervalUnit, Schema, TimeUnit,
 };
 use std::sync::Arc;
 
@@ -250,6 +250,7 @@ pub enum OracleType {
     Date,
     Timestamp,
     Boolean,
+    SdeGeometry,
 }
 
 impl OracleType {
@@ -272,6 +273,11 @@ impl OracleType {
             OracleType::Date => DataType::Timestamp(TimeUnit::Second, None),
             OracleType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, None),
             OracleType::Boolean => DataType::Boolean,
+            OracleType::SdeGeometry => DataType::Struct(Fields::from(vec![Field::new(
+                "srid",
+                DataType::Int64,
+                true,
+            )])),
         }
     }
 }

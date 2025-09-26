@@ -8,8 +8,8 @@ use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
     ArrayRef, BinaryBuilder, BooleanBuilder, Date64Builder, Decimal128Builder, Float32Builder,
     Float64Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder,
-    LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, TimestampNanosecondBuilder,
-    TimestampSecondBuilder, make_builder,
+    LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StructBuilder,
+    TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
 };
 use datafusion::arrow::datatypes::{DataType, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
@@ -195,6 +195,15 @@ fn oracle_type_to_remote_type(oracle_type: &ColumnType) -> DFResult<OracleType> 
         ColumnType::Date => Ok(OracleType::Date),
         ColumnType::Timestamp(_) => Ok(OracleType::Timestamp),
         ColumnType::Boolean => Ok(OracleType::Boolean),
+        ColumnType::Object(obj_type) => {
+            if obj_type.schema() == "SDE" && obj_type.name() == "ST_GEOMETRY" {
+                Ok(OracleType::SdeGeometry)
+            } else {
+                Err(DataFusionError::NotImplemented(format!(
+                    "Unsupported oracle object type: {obj_type:?}",
+                )))
+            }
+        }
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported oracle type: {oracle_type:?}",
         ))),
@@ -444,6 +453,16 @@ fn rows_to_batch(
                         idx,
                         just_return
                     );
+                }
+                DataType::Struct(_) => {
+                    let builder = builder
+                        .as_any_mut()
+                        .downcast_mut::<StructBuilder>()
+                        .unwrap_or_else(|| {
+                            panic!("Failed to downcast builder to StructBuilder for {field:?} and {col:?}")
+                        });
+                    // TODO handle sde geometry
+                    builder.append_null();
                 }
                 _ => {
                     return Err(DataFusionError::NotImplemented(format!(
