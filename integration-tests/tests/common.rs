@@ -1,7 +1,7 @@
 use datafusion::arrow::array::{
     Array, ArrayRef, BinaryArray, Float64Array, Int64Array, NullArray, StringArray,
 };
-use datafusion::arrow::datatypes::{DataType, Field};
+use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
 use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::error::DataFusionError;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
@@ -140,7 +140,7 @@ impl Transform for MyTransform {
         &self,
         array: &NullArray,
         args: TransformArgs,
-    ) -> Result<(ArrayRef, Field), DataFusionError> {
+    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
         let mut data = Vec::with_capacity(array.len());
         for _ in 0..array.len() {
             data.push(format!(
@@ -152,11 +152,11 @@ impl Transform for MyTransform {
         }
         Ok((
             Arc::new(StringArray::from(data)),
-            Field::new(
+            Arc::new(Field::new(
                 format!("transformed_null-{}", args.field.name()),
                 DataType::Utf8,
                 false,
-            ),
+            )),
         ))
     }
 
@@ -164,7 +164,7 @@ impl Transform for MyTransform {
         &self,
         array: &Int64Array,
         args: TransformArgs,
-    ) -> Result<(ArrayRef, Field), DataFusionError> {
+    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
         let mut data = Vec::with_capacity(array.len());
         for row in array.iter() {
             data.push(format!(
@@ -176,11 +176,11 @@ impl Transform for MyTransform {
         }
         Ok((
             Arc::new(StringArray::from(data)),
-            Field::new(
+            Arc::new(Field::new(
                 format!("transformed_int64-{}", args.field.name()),
                 DataType::Utf8,
                 false,
-            ),
+            )),
         ))
     }
 
@@ -188,7 +188,7 @@ impl Transform for MyTransform {
         &self,
         array: &Float64Array,
         args: TransformArgs,
-    ) -> Result<(ArrayRef, Field), DataFusionError> {
+    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
         let mut data = Vec::with_capacity(array.len());
         for row in array.iter() {
             data.push(format!(
@@ -200,11 +200,11 @@ impl Transform for MyTransform {
         }
         Ok((
             Arc::new(StringArray::from(data)),
-            Field::new(
+            Arc::new(Field::new(
                 format!("transformed_float64-{}", args.field.name()),
                 DataType::Utf8,
                 false,
-            ),
+            )),
         ))
     }
 
@@ -212,7 +212,7 @@ impl Transform for MyTransform {
         &self,
         array: &StringArray,
         args: TransformArgs,
-    ) -> Result<(ArrayRef, Field), DataFusionError> {
+    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
         let mut data = Vec::with_capacity(array.len());
         for row in array.iter() {
             data.push(format!(
@@ -224,11 +224,11 @@ impl Transform for MyTransform {
         }
         Ok((
             Arc::new(StringArray::from(data)),
-            Field::new(
+            Arc::new(Field::new(
                 format!("transformed_utf8-{}", args.field.name()),
                 DataType::Utf8,
                 false,
-            ),
+            )),
         ))
     }
 
@@ -236,7 +236,7 @@ impl Transform for MyTransform {
         &self,
         array: &BinaryArray,
         args: TransformArgs,
-    ) -> Result<(ArrayRef, Field), DataFusionError> {
+    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
         let mut data = Vec::with_capacity(array.len());
         for row in array.iter() {
             data.push(format!(
@@ -248,11 +248,11 @@ impl Transform for MyTransform {
         }
         Ok((
             Arc::new(StringArray::from(data)),
-            Field::new(
+            Arc::new(Field::new(
                 format!("transformed_binary-{}", args.field.name()),
                 DataType::Utf8,
                 false,
-            ),
+            )),
         ))
     }
 }
