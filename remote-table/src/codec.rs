@@ -780,6 +780,11 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
                 protobuf::OracleNClob {},
             )),
         },
+        RemoteType::Oracle(OracleType::SdeGeometry) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::OracleSdeGeometry(
+                protobuf::OracleSdeGeometry {},
+            )),
+        },
         RemoteType::Sqlite(SqliteType::Null) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::SqliteNull(
                 protobuf::SqliteNull {},
@@ -1066,6 +1071,9 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
         protobuf::remote_type::Type::OracleLong(_) => RemoteType::Oracle(OracleType::Long),
         protobuf::remote_type::Type::OracleClob(_) => RemoteType::Oracle(OracleType::Clob),
         protobuf::remote_type::Type::OracleNclob(_) => RemoteType::Oracle(OracleType::NClob),
+        protobuf::remote_type::Type::OracleSdeGeometry(_) => {
+            RemoteType::Oracle(OracleType::SdeGeometry)
+        }
         protobuf::remote_type::Type::SqliteNull(_) => RemoteType::Sqlite(SqliteType::Null),
         protobuf::remote_type::Type::SqliteInteger(_) => RemoteType::Sqlite(SqliteType::Integer),
         protobuf::remote_type::Type::SqliteReal(_) => RemoteType::Sqlite(SqliteType::Real),

@@ -164,6 +164,7 @@ message RemoteType {
     OracleLong oracle_long = 215;
     OracleClob oracle_clob = 216;
     OracleNClob oracle_nclob = 217;
+    OracleSdeGeometry oracle_sde_geometry = 218;
     SqliteNull sqlite_null = 301;
     SqliteInteger sqlite_integer = 302;
     SqliteReal sqlite_real = 303;
@@ -294,6 +295,7 @@ message OracleLongRaw {}
 message OracleLong {}
 message OracleClob {}
 message OracleNClob {}
+message OracleSdeGeometry {}
 
 
 message SqliteNull {}
