@@ -5,10 +5,10 @@ use datafusion::arrow::array::{
     Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
     IntervalDayTimeArray, IntervalMonthDayNanoArray, IntervalYearMonthArray, LargeBinaryArray,
     LargeListArray, LargeListViewArray, LargeStringArray, ListArray, ListViewArray, NullArray,
-    RecordBatch, RecordBatchOptions, StringArray, StringViewArray, Time32MillisecondArray,
-    Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
-    UInt16Array, UInt32Array, UInt64Array,
+    RecordBatch, RecordBatchOptions, StringArray, StringViewArray, StructArray,
+    Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+    TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use datafusion::arrow::datatypes::{DataType, Field, IntervalUnit, Schema, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
@@ -344,6 +344,14 @@ pub trait Transform: Debug + Send + Sync {
     fn transform_decimal256(
         &self,
         array: &Decimal256Array,
+        args: TransformArgs,
+    ) -> DFResult<(ArrayRef, Field)> {
+        Ok((Arc::new(array.clone()), args.field.clone()))
+    }
+
+    fn transform_struct(
+        &self,
+        array: &StructArray,
         args: TransformArgs,
     ) -> DFResult<(ArrayRef, Field)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
@@ -727,6 +735,9 @@ pub(crate) fn transform_batch(
                     transform_decimal256,
                     args
                 )
+            }
+            DataType::Struct(_fields) => {
+                handle_transform!(batch, idx, StructArray, transform, transform_struct, args)
             }
             data_type => {
                 return Err(DataFusionError::NotImplemented(format!(
