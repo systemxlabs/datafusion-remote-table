@@ -1,16 +1,6 @@
 use crate::{DFResult, RemoteField, RemoteSchemaRef};
-use datafusion::arrow::array::{
-    Array, ArrayRef, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Date64Array,
-    Decimal128Array, Decimal256Array, FixedSizeBinaryArray, FixedSizeListArray, Float16Array,
-    Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
-    IntervalDayTimeArray, IntervalMonthDayNanoArray, IntervalYearMonthArray, LargeBinaryArray,
-    LargeListArray, LargeListViewArray, LargeStringArray, ListArray, ListViewArray, NullArray,
-    RecordBatch, RecordBatchOptions, StringArray, StringViewArray, Time32MillisecondArray,
-    Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
-    UInt16Array, UInt32Array, UInt64Array,
-};
-use datafusion::arrow::datatypes::{DataType, Field, IntervalUnit, Schema, SchemaRef, TimeUnit};
+use datafusion::arrow::array::*;
+use datafusion::arrow::datatypes::{DataType, FieldRef, IntervalUnit, Schema, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::{RecordBatchStream, SendableRecordBatchStream};
 use futures::{Stream, StreamExt};
@@ -22,7 +12,7 @@ use std::task::{Context, Poll};
 
 pub struct TransformArgs<'a> {
     pub col_index: usize,
-    pub field: &'a Field,
+    pub field: &'a FieldRef,
     pub remote_field: Option<&'a RemoteField>,
 }
 
@@ -33,7 +23,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &NullArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -41,7 +31,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &BooleanArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -49,7 +39,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Int8Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -57,7 +47,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Int16Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -65,7 +55,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Int32Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -73,7 +63,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Int64Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -81,7 +71,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &UInt8Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -89,7 +79,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &UInt16Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -97,7 +87,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &UInt32Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -105,7 +95,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &UInt64Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -113,7 +103,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Float16Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -121,7 +111,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Float32Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -129,7 +119,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Float64Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -137,7 +127,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &BinaryArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -145,7 +135,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &FixedSizeBinaryArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -153,7 +143,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &LargeBinaryArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -161,7 +151,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &BinaryViewArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -169,7 +159,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &StringArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -177,7 +167,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &LargeStringArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -185,7 +175,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &StringViewArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -193,7 +183,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &TimestampSecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -201,7 +191,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &TimestampMillisecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -209,7 +199,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &TimestampMicrosecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -217,7 +207,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &TimestampNanosecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -225,7 +215,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Date32Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -233,7 +223,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Date64Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -241,7 +231,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Time32SecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -249,7 +239,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Time32MillisecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -257,7 +247,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Time64MicrosecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -265,7 +255,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Time64NanosecondArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -273,7 +263,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &IntervalYearMonthArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -281,7 +271,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &IntervalDayTimeArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -289,7 +279,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &IntervalMonthDayNanoArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -297,7 +287,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &ListArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -305,7 +295,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &ListViewArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -313,7 +303,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &FixedSizeListArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -321,7 +311,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &LargeListArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -329,7 +319,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &LargeListViewArray,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -337,7 +327,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Decimal128Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 
@@ -345,7 +335,7 @@ pub trait Transform: Debug + Send + Sync {
         &self,
         array: &Decimal256Array,
         args: TransformArgs,
-    ) -> DFResult<(ArrayRef, Field)> {
+    ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
 }
@@ -436,12 +426,12 @@ pub(crate) fn transform_batch(
     remote_schema: Option<&RemoteSchemaRef>,
 ) -> DFResult<RecordBatch> {
     let mut new_arrays: Vec<ArrayRef> = Vec::with_capacity(batch.schema().fields.len());
-    let mut new_fields: Vec<Field> = Vec::with_capacity(batch.schema().fields.len());
+    let mut new_fields: Vec<FieldRef> = Vec::with_capacity(batch.schema().fields.len());
     let all_col_indexes = (0..table_schema.fields.len()).collect::<Vec<usize>>();
     let projected_col_indexes = projection.unwrap_or(&all_col_indexes);
 
     for (idx, col_index) in projected_col_indexes.iter().enumerate() {
-        let field = table_schema.field(*col_index);
+        let field = unsafe { table_schema.fields.get_unchecked(*col_index) };
         let remote_field = remote_schema.map(|schema| &schema.fields[*col_index]);
         let args = TransformArgs {
             col_index: *col_index,
