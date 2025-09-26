@@ -1,7 +1,7 @@
 use datafusion::arrow::datatypes::{
-    DECIMAL128_MAX_PRECISION, DataType, Field, IntervalUnit, Schema, TimeUnit,
+    DECIMAL128_MAX_PRECISION, DataType, Field, FieldRef, Fields, IntervalUnit, Schema, TimeUnit,
 };
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::RemoteDbType;
 
@@ -250,6 +250,7 @@ pub enum OracleType {
     Date,
     Timestamp,
     Boolean,
+    SdeGeometry,
 }
 
 impl OracleType {
@@ -272,6 +273,53 @@ impl OracleType {
             OracleType::Date => DataType::Timestamp(TimeUnit::Second, None),
             OracleType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, None),
             OracleType::Boolean => DataType::Boolean,
+            OracleType::SdeGeometry => {
+                static ENTITY: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("ENTITY", DataType::Int64, true)));
+                static NUMPTS: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("NUMPTS", DataType::Int64, true)));
+                static MINX: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MINX", DataType::Float64, true)));
+                static MINY: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MINY", DataType::Float64, true)));
+                static MAXX: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MAXX", DataType::Float64, true)));
+                static MAXY: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MAXY", DataType::Float64, true)));
+                static MINZ: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MINZ", DataType::Float64, true)));
+                static MAXZ: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MAXZ", DataType::Float64, true)));
+                static MINM: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MINM", DataType::Float64, true)));
+                static MAXM: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("MAXM", DataType::Float64, true)));
+                static AREA: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("AREA", DataType::Float64, true)));
+                static LEN: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("LEN", DataType::Float64, true)));
+                static SRID: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("SRID", DataType::Int64, true)));
+                static POINTS: LazyLock<FieldRef> =
+                    LazyLock::new(|| Arc::new(Field::new("POINTS", DataType::LargeBinary, true)));
+
+                DataType::Struct(Fields::from(vec![
+                    ENTITY.clone(),
+                    NUMPTS.clone(),
+                    MINX.clone(),
+                    MINY.clone(),
+                    MAXX.clone(),
+                    MAXY.clone(),
+                    MINZ.clone(),
+                    MAXZ.clone(),
+                    MINM.clone(),
+                    MAXM.clone(),
+                    AREA.clone(),
+                    LEN.clone(),
+                    SRID.clone(),
+                    POINTS.clone(),
+                ]))
+            }
         }
     }
 }

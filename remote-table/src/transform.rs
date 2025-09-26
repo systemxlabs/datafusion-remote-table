@@ -338,6 +338,14 @@ pub trait Transform: Debug + Send + Sync {
     ) -> DFResult<(ArrayRef, FieldRef)> {
         Ok((Arc::new(array.clone()), args.field.clone()))
     }
+
+    fn transform_struct(
+        &self,
+        array: &StructArray,
+        args: TransformArgs,
+    ) -> DFResult<(ArrayRef, FieldRef)> {
+        Ok((Arc::new(array.clone()), args.field.clone()))
+    }
 }
 
 #[derive(Debug)]
@@ -717,6 +725,9 @@ pub(crate) fn transform_batch(
                     transform_decimal256,
                     args
                 )
+            }
+            DataType::Struct(_fields) => {
+                handle_transform!(batch, idx, StructArray, transform, transform_struct, args)
             }
             data_type => {
                 return Err(DataFusionError::NotImplemented(format!(
