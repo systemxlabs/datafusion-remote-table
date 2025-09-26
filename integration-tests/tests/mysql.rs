@@ -70,8 +70,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
         source,
         "select * from remote_table limit 1",
         vec![
-            "RemoteTableExec: source=query, limit=1\n",
-            "RemoteTableExec: source=simple_table, limit=1\n",
+            "CooperativeExec\n  RemoteTableExec: source=query, limit=1\n",
+            "CooperativeExec\n  RemoteTableExec: source=simple_table, limit=1\n",
         ],
         r#"+----+------+
 | id | name |
@@ -107,8 +107,8 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         source,
         "select * from remote_table where id = 1",
         vec![
-            "RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
-            "RemoteTableExec: source=simple_table, filters=[(`id` = 1)]\n",
+            "CooperativeExec\n  RemoteTableExec: source=query, filters=[(`id` = 1)]\n",
+            "CooperativeExec\n  RemoteTableExec: source=simple_table, filters=[(`id` = 1)]\n",
         ],
         r#"+----+------+
 | id | name |
@@ -127,7 +127,8 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
             r#"CoalesceBatchesExec: target_batch_size=8192
   FilterExec: Key@3 = PRI
     RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-      RemoteTableExec: source=query
+      CooperativeExec
+        RemoteTableExec: source=query
 "#,
         ],
         r#"+-------+------+------+-----+---------+-------+
@@ -208,7 +209,7 @@ async fn empty_projection() {
     println!("{plan_display}");
     assert_eq!(
         plan_display,
-        "RemoteTableExec: source=query, projection=[]\n"
+        "CooperativeExec\n  RemoteTableExec: source=query, projection=[]\n"
     );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();

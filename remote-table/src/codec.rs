@@ -23,6 +23,7 @@ use datafusion::catalog::memory::{DataSourceExec, MemorySourceConfig};
 use datafusion::common::DataFusionError;
 use datafusion::datasource::source::DataSource;
 use datafusion::execution::FunctionRegistry;
+use datafusion::physical_expr::LexOrdering;
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
@@ -288,7 +289,8 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                             &schema,
                             self,
                         )?;
-                        Ok::<_, DataFusionError>(sort_exprs)
+                        let lex_ordering = LexOrdering::new(sort_exprs).expect("lex ordering is not empty");
+                        Ok::<_, DataFusionError>(lex_ordering)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
