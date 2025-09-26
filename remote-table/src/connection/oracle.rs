@@ -181,15 +181,7 @@ fn oracle_type_to_remote_type(oracle_type: &ColumnType) -> DFResult<OracleType> 
         ColumnType::Date => Ok(OracleType::Date),
         ColumnType::Timestamp(_) => Ok(OracleType::Timestamp),
         ColumnType::Boolean => Ok(OracleType::Boolean),
-        ColumnType::Object(obj_type) => {
-            if obj_type.schema() == "SDE" && obj_type.name() == "ST_GEOMETRY" {
-                Ok(OracleType::SdeGeometry)
-            } else {
-                Err(DataFusionError::NotImplemented(format!(
-                    "Unsupported oracle object type: {obj_type:?}",
-                )))
-            }
-        }
+        ColumnType::Object(obj_type) => Ok(OracleType::SdeGeometry),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported oracle type: {oracle_type:?}",
         ))),
