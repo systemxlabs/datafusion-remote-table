@@ -454,6 +454,8 @@ fn rows_to_batch(
                             panic!("Failed to downcast builder to StructBuilder for {field:?} and {col:?}")
                         });
                     // TODO handle sde geometry
+                    let field_builder = builder.field_builder::<Int64Builder>(0).unwrap();
+                    field_builder.append_null();
                     builder.append_null();
                 }
                 _ => {
