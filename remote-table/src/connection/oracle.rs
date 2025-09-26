@@ -11,7 +11,7 @@ use datafusion::arrow::array::{
     LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StructBuilder,
     TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
 };
-use datafusion::arrow::datatypes::{DataType, SchemaRef, TimeUnit};
+use datafusion::arrow::datatypes::{DataType, Fields, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
@@ -19,7 +19,7 @@ use derive_getters::Getters;
 use derive_with::With;
 use futures::StreamExt;
 use log::debug;
-use oracle::sql_type::OracleType as ColumnType;
+use oracle::sql_type::{Object, OracleType as ColumnType};
 use oracle::{Connector, Row};
 use std::any::Any;
 use std::sync::Arc;
@@ -446,17 +446,19 @@ fn rows_to_batch(
                         just_return
                     );
                 }
-                DataType::Struct(_) => {
+                DataType::Struct(fields) => {
                     let builder = builder
                         .as_any_mut()
                         .downcast_mut::<StructBuilder>()
                         .unwrap_or_else(|| {
                             panic!("Failed to downcast builder to StructBuilder for {field:?} and {col:?}")
                         });
-                    // TODO handle sde geometry
-                    let field_builder = builder.field_builder::<Int64Builder>(0).unwrap();
-                    field_builder.append_null();
-                    builder.append_null();
+                    let object = row.get::<usize, Option<Object>>(idx).map_err(|e| {
+                        DataFusionError::Execution(format!(
+                            "Failed to get object for {field:?} and {col:?}: {e:?}"
+                        ))
+                    })?;
+                    append_object_to_struct_builder(builder, fields, object)?;
                 }
                 _ => {
                     return Err(DataFusionError::NotImplemented(format!(
@@ -481,4 +483,150 @@ fn rows_to_batch(
         projected_columns,
         &options,
     )?)
+}
+
+macro_rules! append_object_attr {
+    ($struct_builder:expr, $field_builder_type:ty, $field:expr, $field_idx:expr, $object_opt:expr, $field_value_ty:ty, $convert:expr) => {{
+        let field_builder = $struct_builder
+            .field_builder::<$field_builder_type>($field_idx)
+            .ok_or_else(|| {
+                DataFusionError::Execution(format!(
+                    "Failed to get {} field builder for {:?}",
+                    stringify!($field_builder_type),
+                    $field,
+                ))
+            })?;
+        match &$object_opt {
+            Some(object) => {
+                let field_name = $field.name();
+                let field_value_opt =
+                    object
+                        .get::<Option<$field_value_ty>>(field_name)
+                        .map_err(|e| {
+                            DataFusionError::Execution(format!(
+                                "Failed to get {} field value for {:?}: {e:?}",
+                                stringify!($field_value_ty),
+                                $field,
+                            ))
+                        })?;
+                match field_value_opt {
+                    Some(field_value) => {
+                        field_builder.append_value($convert(field_value)?);
+                    }
+                    None => {
+                        field_builder.append_null();
+                    }
+                }
+            }
+            None => {
+                field_builder.append_null();
+            }
+        }
+    }};
+}
+
+fn append_object_to_struct_builder(
+    builder: &mut StructBuilder,
+    fields: &Fields,
+    object_opt: Option<Object>,
+) -> DFResult<()> {
+    for (idx, field) in fields.iter().enumerate() {
+        match field.data_type() {
+            DataType::Int32 => {
+                append_object_attr!(
+                    builder,
+                    Int32Builder,
+                    field,
+                    idx,
+                    object_opt,
+                    i32,
+                    just_return
+                );
+            }
+            DataType::Int64 => {
+                append_object_attr!(
+                    builder,
+                    Int64Builder,
+                    field,
+                    idx,
+                    object_opt,
+                    i64,
+                    just_return
+                );
+            }
+            DataType::Float32 => {
+                append_object_attr!(
+                    builder,
+                    Float32Builder,
+                    field,
+                    idx,
+                    object_opt,
+                    f32,
+                    just_return
+                );
+            }
+            DataType::Float64 => {
+                append_object_attr!(
+                    builder,
+                    Float64Builder,
+                    field,
+                    idx,
+                    object_opt,
+                    f64,
+                    just_return
+                );
+            }
+            DataType::Binary => {
+                append_object_attr!(
+                    builder,
+                    BinaryBuilder,
+                    field,
+                    idx,
+                    object_opt,
+                    Vec<u8>,
+                    just_return
+                );
+            }
+            DataType::LargeBinary => {
+                append_object_attr!(
+                    builder,
+                    LargeBinaryBuilder,
+                    field,
+                    idx,
+                    object_opt,
+                    Vec<u8>,
+                    just_return
+                );
+            }
+            DataType::Struct(fields) => {
+                let field_builder =
+                    builder.field_builder::<StructBuilder>(idx).ok_or_else(|| {
+                        DataFusionError::Execution(format!(
+                            "Failed to get struct field builder for {field:?}"
+                        ))
+                    })?;
+                match &object_opt {
+                    Some(object) => {
+                        let field_value =
+                            object.get::<Option<Object>>(field.name()).map_err(|e| {
+                                DataFusionError::Execution(format!(
+                                    "Failed to get object value for {field:?}: {e:?}"
+                                ))
+                            })?;
+                        append_object_to_struct_builder(field_builder, fields, field_value)?;
+                    }
+                    None => {
+                        field_builder.append_null();
+                    }
+                }
+            }
+            _ => {
+                return Err(DataFusionError::NotImplemented(format!(
+                    "Unsupported struct field type {}",
+                    field.data_type(),
+                )));
+            }
+        }
+    }
+    Ok(())
 }
