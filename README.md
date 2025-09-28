@@ -67,7 +67,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Varchar2 / NVarchar2 / Char / NChar / Long / Clob / NClob
   - [x] Raw / Long Raw / Blob
   - [x] Date / Timestamp
-  - [x] Boolean 
+  - [x] Boolean / SDE.ST_GEOMETRY
 - [x] SQLite
   - [x] Null / Integer / Real / Text / Blob
 - [x] DM (达梦数据库)
