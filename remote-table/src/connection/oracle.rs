@@ -628,5 +628,14 @@ fn append_object_to_struct_builder(
             }
         }
     }
+
+    match &object_opt {
+        Some(_) => {
+            builder.append(true);
+        }
+        None => {
+            builder.append_null();
+        }
+    }
     Ok(())
 }
