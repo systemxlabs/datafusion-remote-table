@@ -576,6 +576,24 @@ fn append_object_to_struct_builder(
                     just_return
                 );
             }
+            DataType::Decimal128(_precision, scale) => {
+                append_object_attr!(
+                    builder,
+                    Decimal128Builder,
+                    field,
+                    idx,
+                    object_opt,
+                    String,
+                    |v: String| {
+                        let decimal = v.parse::<bigdecimal::BigDecimal>().map_err(|e| {
+                            DataFusionError::Execution(format!(
+                                "Failed to parse BigDecimal from {v:?}: {e:?}",
+                            ))
+                        })?;
+                        big_decimal_to_i128(&decimal, Some(*scale as i32))
+                    }
+                );
+            }
             DataType::Binary => {
                 append_object_attr!(
                     builder,

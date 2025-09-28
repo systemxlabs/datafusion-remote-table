@@ -274,10 +274,12 @@ impl OracleType {
             OracleType::Timestamp => DataType::Timestamp(TimeUnit::Nanosecond, None),
             OracleType::Boolean => DataType::Boolean,
             OracleType::SdeGeometry => {
-                static ENTITY: LazyLock<FieldRef> =
-                    LazyLock::new(|| Arc::new(Field::new("ENTITY", DataType::Int64, true)));
-                static NUMPTS: LazyLock<FieldRef> =
-                    LazyLock::new(|| Arc::new(Field::new("NUMPTS", DataType::Int64, true)));
+                static ENTITY: LazyLock<FieldRef> = LazyLock::new(|| {
+                    Arc::new(Field::new("ENTITY", DataType::Decimal128(38, 0), true))
+                });
+                static NUMPTS: LazyLock<FieldRef> = LazyLock::new(|| {
+                    Arc::new(Field::new("NUMPTS", DataType::Decimal128(38, 0), true))
+                });
                 static MINX: LazyLock<FieldRef> =
                     LazyLock::new(|| Arc::new(Field::new("MINX", DataType::Float64, true)));
                 static MINY: LazyLock<FieldRef> =
@@ -298,8 +300,9 @@ impl OracleType {
                     LazyLock::new(|| Arc::new(Field::new("AREA", DataType::Float64, true)));
                 static LEN: LazyLock<FieldRef> =
                     LazyLock::new(|| Arc::new(Field::new("LEN", DataType::Float64, true)));
-                static SRID: LazyLock<FieldRef> =
-                    LazyLock::new(|| Arc::new(Field::new("SRID", DataType::Int64, true)));
+                static SRID: LazyLock<FieldRef> = LazyLock::new(|| {
+                    Arc::new(Field::new("SRID", DataType::Decimal128(38, 0), true))
+                });
                 static POINTS: LazyLock<FieldRef> =
                     LazyLock::new(|| Arc::new(Field::new("POINTS", DataType::LargeBinary, true)));
 
