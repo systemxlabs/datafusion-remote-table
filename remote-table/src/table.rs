@@ -184,7 +184,19 @@ impl RemoteTable {
             now.elapsed().as_millis()
         );
 
-        let (table_schema, remote_schema): (SchemaRef, Option<RemoteSchemaRef>) =
+        let infer_schema_fn =
+            async |pool: &Arc<dyn Pool>, source: &RemoteSource| -> DFResult<RemoteSchemaRef> {
+                let now = std::time::Instant::now();
+                let conn = pool.get().await?;
+                let remote_schema = conn.infer_schema(source).await?;
+                debug!(
+                    "[remote-table] Inferring remote schema cost: {}ms",
+                    now.elapsed().as_millis()
+                );
+                Ok(remote_schema)
+            };
+
+        let (table_schema, remote_schema_opt): (SchemaRef, Option<RemoteSchemaRef>) =
             match (table_schema, remote_schema) {
                 (Some(table_schema), Some(remote_schema)) => (table_schema, Some(remote_schema)),
                 (Some(table_schema), None) => {
@@ -194,14 +206,8 @@ impl RemoteTable {
                         None
                     } else {
                         // Infer remote schema
-                        let now = std::time::Instant::now();
-                        let conn = pool.get().await?;
-                        let remote_schema_opt = conn.infer_schema(&source).await.ok();
-                        debug!(
-                            "[remote-table] Inferring remote schema cost: {}ms",
-                            now.elapsed().as_millis()
-                        );
-                        remote_schema_opt
+                        let remote_schema = infer_schema_fn(&pool, &source).await?;
+                        Some(remote_schema)
                     };
                     (table_schema, remote_schema)
                 }
@@ -211,30 +217,16 @@ impl RemoteTable {
                 ),
                 (None, None) => {
                     // Infer table schema
-                    let now = std::time::Instant::now();
-                    let conn = pool.get().await?;
-                    match conn.infer_schema(&source).await {
-                        Ok(remote_schema) => {
-                            debug!(
-                                "[remote-table] Inferring table schema cost: {}ms",
-                                now.elapsed().as_millis()
-                            );
-                            let inferred_table_schema = Arc::new(remote_schema.to_arrow_schema());
-                            (inferred_table_schema, Some(remote_schema))
-                        }
-                        Err(e) => {
-                            return Err(DataFusionError::Execution(format!(
-                                "Failed to infer schema: {e}"
-                            )));
-                        }
-                    }
+                    let remote_schema = infer_schema_fn(&pool, &source).await?;
+                    let inferred_table_schema = Arc::new(remote_schema.to_arrow_schema());
+                    (inferred_table_schema, Some(remote_schema))
                 }
             };
 
         let transformed_table_schema = transform_schema(
             table_schema.clone(),
             transform.as_ref(),
-            remote_schema.as_ref(),
+            remote_schema_opt.as_ref(),
         )?;
 
         Ok(RemoteTable {
@@ -242,7 +234,7 @@ impl RemoteTable {
             source,
             table_schema,
             transformed_table_schema,
-            remote_schema,
+            remote_schema: remote_schema_opt,
             transform,
             unparser,
             pool,

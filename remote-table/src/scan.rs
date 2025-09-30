@@ -1,6 +1,6 @@
 use crate::{
-    Connection, ConnectionOptions, DFResult, RemoteSchemaRef, RemoteSource, Transform,
-    TransformStream, transform_schema,
+    Connection, ConnectionOptions, DFResult, DefaultTransform, RemoteSchemaRef, RemoteSource,
+    Transform, TransformStream, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Statistics;
@@ -226,13 +226,22 @@ async fn build_and_transform_stream(
         )
         .await?;
 
-    Ok(Box::pin(TransformStream::try_new(
-        stream,
-        transform.clone(),
-        table_schema,
-        projection,
-        remote_schema,
-    )?))
+    if transform.as_any().is::<DefaultTransform>() {
+        Ok(stream)
+    } else {
+        let Some(remote_schema) = remote_schema else {
+            return Err(DataFusionError::Execution(
+                "remote_schema is required for non-default transform".to_string(),
+            ));
+        };
+        Ok(Box::pin(TransformStream::try_new(
+            stream,
+            transform.clone(),
+            table_schema,
+            projection,
+            remote_schema,
+        )?))
+    }
 }
 
 impl DisplayAs for RemoteTableScanExec {

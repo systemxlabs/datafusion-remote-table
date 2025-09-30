@@ -2301,9 +2301,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.27"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "lru"
@@ -2416,7 +2416,7 @@ dependencies = [
  "serde",
  "serde_json",
  "socket2",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
  "tokio",
  "tokio-native-tls",
  "tokio-util",
@@ -2449,7 +2449,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
  "time",
  "uuid",
 ]
@@ -2575,7 +2575,7 @@ dependencies = [
  "itertools",
  "parking_lot",
  "percent-encoding",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
  "tokio",
  "tracing",
  "url",
@@ -2586,22 +2586,22 @@ dependencies = [
 
 [[package]]
 name = "odbc-api"
-version = "13.0.1"
+version = "13.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "229e120c026132740a8bb9d35c336b4d4790c148f7dcbd9824b55ba4d8bf903f"
+checksum = "44e14665455e2817ac5b0dd9f65a3dc97e76e8f85eeac6e4301b7cf9da451884"
 dependencies = [
  "atoi",
  "log",
  "odbc-sys",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
  "widestring",
 ]
 
 [[package]]
 name = "odbc-sys"
-version = "0.25.0"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e034000e4c1f721449c69ef90489060116280e4114c360569f71eddb3021da09"
+checksum = "4ecdb20f7c165083ad1bc9f55122f677725e257716a5bc83e5413d5654b7d6f1"
 
 [[package]]
 name = "odpic-sys"
@@ -3568,11 +3568,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.12"
+version = "2.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "567b8a2dae586314f7be2a752ec7474332959c6460e02bde30d702a66d488708"
+checksum = "3467d614147380f2e4e374161426ff399c91084acd2363eaf549172b3d5e60c0"
 dependencies = [
- "thiserror-impl 2.0.12",
+ "thiserror-impl 2.0.16",
 ]
 
 [[package]]
@@ -3588,9 +3588,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.12"
+version = "2.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
+checksum = "6c5e1be1c48b9172ee610da68fd9cd2770e7a4056cb3fc98710ee6906f0c7960"
 dependencies = [
  "proc-macro2",
  "quote",

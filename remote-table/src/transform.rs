@@ -13,7 +13,7 @@ use std::task::{Context, Poll};
 pub struct TransformArgs<'a> {
     pub col_index: usize,
     pub field: &'a FieldRef,
-    pub remote_field: Option<&'a RemoteField>,
+    pub remote_field: &'a RemoteField,
 }
 
 pub trait Transform: Debug + Send + Sync {
@@ -363,7 +363,7 @@ pub(crate) struct TransformStream {
     table_schema: SchemaRef,
     projection: Option<Vec<usize>>,
     projected_schema: SchemaRef,
-    remote_schema: Option<RemoteSchemaRef>,
+    remote_schema: RemoteSchemaRef,
 }
 
 impl TransformStream {
@@ -372,7 +372,7 @@ impl TransformStream {
         transform: Arc<dyn Transform>,
         table_schema: SchemaRef,
         projection: Option<Vec<usize>>,
-        remote_schema: Option<RemoteSchemaRef>,
+        remote_schema: RemoteSchemaRef,
     ) -> DFResult<Self> {
         let projected_schema = project_schema(&table_schema, projection.as_ref())?;
         Ok(Self {
@@ -396,7 +396,7 @@ impl Stream for TransformStream {
                     self.transform.as_ref(),
                     &self.table_schema,
                     self.projection.as_ref(),
-                    self.remote_schema.as_ref(),
+                    &self.remote_schema,
                 ) {
                     Ok(result) => Poll::Ready(Some(Ok(result))),
                     Err(e) => Poll::Ready(Some(Err(e))),
@@ -431,7 +431,7 @@ pub(crate) fn transform_batch(
     transform: &dyn Transform,
     table_schema: &SchemaRef,
     projection: Option<&Vec<usize>>,
-    remote_schema: Option<&RemoteSchemaRef>,
+    remote_schema: &RemoteSchemaRef,
 ) -> DFResult<RecordBatch> {
     let mut new_arrays: Vec<ArrayRef> = Vec::with_capacity(batch.schema().fields.len());
     let mut new_fields: Vec<FieldRef> = Vec::with_capacity(batch.schema().fields.len());
@@ -440,7 +440,7 @@ pub(crate) fn transform_batch(
 
     for (idx, col_index) in projected_col_indexes.iter().enumerate() {
         let field = unsafe { table_schema.fields.get_unchecked(*col_index) };
-        let remote_field = remote_schema.map(|schema| &schema.fields[*col_index]);
+        let remote_field = &remote_schema.fields[*col_index];
         let args = TransformArgs {
             col_index: *col_index,
             field,
@@ -750,7 +750,16 @@ pub(crate) fn transform_schema(
     transform: &dyn Transform,
     remote_schema: Option<&RemoteSchemaRef>,
 ) -> DFResult<SchemaRef> {
-    let empty_record = RecordBatch::new_empty(schema.clone());
-    transform_batch(empty_record, transform, &schema, None, remote_schema)
-        .map(|batch| batch.schema())
+    if transform.as_any().is::<DefaultTransform>() {
+        Ok(schema)
+    } else {
+        let Some(remote_schema) = remote_schema else {
+            return Err(DataFusionError::Execution(
+                "remote_schema is required for non-default transform".to_string(),
+            ));
+        };
+        let empty_record = RecordBatch::new_empty(schema.clone());
+        transform_batch(empty_record, transform, &schema, None, remote_schema)
+            .map(|batch| batch.schema())
+    }
 }

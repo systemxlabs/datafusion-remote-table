@@ -147,7 +147,7 @@ impl Transform for MyTransform {
                 "transform_null-{}-{}-{:?}-NULL",
                 args.col_index,
                 args.field.data_type(),
-                args.remote_field.as_ref().unwrap().remote_type
+                args.remote_field.remote_type
             ))
         }
         Ok((
@@ -171,7 +171,7 @@ impl Transform for MyTransform {
                 "transform_int64-{}-{}-{:?}-{row:?}",
                 args.col_index,
                 args.field.data_type(),
-                args.remote_field.as_ref().unwrap().remote_type
+                args.remote_field.remote_type
             ))
         }
         Ok((
@@ -195,7 +195,7 @@ impl Transform for MyTransform {
                 "transform_float64-{}-{}-{:?}-{row:?}",
                 args.col_index,
                 args.field.data_type(),
-                args.remote_field.as_ref().unwrap().remote_type
+                args.remote_field.remote_type
             ))
         }
         Ok((
@@ -219,7 +219,7 @@ impl Transform for MyTransform {
                 "transform_utf8-{}-{}-{:?}-{row:?}",
                 args.col_index,
                 args.field.data_type(),
-                args.remote_field.as_ref().unwrap().remote_type
+                args.remote_field.remote_type
             ))
         }
         Ok((
@@ -243,7 +243,7 @@ impl Transform for MyTransform {
                 "transform_binary-{}-{}-{:?}-{row:?}",
                 args.col_index,
                 args.field.data_type(),
-                args.remote_field.as_ref().unwrap().remote_type
+                args.remote_field.remote_type
             ))
         }
         Ok((
