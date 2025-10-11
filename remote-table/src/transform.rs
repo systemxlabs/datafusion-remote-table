@@ -14,6 +14,10 @@ pub struct TransformArgs<'a> {
     pub col_index: usize,
     pub field: &'a FieldRef,
     pub remote_field: &'a RemoteField,
+    pub table_schema: &'a SchemaRef,
+    pub remote_schema: &'a RemoteSchemaRef,
+    pub projection: Option<&'a Vec<usize>>,
+    pub projected_batch: &'a RecordBatch,
 }
 
 pub trait Transform: Debug + Send + Sync {
@@ -445,6 +449,10 @@ pub(crate) fn transform_batch(
             col_index: *col_index,
             field,
             remote_field,
+            table_schema,
+            remote_schema,
+            projection,
+            projected_batch: &batch,
         };
 
         let (new_array, new_field) = match &field.data_type() {
