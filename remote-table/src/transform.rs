@@ -16,8 +16,7 @@ pub struct TransformArgs<'a> {
     pub remote_field: &'a RemoteField,
     pub table_schema: &'a SchemaRef,
     pub remote_schema: &'a RemoteSchemaRef,
-    pub projection: Option<&'a Vec<usize>>,
-    pub projected_batch: &'a RecordBatch,
+    pub batch: &'a RecordBatch,
 }
 
 pub trait Transform: Debug + Send + Sync {
@@ -378,6 +377,12 @@ impl TransformStream {
         projection: Option<Vec<usize>>,
         remote_schema: RemoteSchemaRef,
     ) -> DFResult<Self> {
+        let input_schema = input.schema();
+        if input.schema() != table_schema {
+            return Err(DataFusionError::Execution(format!(
+                "Transform stream input schema is not equals to table schema, input schema: {input_schema:?}, table schema: {table_schema:?}"
+            )));
+        }
         let projected_schema = project_schema(&table_schema, projection.as_ref())?;
         Ok(Self {
             input,
@@ -399,10 +404,19 @@ impl Stream for TransformStream {
                     batch,
                     self.transform.as_ref(),
                     &self.table_schema,
-                    self.projection.as_ref(),
                     &self.remote_schema,
                 ) {
-                    Ok(result) => Poll::Ready(Some(Ok(result))),
+                    Ok(transformed_batch) => {
+                        let projected_batch = if let Some(projection) = &self.projection {
+                            match transformed_batch.project(projection) {
+                                Ok(batch) => batch,
+                                Err(e) => return Poll::Ready(Some(Err(DataFusionError::from(e)))),
+                            }
+                        } else {
+                            transformed_batch
+                        };
+                        Poll::Ready(Some(Ok(projected_batch)))
+                    }
                     Err(e) => Poll::Ready(Some(Err(e))),
                 }
             }
@@ -434,25 +448,21 @@ pub(crate) fn transform_batch(
     batch: RecordBatch,
     transform: &dyn Transform,
     table_schema: &SchemaRef,
-    projection: Option<&Vec<usize>>,
     remote_schema: &RemoteSchemaRef,
 ) -> DFResult<RecordBatch> {
     let mut new_arrays: Vec<ArrayRef> = Vec::with_capacity(batch.schema().fields.len());
     let mut new_fields: Vec<FieldRef> = Vec::with_capacity(batch.schema().fields.len());
-    let all_col_indexes = (0..table_schema.fields.len()).collect::<Vec<usize>>();
-    let projected_col_indexes = projection.unwrap_or(&all_col_indexes);
 
-    for (idx, col_index) in projected_col_indexes.iter().enumerate() {
-        let field = unsafe { table_schema.fields.get_unchecked(*col_index) };
-        let remote_field = &remote_schema.fields[*col_index];
+    for (idx, col_index) in (0..table_schema.fields.len()).enumerate() {
+        let field = unsafe { table_schema.fields.get_unchecked(col_index) };
+        let remote_field = &remote_schema.fields[col_index];
         let args = TransformArgs {
-            col_index: *col_index,
+            col_index,
             field,
             remote_field,
             table_schema,
             remote_schema,
-            projection,
-            projected_batch: &batch,
+            batch: &batch,
         };
 
         let (new_array, new_field) = match &field.data_type() {
@@ -767,7 +777,6 @@ pub(crate) fn transform_schema(
             ));
         };
         let empty_record = RecordBatch::new_empty(schema.clone());
-        transform_batch(empty_record, transform, &schema, None, remote_schema)
-            .map(|batch| batch.schema())
+        transform_batch(empty_record, transform, &schema, remote_schema).map(|batch| batch.schema())
     }
 }

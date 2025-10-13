@@ -215,8 +215,8 @@ async fn build_and_transform_stream(
         None
     };
 
-    let stream = conn
-        .query(
+    if transform.as_any().is::<DefaultTransform>() {
+        conn.query(
             &conn_options,
             &source,
             table_schema.clone(),
@@ -224,16 +224,23 @@ async fn build_and_transform_stream(
             unparsed_filters.as_slice(),
             limit,
         )
-        .await?;
-
-    if transform.as_any().is::<DefaultTransform>() {
-        Ok(stream)
+        .await
     } else {
         let Some(remote_schema) = remote_schema else {
             return Err(DataFusionError::Execution(
                 "remote_schema is required for non-default transform".to_string(),
             ));
         };
+        let stream = conn
+            .query(
+                &conn_options,
+                &source,
+                table_schema.clone(),
+                None,
+                unparsed_filters.as_slice(),
+                limit,
+            )
+            .await?;
         Ok(Box::pin(TransformStream::try_new(
             stream,
             transform.clone(),
