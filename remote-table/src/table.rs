@@ -157,6 +157,40 @@ impl RemoteTable {
         .await
     }
 
+    pub async fn try_new_with_schema_transform(
+        conn_options: impl Into<ConnectionOptions>,
+        source: impl Into<RemoteSource>,
+        table_schema: SchemaRef,
+        transform: Arc<dyn Transform>,
+    ) -> DFResult<Self> {
+        Self::try_new_with_schema_transform_literalizer(
+            conn_options,
+            source,
+            Some(table_schema),
+            None,
+            transform,
+            Arc::new(DefaultLiteralizer {}),
+        )
+        .await
+    }
+
+    pub async fn try_new_with_remote_schema_transform(
+        conn_options: impl Into<ConnectionOptions>,
+        source: impl Into<RemoteSource>,
+        remote_schema: RemoteSchemaRef,
+        transform: Arc<dyn Transform>,
+    ) -> DFResult<Self> {
+        Self::try_new_with_schema_transform_literalizer(
+            conn_options,
+            source,
+            None,
+            Some(remote_schema),
+            transform,
+            Arc::new(DefaultLiteralizer {}),
+        )
+        .await
+    }
+
     pub async fn try_new_with_schema_transform_literalizer(
         conn_options: impl Into<ConnectionOptions>,
         source: impl Into<RemoteSource>,
