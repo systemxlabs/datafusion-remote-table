@@ -2,8 +2,8 @@ use crate::connection::ODBC_ENV;
 use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
-    Connection, ConnectionOptions, DFResult, DmType, Pool, RemoteDbType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
+    Connection, ConnectionOptions, DFResult, DmType, Literalize, Pool, RemoteDbType, RemoteField,
+    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -243,7 +243,7 @@ impl Connection for DmConnection {
     async fn insert(
         &self,
         _conn_options: &ConnectionOptions,
-        _unparser: Arc<dyn Unparse>,
+        _literalizer: Arc<dyn Literalize>,
         _table: &[String],
         _remote_schema: RemoteSchemaRef,
         _input: SendableRecordBatchStream,

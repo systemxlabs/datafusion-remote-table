@@ -29,7 +29,7 @@ message RemoteTableInsertExec {
   ConnectionOptions conn_options = 1;
   Identifiers table = 2;
   RemoteSchema remote_schema = 3;
-  bytes unparser = 4;
+  bytes literalizer = 4;
   bytes connection = 5;
 }
 

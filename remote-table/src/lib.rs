@@ -2,21 +2,21 @@ mod codec;
 mod connection;
 mod generated;
 mod insert;
+mod literalize;
 mod scan;
 mod schema;
 mod table;
 mod transform;
-mod unparse;
 mod utils;
 
 pub use codec::*;
 pub use connection::*;
 pub use insert::*;
+pub use literalize::*;
 pub use scan::*;
 pub use schema::*;
 pub use table::*;
 pub use transform::*;
-pub use unparse::*;
 pub use utils::*;
 
 pub(crate) type DFResult<T> = datafusion::common::Result<T>;

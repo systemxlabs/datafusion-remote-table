@@ -1,8 +1,8 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::big_decimal_to_i128;
 use crate::{
-    Connection, ConnectionOptions, DFResult, OracleType, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, Unparse,
+    Connection, ConnectionOptions, DFResult, Literalize, OracleType, Pool, RemoteField,
+    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
@@ -160,7 +160,7 @@ impl Connection for OracleConnection {
     async fn insert(
         &self,
         _conn_options: &ConnectionOptions,
-        _unparser: Arc<dyn Unparse>,
+        _literalizer: Arc<dyn Literalize>,
         _table: &[String],
         _remote_schema: RemoteSchemaRef,
         _input: SendableRecordBatchStream,

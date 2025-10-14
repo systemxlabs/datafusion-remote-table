@@ -1,7 +1,7 @@
 use crate::{
-    ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, Pool, RemoteDbType,
-    RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec, Transform,
-    TransformArgs, Unparse, connect, transform_schema,
+    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, Literalize, Pool,
+    RemoteDbType, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec,
+    Transform, TransformArgs, connect, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
@@ -89,7 +89,7 @@ pub struct RemoteTable {
     pub(crate) transformed_table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
     pub(crate) transform: Arc<dyn Transform>,
-    pub(crate) unparser: Arc<dyn Unparse>,
+    pub(crate) literalizer: Arc<dyn Literalize>,
     pub(crate) pool: Arc<dyn Pool>,
 }
 
@@ -98,13 +98,13 @@ impl RemoteTable {
         conn_options: impl Into<ConnectionOptions>,
         source: impl Into<RemoteSource>,
     ) -> DFResult<Self> {
-        Self::try_new_with_schema_transform_unparser(
+        Self::try_new_with_schema_transform_literalizer(
             conn_options,
             source,
             None,
             None,
             Arc::new(DefaultTransform {}),
-            Arc::new(DefaultUnparser {}),
+            Arc::new(DefaultLiteralizer {}),
         )
         .await
     }
@@ -114,13 +114,13 @@ impl RemoteTable {
         source: impl Into<RemoteSource>,
         table_schema: SchemaRef,
     ) -> DFResult<Self> {
-        Self::try_new_with_schema_transform_unparser(
+        Self::try_new_with_schema_transform_literalizer(
             conn_options,
             source,
             Some(table_schema),
             None,
             Arc::new(DefaultTransform {}),
-            Arc::new(DefaultUnparser {}),
+            Arc::new(DefaultLiteralizer {}),
         )
         .await
     }
@@ -130,13 +130,13 @@ impl RemoteTable {
         source: impl Into<RemoteSource>,
         remote_schema: RemoteSchemaRef,
     ) -> DFResult<Self> {
-        Self::try_new_with_schema_transform_unparser(
+        Self::try_new_with_schema_transform_literalizer(
             conn_options,
             source,
             None,
             Some(remote_schema),
             Arc::new(DefaultTransform {}),
-            Arc::new(DefaultUnparser {}),
+            Arc::new(DefaultLiteralizer {}),
         )
         .await
     }
@@ -146,24 +146,24 @@ impl RemoteTable {
         source: impl Into<RemoteSource>,
         transform: Arc<dyn Transform>,
     ) -> DFResult<Self> {
-        Self::try_new_with_schema_transform_unparser(
+        Self::try_new_with_schema_transform_literalizer(
             conn_options,
             source,
             None,
             None,
             transform,
-            Arc::new(DefaultUnparser {}),
+            Arc::new(DefaultLiteralizer {}),
         )
         .await
     }
 
-    pub async fn try_new_with_schema_transform_unparser(
+    pub async fn try_new_with_schema_transform_literalizer(
         conn_options: impl Into<ConnectionOptions>,
         source: impl Into<RemoteSource>,
         table_schema: Option<SchemaRef>,
         remote_schema: Option<RemoteSchemaRef>,
         transform: Arc<dyn Transform>,
-        unparser: Arc<dyn Unparse>,
+        literalizer: Arc<dyn Literalize>,
     ) -> DFResult<Self> {
         let conn_options = conn_options.into();
         let source = source.into();
@@ -236,7 +236,7 @@ impl RemoteTable {
             transformed_table_schema,
             remote_schema: remote_schema_opt,
             transform,
-            unparser,
+            literalizer,
             pool,
         })
     }
@@ -420,7 +420,7 @@ impl TableProvider for RemoteTable {
         let exec = RemoteTableInsertExec::new(
             input,
             self.conn_options.clone(),
-            self.unparser.clone(),
+            self.literalizer.clone(),
             table.clone(),
             remote_schema,
             conn,

@@ -1,8 +1,8 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::{big_decimal_to_i128, big_decimal_to_i256};
 use crate::{
-    Connection, ConnectionOptions, DFResult, Pool, PostgresType, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, Unparse, unparse_array,
+    Connection, ConnectionOptions, DFResult, Literalize, Pool, PostgresType, RemoteField,
+    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType, literalize_array,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
@@ -250,7 +250,7 @@ order by ordinal_position",
     async fn insert(
         &self,
         _conn_options: &ConnectionOptions,
-        unparser: Arc<dyn Unparse>,
+        literalizer: Arc<dyn Literalize>,
         table: &[String],
         remote_schema: RemoteSchemaRef,
         mut input: SendableRecordBatchStream,
@@ -271,7 +271,7 @@ order by ordinal_position",
 
                 let remote_type = remote_schema.fields[i].remote_type.clone();
                 let array = batch.column(i);
-                let column = unparse_array(unparser.as_ref(), array, remote_type)?;
+                let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
                 columns.push(column);
             }
 

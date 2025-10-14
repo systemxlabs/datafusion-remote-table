@@ -10,9 +10,9 @@ use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
-    Connection, ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, DmType, MysqlType,
-    OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
-    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform, Unparse,
+    Connection, ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType,
+    Literalize, MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef,
+    RemoteSource, RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
     connect,
 };
 use datafusion::arrow::array::RecordBatch;
@@ -68,33 +68,33 @@ impl TransformCodec for DefaultTransformCodec {
     }
 }
 
-pub trait UnparseCodec: Debug + Send + Sync {
-    fn try_encode(&self, value: &dyn Unparse) -> DFResult<Vec<u8>>;
-    fn try_decode(&self, value: &[u8]) -> DFResult<Arc<dyn Unparse>>;
+pub trait LiteralizeCodec: Debug + Send + Sync {
+    fn try_encode(&self, value: &dyn Literalize) -> DFResult<Vec<u8>>;
+    fn try_decode(&self, value: &[u8]) -> DFResult<Arc<dyn Literalize>>;
 }
 
 #[derive(Debug)]
-pub struct DefaultUnparseCodec {}
+pub struct DefaultLiteralizeCodec {}
 
-const DEFAULT_UNPARSE_ID: &str = "__default";
+const DEFAULT_LITERALIZE_ID: &str = "__default";
 
-impl UnparseCodec for DefaultUnparseCodec {
-    fn try_encode(&self, value: &dyn Unparse) -> DFResult<Vec<u8>> {
-        if value.as_any().is::<DefaultUnparser>() {
-            Ok(DEFAULT_UNPARSE_ID.as_bytes().to_vec())
+impl LiteralizeCodec for DefaultLiteralizeCodec {
+    fn try_encode(&self, value: &dyn Literalize) -> DFResult<Vec<u8>> {
+        if value.as_any().is::<DefaultLiteralizer>() {
+            Ok(DEFAULT_LITERALIZE_ID.as_bytes().to_vec())
         } else {
             Err(DataFusionError::Execution(format!(
-                "DefaultUnparseCodec does not support unparse: {value:?}, please implement a custom UnparseCodec."
+                "DefaultLiteralizeCodec does not support literalize: {value:?}, please implement a custom LiteralizeCodec."
             )))
         }
     }
 
-    fn try_decode(&self, value: &[u8]) -> DFResult<Arc<dyn Unparse>> {
-        if value == DEFAULT_UNPARSE_ID.as_bytes() {
-            Ok(Arc::new(DefaultUnparser {}))
+    fn try_decode(&self, value: &[u8]) -> DFResult<Arc<dyn Literalize>> {
+        if value == DEFAULT_LITERALIZE_ID.as_bytes() {
+            Ok(Arc::new(DefaultLiteralizer {}))
         } else {
             Err(DataFusionError::Execution(
-                "DefaultUnparseCodec only supports DefaultUnparser".to_string(),
+                "DefaultLiteralizeCodec only supports DefaultLiteralizer".to_string(),
             ))
         }
     }
@@ -151,7 +151,7 @@ impl ConnectionCodec for DefaultConnectionCodec {
 #[derive(Debug, With)]
 pub struct RemotePhysicalCodec {
     pub transform_codec: Arc<dyn TransformCodec>,
-    pub unparse_codec: Arc<dyn UnparseCodec>,
+    pub literalize_codec: Arc<dyn LiteralizeCodec>,
     pub connection_codec: Arc<dyn ConnectionCodec>,
 }
 
@@ -159,7 +159,7 @@ impl RemotePhysicalCodec {
     pub fn new() -> Self {
         Self {
             transform_codec: Arc::new(DefaultTransformCodec {}),
-            unparse_codec: Arc::new(DefaultUnparseCodec {}),
+            literalize_codec: Arc::new(DefaultLiteralizeCodec {}),
             connection_codec: Arc::new(DefaultConnectionCodec {}),
         }
     }
@@ -250,10 +250,10 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap()));
                 let table = proto.table.unwrap().idents;
 
-                let unparser = if proto.unparser == DEFAULT_UNPARSE_ID.as_bytes() {
-                    Arc::new(DefaultUnparser {})
+                let literalizer = if proto.literalizer == DEFAULT_LITERALIZE_ID.as_bytes() {
+                    Arc::new(DefaultLiteralizer {})
                 } else {
-                    self.unparse_codec.try_decode(&proto.unparser)?
+                    self.literalize_codec.try_decode(&proto.literalizer)?
                 };
 
                 let now = std::time::Instant::now();
@@ -268,7 +268,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 Ok(Arc::new(RemoteTableInsertExec::new(
                     input,
                     conn_options,
-                    unparser,
+                    literalizer,
                     table,
                     remote_schema,
                     conn,
@@ -357,7 +357,9 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
             let serialized_table = protobuf::Identifiers {
                 idents: exec.table.clone(),
             };
-            let serialized_unparser = self.unparse_codec.try_encode(exec.unparser.as_ref())?;
+            let serialized_literalizer = self
+                .literalize_codec
+                .try_encode(exec.literalizer.as_ref())?;
             let serialized_conn = self
                 .connection_codec
                 .try_encode(exec.conn.as_ref(), &exec.conn_options)?;
@@ -369,7 +371,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                             conn_options: Some(serialized_connection_options),
                             table: Some(serialized_table),
                             remote_schema: Some(remote_schema),
-                            unparser: serialized_unparser,
+                            literalizer: serialized_literalizer,
                             connection: serialized_conn,
                         },
                     ),

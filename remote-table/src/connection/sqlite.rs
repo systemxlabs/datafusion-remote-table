@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
-    Connection, ConnectionOptions, DFResult, Pool, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteSource, RemoteType, SqliteType, Unparse, unparse_array,
+    Connection, ConnectionOptions, DFResult, Literalize, Pool, RemoteField, RemoteSchema,
+    RemoteSchemaRef, RemoteSource, RemoteType, SqliteType, literalize_array,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -153,7 +153,7 @@ impl Connection for SqliteConnection {
     async fn insert(
         &self,
         _conn_options: &ConnectionOptions,
-        unparser: Arc<dyn Unparse>,
+        literalizer: Arc<dyn Literalize>,
         table: &[String],
         remote_schema: RemoteSchemaRef,
         mut input: SendableRecordBatchStream,
@@ -177,7 +177,7 @@ impl Connection for SqliteConnection {
 
                 let remote_type = remote_schema.fields[i].remote_type.clone();
                 let array = batch.column(i);
-                let column = unparse_array(unparser.as_ref(), array, remote_type)?;
+                let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
                 columns.push(column);
             }
 

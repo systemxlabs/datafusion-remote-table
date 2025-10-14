@@ -1,4 +1,4 @@
-use crate::{Connection, ConnectionOptions, DFResult, RemoteSchemaRef, Unparse};
+use crate::{Connection, ConnectionOptions, DFResult, Literalize, RemoteSchemaRef};
 use datafusion::arrow::array::{ArrayRef, RecordBatch, UInt64Array};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion::common::stats::Precision;
@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub struct RemoteTableInsertExec {
     pub(crate) input: Arc<dyn ExecutionPlan>,
     pub(crate) conn_options: Arc<ConnectionOptions>,
-    pub(crate) unparser: Arc<dyn Unparse>,
+    pub(crate) literalizer: Arc<dyn Literalize>,
     pub(crate) table: Vec<String>,
     pub(crate) remote_schema: RemoteSchemaRef,
     pub(crate) conn: Arc<dyn Connection>,
@@ -27,7 +27,7 @@ impl RemoteTableInsertExec {
     pub fn new(
         input: Arc<dyn ExecutionPlan>,
         conn_options: Arc<ConnectionOptions>,
-        unparser: Arc<dyn Unparse>,
+        literalizer: Arc<dyn Literalize>,
         table: Vec<String>,
         remote_schema: RemoteSchemaRef,
         conn: Arc<dyn Connection>,
@@ -42,7 +42,7 @@ impl RemoteTableInsertExec {
         Self {
             input,
             conn_options,
-            unparser,
+            literalizer,
             table,
             remote_schema,
             conn,
@@ -76,7 +76,7 @@ impl ExecutionPlan for RemoteTableInsertExec {
         let exec = Self::new(
             input,
             self.conn_options.clone(),
-            self.unparser.clone(),
+            self.literalizer.clone(),
             self.table.clone(),
             self.remote_schema.clone(),
             self.conn.clone(),
@@ -91,7 +91,7 @@ impl ExecutionPlan for RemoteTableInsertExec {
     ) -> DFResult<SendableRecordBatchStream> {
         let input_stream = self.input.execute(partition, context)?;
         let conn_options = self.conn_options.clone();
-        let unparser = self.unparser.clone();
+        let literalizer = self.literalizer.clone();
         let table = self.table.clone();
         let remote_schema = self.remote_schema.clone();
         let conn = self.conn.clone();
@@ -100,7 +100,7 @@ impl ExecutionPlan for RemoteTableInsertExec {
             let count = conn
                 .insert(
                     &conn_options,
-                    unparser.clone(),
+                    literalizer.clone(),
                     &table,
                     remote_schema.clone(),
                     input_stream,

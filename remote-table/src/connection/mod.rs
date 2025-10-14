@@ -21,7 +21,7 @@ pub use postgres::*;
 pub use sqlite::*;
 use std::any::Any;
 
-use crate::{DFResult, RemoteSchemaRef, RemoteSource, Unparse, extract_primitive_array};
+use crate::{DFResult, Literalize, RemoteSchemaRef, RemoteSource, extract_primitive_array};
 use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
 use datafusion::common::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
@@ -58,7 +58,7 @@ pub trait Connection: Debug + Send + Sync {
     async fn insert(
         &self,
         conn_options: &ConnectionOptions,
-        unparser: Arc<dyn Unparse>,
+        literalizer: Arc<dyn Literalize>,
         table: &[String],
         remote_schema: RemoteSchemaRef,
         input: SendableRecordBatchStream,

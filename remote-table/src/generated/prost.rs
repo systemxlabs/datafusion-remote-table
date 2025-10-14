@@ -50,7 +50,7 @@ pub struct RemoteTableInsertExec {
     #[prost(message, optional, tag = "3")]
     pub remote_schema: ::core::option::Option<RemoteSchema>,
     #[prost(bytes = "vec", tag = "4")]
-    pub unparser: ::prost::alloc::vec::Vec<u8>,
+    pub literalizer: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "5")]
     pub connection: ::prost::alloc::vec::Vec<u8>,
 }
