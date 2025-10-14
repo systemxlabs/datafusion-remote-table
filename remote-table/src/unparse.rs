@@ -1,5 +1,5 @@
 use crate::PostgresType;
-use crate::{DFResult, RemoteDbType, RemoteType};
+use crate::{DFResult, RemoteType};
 use chrono::{TimeZone, Utc};
 use datafusion::arrow::array::timezone::Tz;
 use datafusion::arrow::array::*;
@@ -8,9 +8,7 @@ use datafusion::arrow::temporal_conversions::{
     date32_to_datetime, time64ns_to_time, time64us_to_time, timestamp_ns_to_datetime,
     timestamp_us_to_datetime,
 };
-use datafusion::common::tree_node::{TreeNode, TreeNodeRecursion};
 use datafusion::error::DataFusionError;
-use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -47,38 +45,6 @@ macro_rules! unparse_array {
 
 pub trait Unparse: Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
-
-    fn support_filter_pushdown(
-        &self,
-        filter: &Expr,
-        db_type: RemoteDbType,
-    ) -> DFResult<TableProviderFilterPushDown> {
-        let unparser = match db_type.create_unparser() {
-            Ok(unparser) => unparser,
-            Err(_) => return Ok(TableProviderFilterPushDown::Unsupported),
-        };
-        if unparser.expr_to_sql(filter).is_err() {
-            return Ok(TableProviderFilterPushDown::Unsupported);
-        }
-
-        let mut pushdown = TableProviderFilterPushDown::Exact;
-        filter
-            .apply(|e| {
-                if matches!(e, Expr::ScalarFunction(_)) {
-                    pushdown = TableProviderFilterPushDown::Unsupported;
-                }
-                Ok(TreeNodeRecursion::Continue)
-            })
-            .expect("won't fail");
-
-        Ok(pushdown)
-    }
-
-    fn unparse_filter(&self, filter: &Expr, db_type: RemoteDbType) -> DFResult<String> {
-        let unparser = db_type.create_unparser()?;
-        let ast = unparser.expr_to_sql(filter)?;
-        Ok(format!("{ast}"))
-    }
 
     fn unparse_null_array(
         &self,

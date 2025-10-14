@@ -3,15 +3,18 @@ use datafusion::arrow::array::{
 };
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::arrow::util::pretty::pretty_format_batches;
+use datafusion::common::Column;
+use datafusion::common::tree_node::{Transformed, TreeNode};
 use datafusion::error::DataFusionError;
+use datafusion::logical_expr::TableProviderFilterPushDown;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::physical_plan::{ExecutionPlan, collect};
-use datafusion::prelude::SessionContext;
+use datafusion::prelude::{Expr, SessionContext};
 use datafusion_proto::physical_plan::AsExecutionPlan;
 use datafusion_proto::protobuf::PhysicalPlanNode;
 use datafusion_remote_table::{
-    RemotePhysicalCodec, RemoteSource, RemoteTable, SqliteConnectionOptions, Transform,
-    TransformArgs, TransformCodec,
+    DefaultTransform, RemotePhysicalCodec, RemoteSource, RemoteTable, SqliteConnectionOptions,
+    Transform, TransformArgs, TransformCodec, transform_schema,
 };
 use integration_tests::setup_sqlite_db;
 use std::any::Any;
@@ -238,6 +241,42 @@ impl Transform for MyTransform {
         let schema = Arc::new(Schema::new(new_fields));
         let batch = RecordBatch::try_new(schema, new_arrays)?;
         Ok(batch)
+    }
+
+    fn support_filter_pushdown(
+        &self,
+        filter: &Expr,
+        args: TransformArgs,
+    ) -> Result<TableProviderFilterPushDown, DataFusionError> {
+        DefaultTransform {}.support_filter_pushdown(filter, args)
+    }
+
+    fn unparse_filter(
+        &self,
+        filter: &Expr,
+        args: TransformArgs,
+    ) -> Result<String, DataFusionError> {
+        let transformed_table_schema = transform_schema(
+            self,
+            args.table_schema.clone(),
+            Some(&args.remote_schema),
+            args.db_type,
+        )?;
+        let rewritten_filter = filter
+            .clone()
+            .transform_down(|e| {
+                if let Expr::Column(col) = e {
+                    let col_idx = transformed_table_schema.index_of(col.name())?;
+                    let row_name = args.table_schema.field(col_idx).name().to_string();
+                    Ok(Transformed::yes(Expr::Column(Column::new_unqualified(
+                        row_name,
+                    ))))
+                } else {
+                    Ok(Transformed::no(e))
+                }
+            })?
+            .data;
+        DefaultTransform {}.unparse_filter(&rewritten_filter, args)
     }
 }
 

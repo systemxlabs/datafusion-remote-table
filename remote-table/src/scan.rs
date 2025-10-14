@@ -47,9 +47,10 @@ impl RemoteTableScanExec {
         conn: Arc<dyn Connection>,
     ) -> DFResult<Self> {
         let transformed_table_schema = transform_schema(
-            table_schema.clone(),
             transform.as_ref(),
+            table_schema.clone(),
             remote_schema.as_ref(),
+            conn_options.db_type(),
         )?;
         let projected_schema = project_schema(&transformed_table_schema, projection.as_ref())?;
         let plan_properties = PlanProperties::new(
@@ -206,10 +207,8 @@ async fn build_and_transform_stream(
     limit: Option<usize>,
     transform: Arc<dyn Transform>,
 ) -> DFResult<SendableRecordBatchStream> {
-    let limit = if conn_options
-        .db_type()
-        .support_rewrite_with_filters_limit(&source)
-    {
+    let db_type = conn_options.db_type();
+    let limit = if db_type.support_rewrite_with_filters_limit(&source) {
         limit
     } else {
         None
@@ -247,6 +246,7 @@ async fn build_and_transform_stream(
             table_schema,
             projection,
             remote_schema,
+            db_type,
         )?))
     }
 }

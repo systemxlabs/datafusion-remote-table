@@ -1,13 +1,12 @@
 use crate::{
     ConnectionOptions, DFResult, DefaultTransform, DefaultUnparser, Pool, RemoteDbType,
-    RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec, Transform, Unparse, connect,
-    transform_schema,
+    RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec, Transform,
+    TransformArgs, Unparse, connect, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
+use datafusion::common::Statistics;
 use datafusion::common::stats::Precision;
-use datafusion::common::tree_node::{Transformed, TreeNode};
-use datafusion::common::{Column, Statistics};
 use datafusion::datasource::TableType;
 use datafusion::error::DataFusionError;
 use datafusion::logical_expr::dml::InsertOp;
@@ -224,9 +223,10 @@ impl RemoteTable {
             };
 
         let transformed_table_schema = transform_schema(
-            table_schema.clone(),
             transform.as_ref(),
+            table_schema.clone(),
             remote_schema_opt.as_ref(),
+            conn_options.db_type(),
         )?;
 
         Ok(RemoteTable {
@@ -267,22 +267,24 @@ impl TableProvider for RemoteTable {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
-        let transformed_table_schema = transform_schema(
-            self.table_schema.clone(),
-            self.transform.as_ref(),
-            self.remote_schema.as_ref(),
-        )?;
-        let rewritten_filters = rewrite_filters_column(
-            filters.to_vec(),
-            &self.table_schema,
-            &transformed_table_schema,
-        )?;
+        let remote_schema = if self.transform.as_any().is::<DefaultTransform>() {
+            Arc::new(RemoteSchema::empty())
+        } else {
+            let Some(remote_schema) = &self.remote_schema else {
+                return Err(DataFusionError::Plan(
+                    "remote schema is none but transform is not DefaultTransform".to_string(),
+                ));
+            };
+            remote_schema.clone()
+        };
         let mut unparsed_filters = vec![];
-        for filter in rewritten_filters {
-            unparsed_filters.push(
-                self.unparser
-                    .unparse_filter(&filter, self.conn_options.db_type())?,
-            );
+        for filter in filters {
+            let args = TransformArgs {
+                db_type: self.conn_options.db_type(),
+                table_schema: &self.table_schema,
+                remote_schema: &remote_schema,
+            };
+            unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
         let now = std::time::Instant::now();
@@ -316,12 +318,26 @@ impl TableProvider for RemoteTable {
                 filters.len()
             ]);
         }
+
+        let remote_schema = if self.transform.as_any().is::<DefaultTransform>() {
+            Arc::new(RemoteSchema::empty())
+        } else {
+            let Some(remote_schema) = &self.remote_schema else {
+                return Err(DataFusionError::Plan(
+                    "remote schema is none but transform is not DefaultTransform".to_string(),
+                ));
+            };
+            remote_schema.clone()
+        };
+
         let mut pushdown = vec![];
         for filter in filters {
-            pushdown.push(
-                self.unparser
-                    .support_filter_pushdown(filter, self.conn_options.db_type())?,
-            );
+            let args = TransformArgs {
+                db_type: self.conn_options.db_type(),
+                table_schema: &self.table_schema,
+                remote_schema: &remote_schema,
+            };
+            pushdown.push(self.transform.support_filter_pushdown(filter, args)?);
         }
         Ok(pushdown)
     }
@@ -411,28 +427,4 @@ impl TableProvider for RemoteTable {
         );
         Ok(Arc::new(exec))
     }
-}
-
-pub(crate) fn rewrite_filters_column(
-    filters: Vec<Expr>,
-    table_schema: &SchemaRef,
-    transformed_table_schema: &SchemaRef,
-) -> DFResult<Vec<Expr>> {
-    filters
-        .into_iter()
-        .map(|f| {
-            f.transform_down(|e| {
-                if let Expr::Column(col) = e {
-                    let col_idx = transformed_table_schema.index_of(col.name())?;
-                    let row_name = table_schema.field(col_idx).name().to_string();
-                    Ok(Transformed::yes(Expr::Column(Column::new_unqualified(
-                        row_name,
-                    ))))
-                } else {
-                    Ok(Transformed::no(e))
-                }
-            })
-            .map(|trans| trans.data)
-        })
-        .collect::<DFResult<Vec<_>>>()
 }
