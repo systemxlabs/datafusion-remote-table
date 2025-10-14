@@ -24,7 +24,7 @@ use std::sync::Arc;
 #[case("SELECT * from supported_data_types".into())]
 #[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
-async fn transform(#[case] source: RemoteSource) {
+async fn transform_changing_field(#[case] source: RemoteSource) {
     let db_path = setup_sqlite_db();
     let options = SqliteConnectionOptions::new(db_path.clone());
 
@@ -278,6 +278,160 @@ impl Transform for MyTransform {
             .data;
         DefaultTransform {}.unparse_filter(&rewritten_filter, args)
     }
+}
+
+#[rstest::rstest]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn transform_adding_field(
+    #[case] source: RemoteSource,
+) -> Result<(), Box<dyn std::error::Error>> {
+    #[derive(Debug)]
+    struct MyTransform;
+
+    impl Transform for MyTransform {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn transform(
+            &self,
+            batch: RecordBatch,
+            _args: TransformArgs,
+        ) -> Result<RecordBatch, DataFusionError> {
+            let mut fields = batch.schema().fields.to_vec();
+            fields.push(Arc::new(Field::new("new_field", DataType::Utf8, true)));
+
+            let mut arrays = batch.columns().to_vec();
+            let new_array = StringArray::from_iter_values(vec!["new"; batch.num_rows()]);
+            arrays.push(Arc::new(new_array));
+
+            let new_schema = Arc::new(Schema::new(fields));
+            let new_batch = RecordBatch::try_new(new_schema, arrays)?;
+            Ok(new_batch)
+        }
+
+        fn support_filter_pushdown(
+            &self,
+            filter: &Expr,
+            args: TransformArgs,
+        ) -> Result<TableProviderFilterPushDown, DataFusionError> {
+            DefaultTransform {}.support_filter_pushdown(filter, args)
+        }
+
+        fn unparse_filter(
+            &self,
+            filter: &Expr,
+            args: TransformArgs,
+        ) -> Result<String, DataFusionError> {
+            DefaultTransform {}.unparse_filter(filter, args)
+        }
+    }
+
+    let db_path = setup_sqlite_db();
+    let options = SqliteConnectionOptions::new(db_path.clone());
+
+    let table =
+        RemoteTable::try_new_with_transform(options, source, Arc::new(MyTransform {})).await?;
+    println!("remote schema: {:#?}", table.remote_schema());
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table))?;
+
+    let result = ctx
+        .sql("select * from remote_table")
+        .await?
+        .collect()
+        .await?;
+    let table_str = pretty_format_batches(&result)?.to_string();
+    println!("{table_str}");
+
+    assert_eq!(
+        table_str,
+        r#"+----+-------+-----------+
+| id | name  | new_field |
++----+-------+-----------+
+| 1  | Tom   | new       |
+| 2  | Jerry | new       |
+| 3  | Spike | new       |
++----+-------+-----------+"#,
+    );
+
+    Ok(())
+}
+
+#[rstest::rstest]
+#[case("SELECT * from simple_table".into())]
+#[case(vec!["simple_table"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn transform_removing_field(
+    #[case] source: RemoteSource,
+) -> Result<(), Box<dyn std::error::Error>> {
+    #[derive(Debug)]
+    struct MyTransform;
+
+    impl Transform for MyTransform {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn transform(
+            &self,
+            batch: RecordBatch,
+            _args: TransformArgs,
+        ) -> Result<RecordBatch, DataFusionError> {
+            let new_batch = batch.project(&[0])?;
+            Ok(new_batch)
+        }
+
+        fn support_filter_pushdown(
+            &self,
+            filter: &Expr,
+            args: TransformArgs,
+        ) -> Result<TableProviderFilterPushDown, DataFusionError> {
+            DefaultTransform {}.support_filter_pushdown(filter, args)
+        }
+
+        fn unparse_filter(
+            &self,
+            filter: &Expr,
+            args: TransformArgs,
+        ) -> Result<String, DataFusionError> {
+            DefaultTransform {}.unparse_filter(filter, args)
+        }
+    }
+
+    let db_path = setup_sqlite_db();
+    let options = SqliteConnectionOptions::new(db_path.clone());
+
+    let table =
+        RemoteTable::try_new_with_transform(options, source, Arc::new(MyTransform {})).await?;
+    println!("remote schema: {:#?}", table.remote_schema());
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table))?;
+
+    let result = ctx
+        .sql("select * from remote_table")
+        .await?
+        .collect()
+        .await?;
+    let table_str = pretty_format_batches(&result)?.to_string();
+    println!("{table_str}");
+
+    assert_eq!(
+        table_str,
+        r#"+----+
+| id |
++----+
+| 1  |
+| 2  |
+| 3  |
++----+"#,
+    );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
