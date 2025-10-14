@@ -365,7 +365,7 @@ pub(crate) struct TransformStream {
     transform: Arc<dyn Transform>,
     table_schema: SchemaRef,
     projection: Option<Vec<usize>>,
-    projected_schema: SchemaRef,
+    projected_transformed_schema: SchemaRef,
     remote_schema: RemoteSchemaRef,
 }
 
@@ -383,13 +383,19 @@ impl TransformStream {
                 "Transform stream input schema is not equals to table schema, input schema: {input_schema:?}, table schema: {table_schema:?}"
             )));
         }
-        let projected_schema = project_schema(&table_schema, projection.as_ref())?;
+        let transformed_table_schema = transform_schema(
+            table_schema.clone(),
+            transform.as_ref(),
+            Some(&remote_schema),
+        )?;
+        let projected_transformed_schema =
+            project_schema(&transformed_table_schema, projection.as_ref())?;
         Ok(Self {
             input,
             transform,
             table_schema,
             projection,
-            projected_schema,
+            projected_transformed_schema,
             remote_schema,
         })
     }
@@ -429,7 +435,7 @@ impl Stream for TransformStream {
 
 impl RecordBatchStream for TransformStream {
     fn schema(&self) -> SchemaRef {
-        self.projected_schema.clone()
+        self.projected_transformed_schema.clone()
     }
 }
 
@@ -450,14 +456,17 @@ pub(crate) fn transform_batch(
     table_schema: &SchemaRef,
     remote_schema: &RemoteSchemaRef,
 ) -> DFResult<RecordBatch> {
-    let mut new_arrays: Vec<ArrayRef> = Vec::with_capacity(batch.schema().fields.len());
-    let mut new_fields: Vec<FieldRef> = Vec::with_capacity(batch.schema().fields.len());
+    assert_eq!(&batch.schema(), table_schema);
 
-    for (idx, col_index) in (0..table_schema.fields.len()).enumerate() {
-        let field = unsafe { table_schema.fields.get_unchecked(col_index) };
-        let remote_field = &remote_schema.fields[col_index];
+    let fields_len = table_schema.fields.len();
+    let mut new_arrays: Vec<ArrayRef> = Vec::with_capacity(fields_len);
+    let mut new_fields: Vec<FieldRef> = Vec::with_capacity(fields_len);
+
+    for idx in 0..fields_len {
+        let field = unsafe { table_schema.fields.get_unchecked(idx) };
+        let remote_field = &remote_schema.fields[idx];
         let args = TransformArgs {
-            col_index,
+            col_index: idx,
             field,
             remote_field,
             table_schema,
