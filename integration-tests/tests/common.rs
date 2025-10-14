@@ -1,7 +1,7 @@
 use datafusion::arrow::array::{
-    Array, ArrayRef, BinaryArray, Float64Array, Int64Array, NullArray, StringArray,
+    Array, ArrayRef, BinaryArray, Float64Array, Int64Array, RecordBatch, StringArray,
 };
-use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
+use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::error::DataFusionError;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
@@ -136,124 +136,108 @@ impl Transform for MyTransform {
         self
     }
 
-    fn transform_null(
+    fn transform(
         &self,
-        array: &NullArray,
+        batch: RecordBatch,
         args: TransformArgs,
-    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
-        let mut data = Vec::with_capacity(array.len());
-        for _ in 0..array.len() {
-            data.push(format!(
-                "transform_null-{}-{}-{:?}-NULL",
-                args.col_index,
-                args.field.data_type(),
-                args.remote_field.remote_type
-            ))
-        }
-        Ok((
-            Arc::new(StringArray::from(data)),
-            Arc::new(Field::new(
-                format!("transformed_null-{}", args.field.name()),
-                DataType::Utf8,
-                false,
-            )),
-        ))
-    }
+    ) -> Result<RecordBatch, DataFusionError> {
+        let fields_len = args.table_schema.fields.len();
+        let mut new_fields = Vec::with_capacity(fields_len);
+        let mut new_arrays: Vec<ArrayRef> = Vec::with_capacity(fields_len);
 
-    fn transform_int64(
-        &self,
-        array: &Int64Array,
-        args: TransformArgs,
-    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
-        let mut data = Vec::with_capacity(array.len());
-        for row in array.iter() {
-            data.push(format!(
-                "transform_int64-{}-{}-{:?}-{row:?}",
-                args.col_index,
-                args.field.data_type(),
-                args.remote_field.remote_type
-            ))
-        }
-        Ok((
-            Arc::new(StringArray::from(data)),
-            Arc::new(Field::new(
-                format!("transformed_int64-{}", args.field.name()),
-                DataType::Utf8,
-                false,
-            )),
-        ))
-    }
+        for i in 0..fields_len {
+            let field = args.table_schema.field(i);
+            let array = batch.column(i);
+            let field_name = field.name();
+            let field_type = field.data_type();
+            let remote_type = &args.remote_schema.fields[i].remote_type;
+            match field_type {
+                DataType::Null => {
+                    new_fields.push(Field::new(
+                        format!("transformed_null-{field_name}"),
+                        DataType::Utf8,
+                        false,
+                    ));
 
-    fn transform_float64(
-        &self,
-        array: &Float64Array,
-        args: TransformArgs,
-    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
-        let mut data = Vec::with_capacity(array.len());
-        for row in array.iter() {
-            data.push(format!(
-                "transform_float64-{}-{}-{:?}-{row:?}",
-                args.col_index,
-                args.field.data_type(),
-                args.remote_field.remote_type
-            ))
-        }
-        Ok((
-            Arc::new(StringArray::from(data)),
-            Arc::new(Field::new(
-                format!("transformed_float64-{}", args.field.name()),
-                DataType::Utf8,
-                false,
-            )),
-        ))
-    }
+                    let mut data = Vec::with_capacity(array.len());
+                    for _ in 0..array.len() {
+                        data.push(format!(
+                            "transform_null-{i}-{field_type}-{remote_type:?}-NULL",
+                        ))
+                    }
+                    new_arrays.push(Arc::new(StringArray::from(data)));
+                }
+                DataType::Int64 => {
+                    new_fields.push(Field::new(
+                        format!("transformed_int64-{field_name}"),
+                        DataType::Utf8,
+                        false,
+                    ));
 
-    fn transform_utf8(
-        &self,
-        array: &StringArray,
-        args: TransformArgs,
-    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
-        let mut data = Vec::with_capacity(array.len());
-        for row in array.iter() {
-            data.push(format!(
-                "transform_utf8-{}-{}-{:?}-{row:?}",
-                args.col_index,
-                args.field.data_type(),
-                args.remote_field.remote_type
-            ))
-        }
-        Ok((
-            Arc::new(StringArray::from(data)),
-            Arc::new(Field::new(
-                format!("transformed_utf8-{}", args.field.name()),
-                DataType::Utf8,
-                false,
-            )),
-        ))
-    }
+                    let int64_array = array.as_any().downcast_ref::<Int64Array>().unwrap();
+                    let mut data = Vec::with_capacity(array.len());
+                    for row in int64_array.iter() {
+                        data.push(format!(
+                            "transform_int64-{i}-{field_type}-{remote_type:?}-{row:?}",
+                        ))
+                    }
+                    new_arrays.push(Arc::new(StringArray::from(data)));
+                }
+                DataType::Float64 => {
+                    new_fields.push(Field::new(
+                        format!("transformed_float64-{field_name}"),
+                        DataType::Utf8,
+                        false,
+                    ));
 
-    fn transform_binary(
-        &self,
-        array: &BinaryArray,
-        args: TransformArgs,
-    ) -> Result<(ArrayRef, FieldRef), DataFusionError> {
-        let mut data = Vec::with_capacity(array.len());
-        for row in array.iter() {
-            data.push(format!(
-                "transform_binary-{}-{}-{:?}-{row:?}",
-                args.col_index,
-                args.field.data_type(),
-                args.remote_field.remote_type
-            ))
+                    let float64_array = array.as_any().downcast_ref::<Float64Array>().unwrap();
+                    let mut data = Vec::with_capacity(array.len());
+                    for row in float64_array.iter() {
+                        data.push(format!(
+                            "transform_float64-{i}-{field_type}-{remote_type:?}-{row:?}",
+                        ))
+                    }
+                    new_arrays.push(Arc::new(StringArray::from(data)));
+                }
+                DataType::Utf8 => {
+                    new_fields.push(Field::new(
+                        format!("transformed_utf8-{field_name}"),
+                        DataType::Utf8,
+                        false,
+                    ));
+
+                    let utf8_array = array.as_any().downcast_ref::<StringArray>().unwrap();
+                    let mut data = Vec::with_capacity(array.len());
+                    for row in utf8_array.iter() {
+                        data.push(format!(
+                            "transform_utf8-{i}-{field_type}-{remote_type:?}-{row:?}",
+                        ))
+                    }
+                    new_arrays.push(Arc::new(StringArray::from(data)));
+                }
+                DataType::Binary => {
+                    new_fields.push(Field::new(
+                        format!("transformed_binary-{field_name}"),
+                        DataType::Utf8,
+                        false,
+                    ));
+
+                    let binary_array = array.as_any().downcast_ref::<BinaryArray>().unwrap();
+                    let mut data = Vec::with_capacity(array.len());
+                    for row in binary_array.iter() {
+                        data.push(format!(
+                            "transform_binary-{i}-{field_type}-{remote_type:?}-{row:?}",
+                        ))
+                    }
+                    new_arrays.push(Arc::new(StringArray::from(data)));
+                }
+                _ => unreachable!(),
+            }
         }
-        Ok((
-            Arc::new(StringArray::from(data)),
-            Arc::new(Field::new(
-                format!("transformed_binary-{}", args.field.name()),
-                DataType::Utf8,
-                false,
-            )),
-        ))
+
+        let schema = Arc::new(Schema::new(new_fields));
+        let batch = RecordBatch::try_new(schema, new_arrays)?;
+        Ok(batch)
     }
 }
 
