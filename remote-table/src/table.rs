@@ -256,6 +256,14 @@ impl RemoteTable {
                 }
             };
 
+        if let Some(remote_schema) = &remote_schema_opt
+            && table_schema.fields.len() != remote_schema.fields.len()
+        {
+            return Err(DataFusionError::Plan(format!(
+                "fields length of table schema is not matched with remote schema. table schema: {table_schema}, remote schema: {remote_schema:?}"
+            )));
+        }
+
         let transformed_table_schema = transform_schema(
             transform.as_ref(),
             table_schema.clone(),
