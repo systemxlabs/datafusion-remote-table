@@ -25,6 +25,7 @@ use datafusion::datasource::source::DataSource;
 use datafusion::execution::FunctionRegistry;
 use datafusion::physical_expr::LexOrdering;
 use datafusion::physical_plan::ExecutionPlan;
+use datafusion::prelude::SessionContext;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
 use datafusion_proto::physical_plan::from_proto::parse_physical_sort_exprs;
@@ -176,7 +177,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         &self,
         buf: &[u8],
         inputs: &[Arc<dyn ExecutionPlan>],
-        registry: &dyn FunctionRegistry,
+        _registry: &dyn FunctionRegistry,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
         let remote_table_node =
             protobuf::RemoteTablePhysicalPlanNode::decode(buf).map_err(|e| {
@@ -285,7 +286,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     .map(|sort_exprs| {
                         let sort_exprs = parse_physical_sort_exprs(
                             sort_exprs.physical_sort_expr_nodes.as_slice(),
-                            registry,
+                            &SessionContext::new(),
                             &schema,
                             self,
                         )?;
