@@ -111,25 +111,18 @@ impl Connection for DmConnection {
     }
 
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        match source {
-            RemoteSource::Table(_table) => Err(DataFusionError::Execution(
-                "Dm does not support infer schema for table".to_string(),
+        let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
+        let conn = self.conn.lock().await;
+        let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to execute query {sql} on dm: {e:?}"))
+        })?;
+        match cursor_opt {
+            None => Err(DataFusionError::Execution(
+                "No rows returned to infer schema".to_string(),
             )),
-            RemoteSource::Query(_query) => {
-                let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
-                let conn = self.conn.lock().await;
-                let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to infer schema: {e:?}"))
-                })?;
-                match cursor_opt {
-                    None => Err(DataFusionError::Execution(
-                        "No rows returned to infer schema".to_string(),
-                    )),
-                    Some(cursor) => {
-                        let remote_schema = Arc::new(build_remote_schema(cursor)?);
-                        Ok(remote_schema)
-                    }
-                }
+            Some(cursor) => {
+                let remote_schema = Arc::new(build_remote_schema(cursor)?);
+                Ok(remote_schema)
             }
         }
     }

@@ -186,11 +186,10 @@ order by ordinal_position",
                 )?);
                 Ok(remote_schema)
             }
-            RemoteSource::Query(_query) => {
-                let sql = source.query(RemoteDbType::Postgres);
-                let stmt = self.conn.prepare(&sql).await.map_err(|e| {
+            RemoteSource::Query(query) => {
+                let stmt = self.conn.prepare(query).await.map_err(|e| {
                     DataFusionError::Execution(format!(
-                        "Failed to execute query {sql} on postgres: {e:?}",
+                        "Failed to execute query {query} on postgres: {e:?}",
                     ))
                 })?;
                 let remote_schema = Arc::new(
