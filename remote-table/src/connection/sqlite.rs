@@ -358,7 +358,11 @@ fn build_remote_schema_for_query(
 
     if !unknown_cols.is_empty() {
         return Err(DataFusionError::NotImplemented(format!(
-            "Failed to infer sqlite decl type for columns: {unknown_cols:?}"
+            "Failed to infer sqlite decl type for columns: {}",
+            unknown_cols
+                .iter()
+                .map(|idx| &columns[*idx].name)
+                .join(", ")
         )));
     }
     let remote_fields = remote_field_map
