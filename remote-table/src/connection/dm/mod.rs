@@ -2,8 +2,8 @@ use crate::connection::ODBC_ENV;
 use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
-    Connection, ConnectionOptions, DFResult, DmType, Literalize, Pool, RemoteDbType, RemoteField,
-    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
+    RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -12,8 +12,6 @@ use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::lock::Mutex;
 use log::debug;
 use odbc_api::buffers::ColumnarAnyBuffer;
@@ -25,42 +23,6 @@ use tokio::runtime::Handle;
 
 mod buffer;
 mod row;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct DmConnectionOptions {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) stream_chunk_size: usize,
-    pub(crate) driver: String,
-}
-
-impl DmConnectionOptions {
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            password: password.into(),
-            schema: None,
-            stream_chunk_size: 1024,
-            driver: "DM8 ODBC DRIVER".to_string(),
-        }
-    }
-}
-
-impl From<DmConnectionOptions> for ConnectionOptions {
-    fn from(options: DmConnectionOptions) -> Self {
-        ConnectionOptions::Dm(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct DmPool {

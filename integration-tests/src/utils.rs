@@ -4,8 +4,8 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, MysqlConnectionOptions, OracleConnectionOptions, PostgresConnectionOptions,
-    RemoteDbType, RemoteSource, RemoteTable, SqliteConnectionOptions,
+    ConnectionOptions, DmConnectionOptions, MysqlConnectionOptions, OracleConnectionOptions,
+    PostgresConnectionOptions, RemoteDbType, RemoteSource, RemoteTable, SqliteConnectionOptions,
 };
 use std::sync::Arc;
 
@@ -129,6 +129,11 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
             let db_path = setup_sqlite_db();
             ConnectionOptions::Sqlite(SqliteConnectionOptions::new(db_path.clone()))
         }
-        RemoteDbType::Dm => todo!(),
+        RemoteDbType::Dm => ConnectionOptions::Dm(DmConnectionOptions::new(
+            "127.0.0.1",
+            15236,
+            "SYSDBA",
+            "Password123",
+        )),
     }
 }

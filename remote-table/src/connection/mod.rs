@@ -2,6 +2,7 @@
 mod dm;
 #[cfg(feature = "mysql")]
 mod mysql;
+mod options;
 #[cfg(feature = "oracle")]
 mod oracle;
 #[cfg(feature = "postgres")]
@@ -13,12 +14,14 @@ mod sqlite;
 pub use dm::*;
 #[cfg(feature = "mysql")]
 pub use mysql::*;
+pub use options::*;
 #[cfg(feature = "oracle")]
 pub use oracle::*;
 #[cfg(feature = "postgres")]
 pub use postgres::*;
 #[cfg(feature = "sqlite")]
 pub use sqlite::*;
+
 use std::any::Any;
 
 use crate::{DFResult, Literalize, RemoteSchemaRef, RemoteSource, extract_primitive_array};
@@ -65,99 +68,73 @@ pub trait Connection: Debug + Send + Sync {
     ) -> DFResult<usize>;
 }
 
+#[allow(unused_variables)]
 pub async fn connect(options: &ConnectionOptions) -> DFResult<Arc<dyn Pool>> {
     match options {
-        #[cfg(feature = "postgres")]
         ConnectionOptions::Postgres(options) => {
-            let pool = connect_postgres(options).await?;
-            Ok(Arc::new(pool))
+            #[cfg(feature = "postgres")]
+            {
+                let pool = connect_postgres(options).await?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the postgres feature".to_string(),
+                ))
+            }
         }
-        #[cfg(feature = "mysql")]
         ConnectionOptions::Mysql(options) => {
-            let pool = connect_mysql(options)?;
-            Ok(Arc::new(pool))
+            #[cfg(feature = "mysql")]
+            {
+                let pool = connect_mysql(options)?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "mysql"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the mysql feature".to_string(),
+                ))
+            }
         }
-        #[cfg(feature = "oracle")]
         ConnectionOptions::Oracle(options) => {
-            let pool = connect_oracle(options).await?;
-            Ok(Arc::new(pool))
+            #[cfg(feature = "oracle")]
+            {
+                let pool = connect_oracle(options).await?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "oracle"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the oracle feature".to_string(),
+                ))
+            }
         }
-        #[cfg(feature = "sqlite")]
         ConnectionOptions::Sqlite(options) => {
-            let pool = connect_sqlite(options).await?;
-            Ok(Arc::new(pool))
+            #[cfg(feature = "sqlite")]
+            {
+                let pool = connect_sqlite(options).await?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "sqlite"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the sqlite feature".to_string(),
+                ))
+            }
         }
-        #[cfg(feature = "dm")]
         ConnectionOptions::Dm(options) => {
-            let pool = connect_dm(options)?;
-            Ok(Arc::new(pool))
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ConnectionOptions {
-    #[cfg(feature = "postgres")]
-    Postgres(PostgresConnectionOptions),
-    #[cfg(feature = "oracle")]
-    Oracle(OracleConnectionOptions),
-    #[cfg(feature = "mysql")]
-    Mysql(MysqlConnectionOptions),
-    #[cfg(feature = "sqlite")]
-    Sqlite(SqliteConnectionOptions),
-    #[cfg(feature = "dm")]
-    Dm(DmConnectionOptions),
-}
-
-impl ConnectionOptions {
-    pub(crate) fn stream_chunk_size(&self) -> usize {
-        match self {
-            #[cfg(feature = "postgres")]
-            ConnectionOptions::Postgres(options) => options.stream_chunk_size,
-            #[cfg(feature = "oracle")]
-            ConnectionOptions::Oracle(options) => options.stream_chunk_size,
-            #[cfg(feature = "mysql")]
-            ConnectionOptions::Mysql(options) => options.stream_chunk_size,
-            #[cfg(feature = "sqlite")]
-            ConnectionOptions::Sqlite(options) => options.stream_chunk_size,
             #[cfg(feature = "dm")]
-            ConnectionOptions::Dm(options) => options.stream_chunk_size,
-        }
-    }
-
-    pub(crate) fn db_type(&self) -> RemoteDbType {
-        match self {
-            #[cfg(feature = "postgres")]
-            ConnectionOptions::Postgres(_) => RemoteDbType::Postgres,
-            #[cfg(feature = "oracle")]
-            ConnectionOptions::Oracle(_) => RemoteDbType::Oracle,
-            #[cfg(feature = "mysql")]
-            ConnectionOptions::Mysql(_) => RemoteDbType::Mysql,
-            #[cfg(feature = "sqlite")]
-            ConnectionOptions::Sqlite(_) => RemoteDbType::Sqlite,
-            #[cfg(feature = "dm")]
-            ConnectionOptions::Dm(_) => RemoteDbType::Dm,
-        }
-    }
-
-    pub fn with_pool_max_size(self, pool_max_size: usize) -> Self {
-        match self {
-            #[cfg(feature = "postgres")]
-            ConnectionOptions::Postgres(options) => {
-                ConnectionOptions::Postgres(options.with_pool_max_size(pool_max_size))
+            {
+                let pool = connect_dm(options)?;
+                Ok(Arc::new(pool))
             }
-            #[cfg(feature = "oracle")]
-            ConnectionOptions::Oracle(options) => {
-                ConnectionOptions::Oracle(options.with_pool_max_size(pool_max_size))
+            #[cfg(not(feature = "dm"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the dm feature".to_string(),
+                ))
             }
-            #[cfg(feature = "mysql")]
-            ConnectionOptions::Mysql(options) => {
-                ConnectionOptions::Mysql(options.with_pool_max_size(pool_max_size))
-            }
-            #[cfg(feature = "sqlite")]
-            ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
-            #[cfg(feature = "dm")]
-            ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
         }
     }
 }

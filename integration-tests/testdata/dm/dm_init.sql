@@ -1,4 +1,4 @@
-CREATE TABLE supported_data_types (
+CREATE TABLE supported_data_types_test (
     bit_col BIT,
     tinyint_col TINYINT,
     smallint_col SMALLINT,

@@ -1,0 +1,10 @@
+services:
+  dm:
+    image: registry.cn-hangzhou.aliyuncs.com/qiluo-images/dm8_single:dm8_20230808_rev197096_x86_rh6_64
+    environment:
+      - UNICODE_FLAG=1
+      - SYSDBA_PWD=Password123
+    ports:
+      - "15236:5236"
+    volumes:
+      - ./dm_init.sql:/docker-entrypoint-initdb.d/dm_init.sql

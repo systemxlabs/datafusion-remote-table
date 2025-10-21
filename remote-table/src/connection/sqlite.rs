@@ -1,7 +1,8 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, SqliteType, literalize_array,
+    RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
+    literalize_array,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -11,8 +12,6 @@ use datafusion::arrow::datatypes::{DataType, SchemaRef};
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::StreamExt;
 use itertools::Itertools;
 use log::{debug, error};
@@ -22,27 +21,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct SqliteConnectionOptions {
-    pub path: PathBuf,
-    pub stream_chunk_size: usize,
-}
-
-impl SqliteConnectionOptions {
-    pub fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            stream_chunk_size: 2048,
-        }
-    }
-}
-
-impl From<SqliteConnectionOptions> for ConnectionOptions {
-    fn from(options: SqliteConnectionOptions) -> Self {
-        ConnectionOptions::Sqlite(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct SqlitePool {

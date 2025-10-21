@@ -62,3 +62,15 @@ pub fn setup_sqlite_db() -> &'static PathBuf {
         db_path
     })
 }
+
+static DM_DB: OnceLock<DockerCompose> = OnceLock::new();
+pub async fn setup_dm_db() {
+    let _ = DM_DB.get_or_init(|| {
+        let compose =
+            DockerCompose::new("dm", format!("{}/testdata/dm", env!("CARGO_MANIFEST_DIR")));
+        compose.down();
+        compose.up();
+        compose
+    });
+    wait_container_ready(RemoteDbType::Dm).await;
+}

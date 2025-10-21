@@ -1,8 +1,9 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::{big_decimal_to_i128, big_decimal_to_i256};
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, Pool, PostgresType, RemoteField,
-    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType, literalize_array,
+    Connection, ConnectionOptions, DFResult, Literalize, Pool, PostgresConnectionOptions,
+    PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    literalize_array,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
@@ -27,8 +28,6 @@ use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::StreamExt;
 use log::debug;
 use num_bigint::{BigInt, Sign};
@@ -36,44 +35,6 @@ use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct PostgresConnectionOptions {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) database: Option<String>,
-    pub(crate) pool_max_size: usize,
-    pub(crate) stream_chunk_size: usize,
-    pub(crate) default_numeric_scale: i8,
-}
-
-impl PostgresConnectionOptions {
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            password: password.into(),
-            database: None,
-            pool_max_size: 10,
-            stream_chunk_size: 2048,
-            default_numeric_scale: 10,
-        }
-    }
-}
-
-impl From<PostgresConnectionOptions> for ConnectionOptions {
-    fn from(options: PostgresConnectionOptions) -> Self {
-        ConnectionOptions::Postgres(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct PostgresPool {

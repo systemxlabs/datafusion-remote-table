@@ -1,8 +1,8 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::big_decimal_to_i128;
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, MysqlType, Pool, RemoteField,
-    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    Connection, ConnectionOptions, DFResult, Literalize, MysqlConnectionOptions, MysqlType, Pool,
+    RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use bigdecimal::{BigDecimal, num_bigint};
@@ -18,8 +18,6 @@ use datafusion::arrow::datatypes::{DataType, Date32Type, SchemaRef, TimeUnit, i2
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::StreamExt;
 use futures::lock::Mutex;
 use log::debug;
@@ -28,42 +26,6 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Column, FromValueError, Row, Value};
 use std::any::Any;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct MysqlConnectionOptions {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) database: Option<String>,
-    pub(crate) pool_max_size: usize,
-    pub(crate) stream_chunk_size: usize,
-}
-
-impl MysqlConnectionOptions {
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            password: password.into(),
-            database: None,
-            pool_max_size: 10,
-            stream_chunk_size: 2048,
-        }
-    }
-}
-
-impl From<MysqlConnectionOptions> for ConnectionOptions {
-    fn from(options: MysqlConnectionOptions) -> Self {
-        ConnectionOptions::Mysql(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct MysqlPool {
