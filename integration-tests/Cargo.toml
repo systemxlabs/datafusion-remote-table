@@ -5,11 +5,11 @@ edition = "2024"
 publish = false
 
 [dependencies]
-datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite"] }
+datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm"] }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 tokio = { workspace = true }
-ctor = "0.4"
 rusqlite = { workspace = true, features = ["bundled"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 rstest = "0.26"
+odbc-api = { workspace = true }

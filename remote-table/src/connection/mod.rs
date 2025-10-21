@@ -35,7 +35,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 #[cfg(feature = "dm")]
-pub(crate) static ODBC_ENV: std::sync::OnceLock<odbc_api::Environment> = std::sync::OnceLock::new();
+pub static ODBC_ENV: std::sync::OnceLock<odbc_api::Environment> = std::sync::OnceLock::new();
 
 #[async_trait::async_trait]
 pub trait Pool: Debug + Send + Sync {

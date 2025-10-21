@@ -40,7 +40,7 @@ impl Pool for DmPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
         let env = ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
         let mut connection_str = format!(
-            "Driver={{{}}};Server={};Port={};UID={};PWD={}",
+            "Driver={{{}}};Server={};TCP_Port={};UID={};PWD={}",
             self.options.driver,
             self.options.host,
             self.options.port,
@@ -203,9 +203,9 @@ impl Connection for DmConnection {
         _remote_schema: RemoteSchemaRef,
         _input: SendableRecordBatchStream,
     ) -> DFResult<usize> {
-        Err(DataFusionError::Execution(format!(
-            "Insert operation is not supported for dm"
-        )))
+        Err(DataFusionError::Execution(
+            "Insert operation is not supported for dm".to_string(),
+        ))
     }
 }
 

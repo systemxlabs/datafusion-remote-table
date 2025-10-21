@@ -374,7 +374,7 @@ pub(crate) fn buffer_to_batch(
                         })?;
                         Ok::<_, DataFusionError>(
                             nt.num_seconds_from_midnight() as i32 * 1000
-                                + (nt.nanosecond() / 1000_000) as i32,
+                                + (nt.nanosecond() / 1_000_000) as i32,
                         )
                     }
                 );

@@ -6,6 +6,7 @@ use datafusion_remote_table::RemoteDbType;
 
 use crate::docker::DockerCompose;
 use crate::utils::wait_container_ready;
+use odbc_api::Environment;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -73,4 +74,23 @@ pub async fn setup_dm_db() {
         compose
     });
     wait_container_ready(RemoteDbType::Dm).await;
+
+    static DM_INIT: OnceLock<()> = OnceLock::new();
+    let _ = DM_INIT.get_or_init(|| {
+        let env = datafusion_remote_table::ODBC_ENV
+            .get_or_init(|| Environment::new().expect("failed to create ODBC env"));
+        let connection_str =
+            "Driver={DM8 ODBC DRIVER};Server=localhost;TCP_Port=15236;UID=SYSDBA;PWD=Password123";
+        let connection = env
+            .connect_with_connection_string(connection_str, odbc_api::ConnectionOptions::default())
+            .unwrap();
+        connection.set_autocommit(true).unwrap();
+
+        let sqls = include_str!("../testdata/dm/dm_init.sql").split(";");
+        for sql in sqls {
+            if let Err(e) = connection.execute(sql, (), None) {
+                println!("Failed to exec sql {sql}, e: {e:?}")
+            }
+        }
+    });
 }
