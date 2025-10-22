@@ -131,7 +131,7 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
         }
         RemoteDbType::Dm => ConnectionOptions::Dm(DmConnectionOptions::new(
             "127.0.0.1",
-            15236,
+            25236,
             "SYSDBA",
             "Password123",
         )),
