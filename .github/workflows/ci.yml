@@ -55,8 +55,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unixodbc unixodbc-dev
 
-      - name: Run cargo test
-        run: cargo test
+      - name: Run unit tests
+        run: cargo test -p datafusion-remote-table
+
+      - name: Run integration tests
+        # There is no easy way to install dm odbc driver, so skip dm integration tests
+        run: cargo test -p integration-tests --test common --test sqlite --test postgres --test mysql --test oracle
 
   lints:
     name: Lints

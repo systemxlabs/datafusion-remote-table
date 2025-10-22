@@ -71,10 +71,9 @@ pub async fn setup_dm_db() {
             DockerCompose::new("dm", format!("{}/testdata/dm", env!("CARGO_MANIFEST_DIR")));
         compose.down();
         compose.up();
-        std::thread::sleep(std::time::Duration::from_secs(200));
         compose
     });
-    // wait_container_ready(RemoteDbType::Dm).await;
+    wait_container_ready(RemoteDbType::Dm).await;
 
     static DM_INIT: OnceLock<()> = OnceLock::new();
     let _ = DM_INIT.get_or_init(|| {
