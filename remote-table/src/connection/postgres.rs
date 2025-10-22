@@ -1,8 +1,9 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::{big_decimal_to_i128, big_decimal_to_i256};
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, Pool, PostgresType, RemoteField,
-    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType, literalize_array,
+    Connection, ConnectionOptions, DFResult, Literalize, Pool, PostgresConnectionOptions,
+    PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    literalize_array,
 };
 use bb8_postgres::PostgresConnectionManager;
 use bb8_postgres::tokio_postgres::types::{FromSql, Type};
@@ -27,8 +28,6 @@ use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::StreamExt;
 use log::debug;
 use num_bigint::{BigInt, Sign};
@@ -36,44 +35,6 @@ use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct PostgresConnectionOptions {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) database: Option<String>,
-    pub(crate) pool_max_size: usize,
-    pub(crate) stream_chunk_size: usize,
-    pub(crate) default_numeric_scale: i8,
-}
-
-impl PostgresConnectionOptions {
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            password: password.into(),
-            database: None,
-            pool_max_size: 10,
-            stream_chunk_size: 2048,
-            default_numeric_scale: 10,
-        }
-    }
-}
-
-impl From<PostgresConnectionOptions> for ConnectionOptions {
-    fn from(options: PostgresConnectionOptions) -> Self {
-        ConnectionOptions::Postgres(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct PostgresPool {
@@ -176,7 +137,7 @@ order by ordinal_position",
                     where_condition
                 );
                 let rows = self.conn.query(&sql, &[]).await.map_err(|e| {
-                    DataFusionError::Execution(format!(
+                    DataFusionError::Plan(format!(
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
@@ -186,11 +147,10 @@ order by ordinal_position",
                 )?);
                 Ok(remote_schema)
             }
-            RemoteSource::Query(_query) => {
-                let sql = source.query(RemoteDbType::Postgres);
-                let stmt = self.conn.prepare(&sql).await.map_err(|e| {
-                    DataFusionError::Execution(format!(
-                        "Failed to execute query {sql} on postgres: {e:?}",
+            RemoteSource::Query(query) => {
+                let stmt = self.conn.prepare(query).await.map_err(|e| {
+                    DataFusionError::Plan(format!(
+                        "Failed to execute query {query} on postgres: {e:?}",
                     ))
                 })?;
                 let remote_schema = Arc::new(
@@ -384,18 +344,18 @@ fn build_remote_schema_for_table(
     let mut remote_fields = vec![];
     for row in rows {
         let columa_name = row.try_get::<_, String>(0).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get col name from postgres row: {e:?}"))
+            DataFusionError::Plan(format!("Failed to get col name from postgres row: {e:?}"))
         })?;
         let column_type = row.try_get::<_, String>(1).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get col type from postgres row: {e:?}"))
+            DataFusionError::Plan(format!("Failed to get col type from postgres row: {e:?}"))
         })?;
         let numeric_precision = row.try_get::<_, Option<i32>>(2).map_err(|e| {
-            DataFusionError::Execution(format!(
+            DataFusionError::Plan(format!(
                 "Failed to get numeric precision from postgres row: {e:?}"
             ))
         })?;
         let numeric_scale = row.try_get::<_, Option<i32>>(3).map_err(|e| {
-            DataFusionError::Execution(format!(
+            DataFusionError::Plan(format!(
                 "Failed to get numeric scale from postgres row: {e:?}"
             ))
         })?;
@@ -405,7 +365,7 @@ fn build_remote_schema_for_table(
             numeric_scale.unwrap_or(default_numeric_scale as i32),
         )?;
         let is_nullable = row.try_get::<_, String>(4).map_err(|e| {
-            DataFusionError::Execution(format!(
+            DataFusionError::Plan(format!(
                 "Failed to get is_nullable from postgres row: {e:?}"
             ))
         })?;
@@ -413,7 +373,7 @@ fn build_remote_schema_for_table(
             "YES" => true,
             "NO" => false,
             _ => {
-                return Err(DataFusionError::Execution(format!(
+                return Err(DataFusionError::Plan(format!(
                     "Unsupported postgres is_nullable value {is_nullable}"
                 )));
             }

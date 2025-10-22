@@ -54,4 +54,4 @@ bb8-oracle = { version = "0.3", features = ["chrono"], optional = true}
 # Sqlite
 rusqlite = { workspace = true, features = ["column_decltype", "bundled"], optional = true }
 # Dm
-odbc-api = { version = "13", default-features = false, features = ["odbc_version_3_80"], optional = true }
+odbc-api = { workspace = true, optional = true }

@@ -9,3 +9,4 @@ tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.37" }
 prost = "0.13"
 prost-build = "0.13"
+odbc-api = { version = "13", default-features = false, features = ["odbc_version_3_80"]}

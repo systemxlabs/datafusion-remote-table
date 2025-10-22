@@ -1,8 +1,8 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::big_decimal_to_i128;
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, OracleType, Pool, RemoteField,
-    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    Connection, ConnectionOptions, DFResult, Literalize, OracleConnectionOptions, OracleType, Pool,
+    RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
@@ -15,51 +15,12 @@ use datafusion::arrow::datatypes::{DataType, Fields, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::StreamExt;
 use log::debug;
 use oracle::sql_type::{Object, OracleType as ColumnType};
 use oracle::{Connector, Row};
 use std::any::Any;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct OracleConnectionOptions {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) service_name: String,
-    pub(crate) pool_max_size: usize,
-    pub(crate) stream_chunk_size: usize,
-}
-
-impl OracleConnectionOptions {
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        username: impl Into<String>,
-        password: impl Into<String>,
-        service_name: impl Into<String>,
-    ) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            password: password.into(),
-            service_name: service_name.into(),
-            pool_max_size: 10,
-            stream_chunk_size: 2048,
-        }
-    }
-}
-
-impl From<OracleConnectionOptions> for ConnectionOptions {
-    fn from(options: OracleConnectionOptions) -> Self {
-        ConnectionOptions::Oracle(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct OraclePool {
@@ -112,7 +73,7 @@ impl Connection for OracleConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
         let result_set = self.conn.query(&sql, &[]).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to execute query {sql} on oracle: {e:?}"))
+            DataFusionError::Plan(format!("Failed to execute query {sql} on oracle: {e:?}"))
         })?;
         let remote_schema = Arc::new(build_remote_schema(&result_set)?);
         Ok(remote_schema)

@@ -1,7 +1,8 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, SqliteType, literalize_array,
+    RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
+    literalize_array,
 };
 use datafusion::arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
@@ -11,8 +12,6 @@ use datafusion::arrow::datatypes::{DataType, SchemaRef};
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::StreamExt;
 use itertools::Itertools;
 use log::{debug, error};
@@ -22,27 +21,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct SqliteConnectionOptions {
-    pub path: PathBuf,
-    pub stream_chunk_size: usize,
-}
-
-impl SqliteConnectionOptions {
-    pub fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            stream_chunk_size: 2048,
-        }
-    }
-}
-
-impl From<SqliteConnectionOptions> for ConnectionOptions {
-    fn from(options: SqliteConnectionOptions) -> Self {
-        ConnectionOptions::Sqlite(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct SqlitePool {
@@ -80,7 +58,7 @@ impl Connection for SqliteConnection {
 
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
+            DataFusionError::Plan(format!("Failed to open sqlite connection: {e:?}"))
         })?;
         match source {
             RemoteSource::Table(table) => {
@@ -90,10 +68,10 @@ impl Connection for SqliteConnection {
                     RemoteDbType::Sqlite.sql_table_name(table)
                 );
                 let mut stmt = conn.prepare(&sql).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
+                    DataFusionError::Plan(format!("Failed to prepare sqlite statement: {e:?}"))
                 })?;
                 let rows = stmt.query([]).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
+                    DataFusionError::Plan(format!("Failed to query sqlite statement: {e:?}"))
                 })?;
                 let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
                 Ok(remote_schema)
@@ -101,12 +79,12 @@ impl Connection for SqliteConnection {
             RemoteSource::Query(_query) => {
                 let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source);
                 let mut stmt = conn.prepare(&sql).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to prepare sqlite statement: {e:?}"))
+                    DataFusionError::Plan(format!("Failed to prepare sqlite statement: {e:?}"))
                 })?;
                 let columns: Vec<OwnedColumn> =
                     stmt.columns().iter().map(sqlite_col_to_owned_col).collect();
                 let rows = stmt.query([]).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to query sqlite statement: {e:?}"))
+                    DataFusionError::Plan(format!("Failed to query sqlite statement: {e:?}"))
                 })?;
 
                 let remote_schema =
@@ -312,12 +290,12 @@ fn build_remote_schema_for_query(
 
     if !unknown_cols.is_empty() {
         while let Some(row) = rows.next().map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get next row from sqlite: {e:?}"))
+            DataFusionError::Plan(format!("Failed to get next row from sqlite: {e:?}"))
         })? {
             let mut to_be_removed = vec![];
             for col_idx in unknown_cols.iter() {
                 let value_ref = row.get_ref(*col_idx).map_err(|e| {
-                    DataFusionError::Execution(format!(
+                    DataFusionError::Plan(format!(
                         "Failed to get value ref for column {col_idx}: {e:?}"
                     ))
                 })?;
@@ -379,8 +357,12 @@ fn build_remote_schema_for_query(
     }
 
     if !unknown_cols.is_empty() {
-        return Err(DataFusionError::NotImplemented(format!(
-            "Failed to infer sqlite decl type for columns: {unknown_cols:?}"
+        return Err(DataFusionError::Plan(format!(
+            "Failed to infer sqlite decl type for columns: {}",
+            unknown_cols
+                .iter()
+                .map(|idx| &columns[*idx].name)
+                .join(", ")
         )));
     }
     let remote_fields = remote_field_map

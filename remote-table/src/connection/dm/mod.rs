@@ -2,8 +2,8 @@ use crate::connection::ODBC_ENV;
 use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
-    Connection, ConnectionOptions, DFResult, DmType, Literalize, Pool, RemoteDbType, RemoteField,
-    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
+    RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -12,8 +12,6 @@ use datafusion::common::project_schema;
 use datafusion::error::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use derive_getters::Getters;
-use derive_with::With;
 use futures::lock::Mutex;
 use log::debug;
 use odbc_api::buffers::ColumnarAnyBuffer;
@@ -25,42 +23,6 @@ use tokio::runtime::Handle;
 
 mod buffer;
 mod row;
-
-#[derive(Debug, Clone, With, Getters)]
-pub struct DmConnectionOptions {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) stream_chunk_size: usize,
-    pub(crate) driver: String,
-}
-
-impl DmConnectionOptions {
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            password: password.into(),
-            schema: None,
-            stream_chunk_size: 1024,
-            driver: "DM8 ODBC DRIVER".to_string(),
-        }
-    }
-}
-
-impl From<DmConnectionOptions> for ConnectionOptions {
-    fn from(options: DmConnectionOptions) -> Self {
-        ConnectionOptions::Dm(options)
-    }
-}
 
 #[derive(Debug)]
 pub struct DmPool {
@@ -78,7 +40,7 @@ impl Pool for DmPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
         let env = ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
         let mut connection_str = format!(
-            "Driver={{{}}};Server={};Port={};UID={};PWD={}",
+            "Driver={{{}}};Server={};TCP_Port={};UID={};PWD={}",
             self.options.driver,
             self.options.host,
             self.options.port,
@@ -111,25 +73,18 @@ impl Connection for DmConnection {
     }
 
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        match source {
-            RemoteSource::Table(_table) => Err(DataFusionError::Execution(
-                "Dm does not support infer schema for table".to_string(),
+        let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
+        let conn = self.conn.lock().await;
+        let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
+            DataFusionError::Plan(format!("Failed to execute query {sql} on dm: {e:?}"))
+        })?;
+        match cursor_opt {
+            None => Err(DataFusionError::Plan(
+                "No rows returned to infer schema".to_string(),
             )),
-            RemoteSource::Query(_query) => {
-                let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
-                let conn = self.conn.lock().await;
-                let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to infer schema: {e:?}"))
-                })?;
-                match cursor_opt {
-                    None => Err(DataFusionError::Execution(
-                        "No rows returned to infer schema".to_string(),
-                    )),
-                    Some(cursor) => {
-                        let remote_schema = Arc::new(build_remote_schema(cursor)?);
-                        Ok(remote_schema)
-                    }
-                }
+            Some(cursor) => {
+                let remote_schema = Arc::new(build_remote_schema(cursor)?);
+                Ok(remote_schema)
             }
         }
     }
@@ -248,9 +203,9 @@ impl Connection for DmConnection {
         _remote_schema: RemoteSchemaRef,
         _input: SendableRecordBatchStream,
     ) -> DFResult<usize> {
-        Err(DataFusionError::Execution(format!(
-            "Insert operation is not supported for dm"
-        )))
+        Err(DataFusionError::Execution(
+            "Insert operation is not supported for dm".to_string(),
+        ))
     }
 }
 
