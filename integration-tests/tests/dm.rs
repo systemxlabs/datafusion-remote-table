@@ -3,7 +3,7 @@ use integration_tests::setup_dm_db;
 use integration_tests::utils::assert_result;
 
 #[rstest::rstest]
-#[case("SELECT * from supported_data_types".into())]
+#[case("SELECT * from \"supported_data_types\"".into())]
 #[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 pub async fn supported_dm_types(#[case] source: RemoteSource) {
