@@ -101,8 +101,8 @@ pub async fn wait_container_ready(database: RemoteDbType) {
             break;
         };
         retry += 1;
-        if retry > 20 {
-            panic!("container still not ready after 200 seconds");
+        if retry > 50 {
+            panic!("container still not ready after 500 seconds");
         }
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }

@@ -76,10 +76,10 @@ impl Connection for DmConnection {
         let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
         let conn = self.conn.lock().await;
         let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to execute query {sql} on dm: {e:?}"))
+            DataFusionError::Plan(format!("Failed to execute query {sql} on dm: {e:?}"))
         })?;
         match cursor_opt {
-            None => Err(DataFusionError::Execution(
+            None => Err(DataFusionError::Plan(
                 "No rows returned to infer schema".to_string(),
             )),
             Some(cursor) => {

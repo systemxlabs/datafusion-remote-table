@@ -137,7 +137,7 @@ order by ordinal_position",
                     where_condition
                 );
                 let rows = self.conn.query(&sql, &[]).await.map_err(|e| {
-                    DataFusionError::Execution(format!(
+                    DataFusionError::Plan(format!(
                         "Failed to execute query {sql} on postgres: {e:?}",
                     ))
                 })?;
@@ -149,7 +149,7 @@ order by ordinal_position",
             }
             RemoteSource::Query(query) => {
                 let stmt = self.conn.prepare(query).await.map_err(|e| {
-                    DataFusionError::Execution(format!(
+                    DataFusionError::Plan(format!(
                         "Failed to execute query {query} on postgres: {e:?}",
                     ))
                 })?;
@@ -344,18 +344,18 @@ fn build_remote_schema_for_table(
     let mut remote_fields = vec![];
     for row in rows {
         let columa_name = row.try_get::<_, String>(0).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get col name from postgres row: {e:?}"))
+            DataFusionError::Plan(format!("Failed to get col name from postgres row: {e:?}"))
         })?;
         let column_type = row.try_get::<_, String>(1).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get col type from postgres row: {e:?}"))
+            DataFusionError::Plan(format!("Failed to get col type from postgres row: {e:?}"))
         })?;
         let numeric_precision = row.try_get::<_, Option<i32>>(2).map_err(|e| {
-            DataFusionError::Execution(format!(
+            DataFusionError::Plan(format!(
                 "Failed to get numeric precision from postgres row: {e:?}"
             ))
         })?;
         let numeric_scale = row.try_get::<_, Option<i32>>(3).map_err(|e| {
-            DataFusionError::Execution(format!(
+            DataFusionError::Plan(format!(
                 "Failed to get numeric scale from postgres row: {e:?}"
             ))
         })?;
@@ -365,7 +365,7 @@ fn build_remote_schema_for_table(
             numeric_scale.unwrap_or(default_numeric_scale as i32),
         )?;
         let is_nullable = row.try_get::<_, String>(4).map_err(|e| {
-            DataFusionError::Execution(format!(
+            DataFusionError::Plan(format!(
                 "Failed to get is_nullable from postgres row: {e:?}"
             ))
         })?;
@@ -373,7 +373,7 @@ fn build_remote_schema_for_table(
             "YES" => true,
             "NO" => false,
             _ => {
-                return Err(DataFusionError::Execution(format!(
+                return Err(DataFusionError::Plan(format!(
                     "Unsupported postgres is_nullable value {is_nullable}"
                 )));
             }

@@ -77,7 +77,7 @@ impl Connection for MysqlConnection {
         let mut conn = self.conn.lock().await;
         let conn = &mut *conn;
         let stmt = conn.prep(&sql).await.map_err(|e| {
-            DataFusionError::Execution(format!("Failed to prepare query {sql} on mysql: {e:?}"))
+            DataFusionError::Plan(format!("Failed to prepare query {sql} on mysql: {e:?}"))
         })?;
         let remote_schema = Arc::new(build_remote_schema(&stmt)?);
         Ok(remote_schema)
