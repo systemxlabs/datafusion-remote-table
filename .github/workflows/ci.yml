@@ -50,6 +50,11 @@ jobs:
           unzip instantclient-basic-linux.x64-23.7.0.25.01.zip
           echo "LD_LIBRARY_PATH=/opt/oracle/instantclient_23_7" >> $GITHUB_ENV
 
+      - name: Install ODBC driver manager
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc unixodbc-dev
+
       - name: Run cargo test
         run: cargo test
 
