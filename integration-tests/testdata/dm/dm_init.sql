@@ -1,4 +1,4 @@
-CREATE TABLE supported_data_types (
+CREATE TABLE "supported_data_types" (
     bit_col BIT,
     tinyint_col TINYINT,
     smallint_col SMALLINT,
@@ -20,6 +20,18 @@ CREATE TABLE supported_data_types (
     date_col DATE
 );
 
-INSERT INTO supported_data_types VALUES
+INSERT INTO "supported_data_types" VALUES
 (1, 1, 2, 3, 4, 1.1, 2.2, 3.3, 4.4, 5.5, 'char', 'varchar', 'text', X'01', X'02', UTL_RAW.CAST_TO_RAW('image'), TIMESTAMP '2002-12-12 09:10:21', '09:10:21.20', '2023-10-01'),
 (NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+CREATE TABLE "simple_table" (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
+INSERT INTO "simple_table" VALUES (1, 'Tom'), (2, 'Jerry'), (3, 'Spike');
+
+CREATE TABLE "empty_table" (
+    id INTEGER,
+    name VARCHAR2(255)
+);

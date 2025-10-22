@@ -97,12 +97,15 @@ pub async fn wait_container_ready(database: RemoteDbType) {
 
     let mut retry = 0;
     loop {
-        if let Ok(_table) = RemoteTable::try_new(conn.clone(), "select 1").await {
-            break;
-        };
+        match RemoteTable::try_new(conn.clone(), "select 1").await {
+            Ok(_) => break,
+            Err(err) => {
+                eprintln!("Connection error: {err:?}");
+            }
+        }
         retry += 1;
-        if retry > 50 {
-            panic!("container still not ready after 500 seconds");
+        if retry > 20 {
+            panic!("container still not ready after 200 seconds");
         }
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }
@@ -131,7 +134,7 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
         }
         RemoteDbType::Dm => ConnectionOptions::Dm(DmConnectionOptions::new(
             "127.0.0.1",
-            15236,
+            25236,
             "SYSDBA",
             "Password123",
         )),

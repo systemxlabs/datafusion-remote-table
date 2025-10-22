@@ -80,7 +80,7 @@ pub async fn setup_dm_db() {
         let env = datafusion_remote_table::ODBC_ENV
             .get_or_init(|| Environment::new().expect("failed to create ODBC env"));
         let connection_str =
-            "Driver={DM8 ODBC DRIVER};Server=localhost;TCP_Port=15236;UID=SYSDBA;PWD=Password123";
+            "Driver={DM8 ODBC DRIVER};Server=localhost;TCP_Port=25236;UID=SYSDBA;PWD=Password123";
         let connection = env
             .connect_with_connection_string(connection_str, odbc_api::ConnectionOptions::default())
             .unwrap();
