@@ -275,7 +275,7 @@ pub async fn disable_pooled_connections() {
         .with_pool_min_idle(0usize)
         .with_pool_idle_timeout(Duration::from_micros(1))
         .with_pool_ttl_check_interval(Duration::from_secs(3));
-    let table = RemoteTable::try_new(options, "select * from \"simple_table\"")
+    let table = RemoteTable::try_new(options, "select * from SYS.\"simple_table\"")
         .await
         .unwrap();
     let pool = table.pool().clone();

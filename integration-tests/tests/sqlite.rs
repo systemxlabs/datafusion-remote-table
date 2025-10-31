@@ -4,7 +4,7 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
     ConnectionOptions, RemoteDbType, RemoteField, RemoteSchema, RemoteSource, RemoteTable,
-    RemoteType, SqliteConnectionOptions, SqliteType,
+    RemoteType, SqliteConnectionOptions, SqliteType, connect,
 };
 use integration_tests::setup_sqlite_db;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
@@ -285,4 +285,16 @@ pub async fn insert_table_with_primary_key() {
 +----+------+"#,
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+pub async fn pool_state() {
+    let db_path = setup_sqlite_db();
+    let options = ConnectionOptions::Sqlite(SqliteConnectionOptions::new(db_path.clone()));
+    let pool = connect(&options).await.unwrap();
+
+    let conn = pool.get().await.unwrap();
+    assert_eq!(pool.state().await.unwrap().connections, 1);
+    drop(conn);
+    assert_eq!(pool.state().await.unwrap().connections, 0);
 }

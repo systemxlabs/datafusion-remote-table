@@ -19,6 +19,7 @@ use odbc_api::handles::StatementImpl;
 use odbc_api::{Cursor, CursorImpl, Environment, ResultSetMetadata};
 use std::any::Any;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::runtime::Handle;
 
 mod buffer;
@@ -27,11 +28,13 @@ mod row;
 #[derive(Debug)]
 pub struct DmPool {
     options: DmConnectionOptions,
+    connections: Arc<AtomicUsize>,
 }
 
 pub(crate) fn connect_dm(options: &DmConnectionOptions) -> DFResult<DmPool> {
     Ok(DmPool {
         options: options.clone(),
+        connections: Arc::new(AtomicUsize::new(0)),
     })
 }
 
@@ -55,14 +58,18 @@ impl Pool for DmPool {
             .map_err(|e| {
                 DataFusionError::Execution(format!("Failed to create odbc connection: {e:?}"))
             })?;
+
+        self.connections.fetch_add(1, Ordering::SeqCst);
+
         Ok(Arc::new(DmConnection {
             conn: Arc::new(Mutex::new(connection)),
+            pool_connections: self.connections.clone(),
         }))
     }
 
     async fn state(&self) -> DFResult<PoolState> {
         Ok(PoolState {
-            connections: 0,
+            connections: self.connections.load(Ordering::SeqCst),
             idle_connections: 0,
         })
     }
@@ -71,6 +78,13 @@ impl Pool for DmPool {
 #[derive(Debug)]
 pub struct DmConnection {
     conn: Arc<Mutex<odbc_api::Connection<'static>>>,
+    pool_connections: Arc<AtomicUsize>,
+}
+
+impl Drop for DmConnection {
+    fn drop(&mut self) {
+        self.pool_connections.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 #[async_trait::async_trait]
