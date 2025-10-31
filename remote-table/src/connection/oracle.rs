@@ -2,7 +2,7 @@ use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::big_decimal_to_i128;
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, OracleConnectionOptions, OracleType, Pool,
-    RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
@@ -43,6 +43,9 @@ pub(crate) async fn connect_oracle(options: &OracleConnectionOptions) -> DFResul
     let manager = OracleConnectionManager::from_connector(connector);
     let pool = bb8::Pool::builder()
         .max_size(options.pool_max_size as u32)
+        .min_idle(Some(options.pool_min_idle as u32))
+        .idle_timeout(Some(options.pool_idle_timeout))
+        .reaper_rate(options.pool_ttl_check_interval)
         .build(manager)
         .await
         .map_err(|e| DataFusionError::Internal(format!("Failed to create oracle pool: {e:?}")))?;
@@ -56,6 +59,14 @@ impl Pool for OraclePool {
             DataFusionError::Execution(format!("Failed to get oracle connection due to {e:?}"))
         })?;
         Ok(Arc::new(OracleConnection { conn }))
+    }
+
+    async fn state(&self) -> DFResult<PoolState> {
+        let bb8_state = self.pool.state();
+        Ok(PoolState {
+            connections: bb8_state.connections as usize,
+            idle_connections: bb8_state.idle_connections as usize,
+        })
     }
 }
 

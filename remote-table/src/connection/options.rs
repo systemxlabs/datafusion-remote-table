@@ -1,7 +1,7 @@
 use crate::RemoteDbType;
 use derive_getters::Getters;
 use derive_with::With;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 #[derive(Debug, Clone)]
 pub enum ConnectionOptions {
@@ -58,6 +58,9 @@ pub struct PostgresConnectionOptions {
     pub(crate) password: String,
     pub(crate) database: Option<String>,
     pub(crate) pool_max_size: usize,
+    pub(crate) pool_min_idle: usize,
+    pub(crate) pool_idle_timeout: Duration,
+    pub(crate) pool_ttl_check_interval: Duration,
     pub(crate) stream_chunk_size: usize,
     pub(crate) default_numeric_scale: i8,
 }
@@ -76,6 +79,9 @@ impl PostgresConnectionOptions {
             password: password.into(),
             database: None,
             pool_max_size: 10,
+            pool_min_idle: 0,
+            pool_idle_timeout: Duration::from_secs(10 * 60),
+            pool_ttl_check_interval: Duration::from_secs(30),
             stream_chunk_size: 2048,
             default_numeric_scale: 10,
         }
@@ -96,6 +102,9 @@ pub struct MysqlConnectionOptions {
     pub(crate) password: String,
     pub(crate) database: Option<String>,
     pub(crate) pool_max_size: usize,
+    pub(crate) pool_min_idle: usize,
+    pub(crate) pool_idle_timeout: Duration,
+    pub(crate) pool_ttl_check_interval: Duration,
     pub(crate) stream_chunk_size: usize,
 }
 
@@ -113,6 +122,9 @@ impl MysqlConnectionOptions {
             password: password.into(),
             database: None,
             pool_max_size: 10,
+            pool_min_idle: 0,
+            pool_idle_timeout: Duration::from_secs(10 * 60),
+            pool_ttl_check_interval: Duration::from_secs(30),
             stream_chunk_size: 2048,
         }
     }
@@ -132,6 +144,9 @@ pub struct OracleConnectionOptions {
     pub(crate) password: String,
     pub(crate) service_name: String,
     pub(crate) pool_max_size: usize,
+    pub(crate) pool_min_idle: usize,
+    pub(crate) pool_idle_timeout: Duration,
+    pub(crate) pool_ttl_check_interval: Duration,
     pub(crate) stream_chunk_size: usize,
 }
 
@@ -150,6 +165,9 @@ impl OracleConnectionOptions {
             password: password.into(),
             service_name: service_name.into(),
             pool_max_size: 10,
+            pool_min_idle: 0,
+            pool_idle_timeout: Duration::from_secs(10 * 60),
+            pool_ttl_check_interval: Duration::from_secs(30),
             stream_chunk_size: 2048,
         }
     }

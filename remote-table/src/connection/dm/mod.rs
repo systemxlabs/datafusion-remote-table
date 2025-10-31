@@ -3,7 +3,7 @@ use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
     Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
-    RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -58,6 +58,13 @@ impl Pool for DmPool {
         Ok(Arc::new(DmConnection {
             conn: Arc::new(Mutex::new(connection)),
         }))
+    }
+
+    async fn state(&self) -> DFResult<PoolState> {
+        Ok(PoolState {
+            connections: 0,
+            idle_connections: 0,
+        })
     }
 }
 

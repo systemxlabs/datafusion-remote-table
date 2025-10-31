@@ -30,6 +30,7 @@ use log::debug;
 use prost::Message;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub trait TransformCodec: Debug + Send + Sync {
     fn try_encode(&self, value: &dyn Transform) -> DFResult<Vec<u8>>;
@@ -443,6 +444,11 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     password: options.password.clone(),
                     database: options.database.clone(),
                     pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
                     stream_chunk_size: options.stream_chunk_size as u32,
                     default_numeric_scale: options.default_numeric_scale as i32,
                 },
@@ -457,6 +463,11 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     password: options.password.clone(),
                     database: options.database.clone(),
                     pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
                     stream_chunk_size: options.stream_chunk_size as u32,
                 },
             )),
@@ -470,6 +481,11 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     password: options.password.clone(),
                     service_name: options.service_name.clone(),
                     pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
                     stream_chunk_size: options.stream_chunk_size as u32,
                 },
             )),
@@ -508,6 +524,9 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 password: options.password,
                 database: options.database,
                 pool_max_size: options.pool_max_size as usize,
+                pool_min_idle: options.pool_min_idle as usize,
+                pool_idle_timeout: parse_duration(&options.pool_idle_timeout.unwrap()),
+                pool_ttl_check_interval: parse_duration(&options.pool_ttl_check_interval.unwrap()),
                 stream_chunk_size: options.stream_chunk_size as usize,
                 default_numeric_scale: options.default_numeric_scale as i8,
             })
@@ -520,6 +539,9 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 password: options.password,
                 database: options.database,
                 pool_max_size: options.pool_max_size as usize,
+                pool_min_idle: options.pool_min_idle as usize,
+                pool_idle_timeout: parse_duration(&options.pool_idle_timeout.unwrap()),
+                pool_ttl_check_interval: parse_duration(&options.pool_ttl_check_interval.unwrap()),
                 stream_chunk_size: options.stream_chunk_size as usize,
             })
         }
@@ -531,6 +553,9 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 password: options.password,
                 service_name: options.service_name,
                 pool_max_size: options.pool_max_size as usize,
+                pool_min_idle: options.pool_min_idle as usize,
+                pool_idle_timeout: parse_duration(&options.pool_idle_timeout.unwrap()),
+                pool_ttl_check_interval: parse_duration(&options.pool_ttl_check_interval.unwrap()),
                 stream_chunk_size: options.stream_chunk_size as usize,
             })
         }
@@ -553,6 +578,17 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
         }
         _ => panic!("Failed to parse connection options: {options:?}"),
     }
+}
+
+fn serialize_duration(duration: &Duration) -> protobuf::Duration {
+    protobuf::Duration {
+        secs: duration.as_secs(),
+        nanos: duration.subsec_nanos(),
+    }
+}
+
+fn parse_duration(duration: &protobuf::Duration) -> Duration {
+    Duration::new(duration.secs, duration.nanos)
 }
 
 fn serialize_projection(projection: Option<&Vec<usize>>) -> Option<protobuf::Projection> {

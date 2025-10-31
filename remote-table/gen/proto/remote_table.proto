@@ -70,8 +70,11 @@ message PostgresConnectionOptions {
   string password = 4;
   optional string database = 5;
   uint32 pool_max_size = 6;
-  uint32 stream_chunk_size = 7;
-  int32 default_numeric_scale = 8;
+  uint32 pool_min_idle = 7;
+  Duration pool_idle_timeout = 8;
+  Duration pool_ttl_check_interval = 9;
+  uint32 stream_chunk_size = 10;
+  int32 default_numeric_scale = 11;
 }
 
 message MysqlConnectionOptions {
@@ -81,7 +84,10 @@ message MysqlConnectionOptions {
   string password = 4;
   optional string database = 5;
   uint32 pool_max_size = 6;
-  uint32 stream_chunk_size = 7;
+  uint32 pool_min_idle = 7;
+  Duration pool_idle_timeout = 8;
+  Duration pool_ttl_check_interval = 9;
+  uint32 stream_chunk_size = 10;
 }
 
 message OracleConnectionOptions {
@@ -91,7 +97,10 @@ message OracleConnectionOptions {
   string password = 4;
   string service_name = 5;
   uint32 pool_max_size = 6;
-  uint32 stream_chunk_size = 7;
+  uint32 pool_min_idle = 7;
+  Duration pool_idle_timeout = 8;
+  Duration pool_ttl_check_interval = 9;
+  uint32 stream_chunk_size = 10;
 }
 
 message SqliteConnectionOptions {
@@ -107,6 +116,11 @@ message DmConnectionOptions {
   optional string schema = 5;
   uint32 stream_chunk_size = 6;
   string driver = 7;
+}
+
+message Duration {
+  uint64 secs = 1;
+  uint32 nanos = 2;
 }
 
 message Projection {

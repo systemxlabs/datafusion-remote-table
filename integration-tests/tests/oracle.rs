@@ -1,12 +1,13 @@
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use datafusion_remote_table::{RemoteDbType, RemoteSource, RemoteTable};
+use datafusion_remote_table::{ConnectionOptions, RemoteDbType, RemoteSource, RemoteTable};
 use integration_tests::setup_oracle_db;
 use integration_tests::utils::{
     assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
 #[rstest::rstest]
 #[case("SELECT * from SYS.\"supported_data_types\"".into())]
@@ -259,4 +260,43 @@ async fn empty_table(#[case] source: RemoteSource) {
         "++\n++",
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+pub async fn disable_pooled_connections() {
+    setup_oracle_db().await;
+
+    let options = build_conn_options(RemoteDbType::Oracle);
+    let ConnectionOptions::Oracle(options) = options else {
+        unreachable!()
+    };
+    let options = options
+        .with_pool_max_size(100usize)
+        .with_pool_min_idle(0usize)
+        .with_pool_idle_timeout(Duration::from_micros(1))
+        .with_pool_ttl_check_interval(Duration::from_secs(3));
+    let table = RemoteTable::try_new(options, "select * from \"simple_table\"")
+        .await
+        .unwrap();
+    let pool = table.pool().clone();
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    let mut handles = Vec::new();
+    for _ in 0..50 {
+        let ctx = ctx.clone();
+        let handle = tokio::spawn(async move {
+            let df = ctx.sql("select * from remote_table").await.unwrap();
+            let _batches = df.collect().await.unwrap();
+        });
+        handles.push(handle);
+    }
+    for handle in handles {
+        handle.await.unwrap();
+    }
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let pool_state = pool.state().await.unwrap();
+    assert_eq!(pool_state.connections, 0);
+    assert_eq!(pool_state.idle_connections, 0);
 }

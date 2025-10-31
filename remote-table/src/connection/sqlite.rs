@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
+    Connection, ConnectionOptions, DFResult, Literalize, Pool, PoolState, RemoteField,
+    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
     literalize_array,
 };
 use datafusion::arrow::array::{
@@ -42,6 +42,13 @@ impl Pool for SqlitePool {
         Ok(Arc::new(SqliteConnection {
             path: self.path.clone(),
         }))
+    }
+
+    async fn state(&self) -> DFResult<PoolState> {
+        Ok(PoolState {
+            connections: 0,
+            idle_connections: 0,
+        })
     }
 }
 

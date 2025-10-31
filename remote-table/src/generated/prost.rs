@@ -129,8 +129,14 @@ pub struct PostgresConnectionOptions {
     #[prost(uint32, tag = "6")]
     pub pool_max_size: u32,
     #[prost(uint32, tag = "7")]
+    pub pool_min_idle: u32,
+    #[prost(message, optional, tag = "8")]
+    pub pool_idle_timeout: ::core::option::Option<Duration>,
+    #[prost(message, optional, tag = "9")]
+    pub pool_ttl_check_interval: ::core::option::Option<Duration>,
+    #[prost(uint32, tag = "10")]
     pub stream_chunk_size: u32,
-    #[prost(int32, tag = "8")]
+    #[prost(int32, tag = "11")]
     pub default_numeric_scale: i32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -148,6 +154,12 @@ pub struct MysqlConnectionOptions {
     #[prost(uint32, tag = "6")]
     pub pool_max_size: u32,
     #[prost(uint32, tag = "7")]
+    pub pool_min_idle: u32,
+    #[prost(message, optional, tag = "8")]
+    pub pool_idle_timeout: ::core::option::Option<Duration>,
+    #[prost(message, optional, tag = "9")]
+    pub pool_ttl_check_interval: ::core::option::Option<Duration>,
+    #[prost(uint32, tag = "10")]
     pub stream_chunk_size: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -165,6 +177,12 @@ pub struct OracleConnectionOptions {
     #[prost(uint32, tag = "6")]
     pub pool_max_size: u32,
     #[prost(uint32, tag = "7")]
+    pub pool_min_idle: u32,
+    #[prost(message, optional, tag = "8")]
+    pub pool_idle_timeout: ::core::option::Option<Duration>,
+    #[prost(message, optional, tag = "9")]
+    pub pool_ttl_check_interval: ::core::option::Option<Duration>,
+    #[prost(uint32, tag = "10")]
     pub stream_chunk_size: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -190,6 +208,13 @@ pub struct DmConnectionOptions {
     pub stream_chunk_size: u32,
     #[prost(string, tag = "7")]
     pub driver: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct Duration {
+    #[prost(uint64, tag = "1")]
+    pub secs: u64,
+    #[prost(uint32, tag = "2")]
+    pub nanos: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Projection {
