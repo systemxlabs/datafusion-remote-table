@@ -408,8 +408,8 @@ pub async fn disable_pooled_connections() {
         unreachable!()
     };
     let options = options
-        .with_pool_max_size(100usize)
-        .with_pool_min_idle(0usize)
+        .with_pool_max_size(100)
+        .with_pool_min_idle(0)
         .with_pool_idle_timeout(Duration::from_micros(1))
         .with_pool_ttl_check_interval(Duration::from_secs(3));
     let table = RemoteTable::try_new(options, "select * from simple_table")
