@@ -140,180 +140,128 @@ message RemoteField {
 
 message RemoteType {
   oneof type {
-    PostgresInt2 postgres_int2 = 1;
-    PostgresInt4 postgres_int4 = 2;
-    PostgresInt8 postgres_int8 = 3;
-    PostgresFloat4 postgres_float4 = 4;
-    PostgresFloat8 postgres_float8 = 5;
+    Empty postgres_int2 = 1;
+    Empty postgres_int4 = 2;
+    Empty postgres_int8 = 3;
+    Empty postgres_float4 = 4;
+    Empty postgres_float8 = 5;
     PostgresNumeric postgres_numeric = 6;
-    PostgresName postgres_name = 7;
-    PostgresVarchar postgres_varchar = 8;
-    PostgresBpchar postgres_bpchar = 9;
-    PostgresText postgres_text = 10;
-    PostgresBytea postgres_bytea = 11;
-    PostgresDate postgres_date = 12;
-    PostgresTime postgres_time = 13;
-    PostgresTimestamp postgres_timestamp = 14;
-    PostgresTimestampTz postgres_timestamp_tz = 15;
-    PostgresInterval postgres_interval = 16;
-    PostgresBool postgres_bool = 17;
-    PostgresJson postgres_json = 18;
-    PostgresJsonb postgres_jsonb = 19;
-    PostgresInt2Array postgres_int2_array = 20;
-    PostgresInt4Array postgres_int4_array = 21;
-    PostgresInt8Array postgres_int8_array = 22;
-    PostgresFloat4Array postgres_float4_array = 23;
-    PostgresFloat8Array postgres_float8_array = 24;
-    PostgresVarcharArray postgres_varchar_array = 25;
-    PostgresBpcharArray postgres_bpchar_array = 26;
-    PostgresTextArray postgres_text_array = 27;
-    PostgresByteaArray postgres_bytea_array = 28;
-    PostgresBoolArray postgres_bool_array = 29;
-    PostgresPostGisGeometry postgres_postgis_geometry = 30;
-    PostgresOid postgres_oid = 31;
-    PostgresXml postgres_xml = 32;
-    PostgresUuid postgres_uuid = 33;
-    MysqlTinyInt mysql_tiny_int = 101;
-    MysqlTinyIntUnsigned mysql_tiny_int_unsigned = 102;
-    MysqlSmallInt mysql_small_int = 103;
-    MysqlSmallIntUnsigned mysql_small_int_unsigned = 104;
-    MysqlMediumInt mysql_medium_int = 105;
-    MysqlMediumIntUnsigned mysql_medium_int_unsigned = 106;
-    MysqlInteger mysql_integer = 107;
-    MysqlIntegerUnsigned mysql_integer_unsigned = 108;
-    MysqlBigInt mysql_big_int = 109;
-    MysqlBigIntUnsigned mysql_big_int_unsigned = 110;
-    MysqlFloat mysql_float = 111;
-    MysqlDouble mysql_double = 112;
+    Empty postgres_name = 7;
+    Empty postgres_varchar = 8;
+    Empty postgres_bpchar = 9;
+    Empty postgres_text = 10;
+    Empty postgres_bytea = 11;
+    Empty postgres_date = 12;
+    Empty postgres_time = 13;
+    Empty postgres_timestamp = 14;
+    Empty postgres_timestamp_tz = 15;
+    Empty postgres_interval = 16;
+    Empty postgres_bool = 17;
+    Empty postgres_json = 18;
+    Empty postgres_jsonb = 19;
+    Empty postgres_int2_array = 20;
+    Empty postgres_int4_array = 21;
+    Empty postgres_int8_array = 22;
+    Empty postgres_float4_array = 23;
+    Empty postgres_float8_array = 24;
+    Empty postgres_varchar_array = 25;
+    Empty postgres_bpchar_array = 26;
+    Empty postgres_text_array = 27;
+    Empty postgres_bytea_array = 28;
+    Empty postgres_bool_array = 29;
+    Empty postgres_postgis_geometry = 30;
+    Empty postgres_oid = 31;
+    Empty postgres_xml = 32;
+    Empty postgres_uuid = 33;
+    Empty mysql_tiny_int = 101;
+    Empty mysql_tiny_int_unsigned = 102;
+    Empty mysql_small_int = 103;
+    Empty mysql_small_int_unsigned = 104;
+    Empty mysql_medium_int = 105;
+    Empty mysql_medium_int_unsigned = 106;
+    Empty mysql_integer = 107;
+    Empty mysql_integer_unsigned = 108;
+    Empty mysql_big_int = 109;
+    Empty mysql_big_int_unsigned = 110;
+    Empty mysql_float = 111;
+    Empty mysql_double = 112;
     MysqlDecimal mysql_decimal = 113;
-    MysqlDate mysql_date = 114;
-    MysqlDateTime mysql_date_time = 115;
-    MysqlTime mysql_time = 116;
-    MysqlTimestamp mysql_timestamp = 117;
-    MysqlYear mysql_year = 118;
-    MysqlChar mysql_char = 119;
-    MysqlVarchar mysql_varchar = 120;
-    MysqlBinary mysql_binary = 121;
-    MysqlVarbinary mysql_varbinary = 122;
+    Empty mysql_date = 114;
+    Empty mysql_date_time = 115;
+    Empty mysql_time = 116;
+    Empty mysql_timestamp = 117;
+    Empty mysql_year = 118;
+    Empty mysql_char = 119;
+    Empty mysql_varchar = 120;
+    Empty mysql_binary = 121;
+    Empty mysql_varbinary = 122;
     MysqlText mysql_text = 123;
     MysqlBlob mysql_blob = 124;
-    MysqlJson mysql_json = 125;
-    MysqlGeometry mysql_geometry = 126;
+    Empty mysql_json = 125;
+    Empty mysql_geometry = 126;
     OracleVarchar2 oracle_varchar2 = 201;
     OracleChar oracle_char = 202;
     OracleNumber oracle_number = 203;
-    OracleDate oracle_date = 204;
-    OracleTimestamp oracle_timestamp = 205;
-    OracleBoolean oracle_boolean = 206;
-    OracleBinaryFloat oracle_binary_float = 207;
-    OracleBinaryDouble oracle_binary_double = 208;
-    OracleBlob oracle_blob = 209;
+    Empty oracle_date = 204;
+    Empty oracle_timestamp = 205;
+    Empty oracle_boolean = 206;
+    Empty oracle_binary_float = 207;
+    Empty oracle_binary_double = 208;
+    Empty oracle_blob = 209;
     OracleFloat oracle_float = 210;
     OracleNChar oracle_nchar = 211;
     OracleNVarchar2 oracle_nvarchar2 = 212;
     OracleRaw oracle_raw = 213;
-    OracleLongRaw oracle_long_raw = 214;
-    OracleLong oracle_long = 215;
-    OracleClob oracle_clob = 216;
-    OracleNClob oracle_nclob = 217;
-    OracleSdeGeometry oracle_sde_geometry = 218;
-    SqliteNull sqlite_null = 301;
-    SqliteInteger sqlite_integer = 302;
-    SqliteReal sqlite_real = 303;
-    SqliteText sqlite_text = 304;
-    SqliteBlob sqlite_blob = 305;
-    DmTinyInt dm_tiny_int = 401;
-    DmSmallInt dm_small_int = 402;
-    DmInteger dm_integer = 403;
-    DmBigInt dm_big_int = 404;
-    DmReal dm_real = 405;
-    DmDouble dm_double = 406;
+    Empty oracle_long_raw = 214;
+    Empty oracle_long = 215;
+    Empty oracle_clob = 216;
+    Empty oracle_nclob = 217;
+    Empty oracle_sde_geometry = 218;
+    Empty sqlite_null = 301;
+    Empty sqlite_integer = 302;
+    Empty sqlite_real = 303;
+    Empty sqlite_text = 304;
+    Empty sqlite_blob = 305;
+    Empty dm_tiny_int = 401;
+    Empty dm_small_int = 402;
+    Empty dm_integer = 403;
+    Empty dm_big_int = 404;
+    Empty dm_real = 405;
+    Empty dm_double = 406;
     DmNumeric dm_numeric = 407;
     DmDecimal dm_decimal = 408;
     DmChar dm_char = 409;
     DmVarchar dm_varchar = 410;
-    DmText dm_text = 411;
+    Empty dm_text = 411;
     DmBinary dm_binary = 412;
     DmVarbinary dm_varbinary = 413;
-    DmImage dm_image = 414;
-    DmBit dm_bit = 415;
+    Empty dm_image = 414;
+    Empty dm_bit = 415;
     DmTimestamp dm_timestamp = 416;
     DmTime dm_time = 417;
-    DmDate dm_date = 418;
+    Empty dm_date = 418;
   }
 }
 
-message PostgresInt2 {}
-message PostgresInt4 {}
-message PostgresInt8 {}
-message PostgresFloat4 {}
-message PostgresFloat8 {}
+// Place holder type for primitive types
+message Empty {}
+
 message PostgresNumeric {
   uint32 precision = 1;
   int32 scale = 2;
 }
-message PostgresName {}
-message PostgresVarchar {}
-message PostgresBpchar {}
-message PostgresText {}
-message PostgresBytea {}
-message PostgresDate {}
-message PostgresTime {}
-message PostgresTimestamp {}
-message PostgresTimestampTz {}
-message PostgresInterval {}
-message PostgresBool {}
-message PostgresJson {}
-message PostgresJsonb {}
-message PostgresInt2Array {}
-message PostgresInt4Array {}
-message PostgresInt8Array {}
-message PostgresFloat4Array {}
-message PostgresFloat8Array {}
-message PostgresVarcharArray {}
-message PostgresBpcharArray {}
-message PostgresTextArray {}
-message PostgresByteaArray {}
-message PostgresBoolArray {}
-message PostgresPostGisGeometry {}
-message PostgresOid {}
-message PostgresXml {}
-message PostgresUuid {}
 
 
-message MysqlTinyInt {}
-message MysqlTinyIntUnsigned {}
-message MysqlSmallInt {}
-message MysqlSmallIntUnsigned {}
-message MysqlMediumInt {}
-message MysqlMediumIntUnsigned {}
-message MysqlInteger {}
-message MysqlIntegerUnsigned {}
-message MysqlBigInt {}
-message MysqlBigIntUnsigned {}
-message MysqlFloat {}
-message MysqlDouble {}
 message MysqlDecimal {
   uint32 precision = 1;
   uint32 scale = 2;
 }
-message MysqlDate {}
-message MysqlDateTime {}
-message MysqlTime {}
-message MysqlTimestamp {}
-message MysqlYear {}
-message MysqlChar {}
-message MysqlVarchar {}
-message MysqlBinary {}
-message MysqlVarbinary {}
 message MysqlText {
   uint32 length = 1;
 }
 message MysqlBlob {
   uint32 length = 1;
 }
-message MysqlJson {}
-message MysqlGeometry {}
 
 
 message OracleVarchar2 {
@@ -326,12 +274,6 @@ message OracleNumber {
   uint32 precision = 1;
   int32 scale = 2;
 }
-message OracleDate {}
-message OracleTimestamp {}
-message OracleBoolean {}
-message OracleBinaryFloat {}
-message OracleBinaryDouble {}
-message OracleBlob {}
 message OracleFloat {
   uint32 precision = 1;
 }
@@ -344,25 +286,8 @@ message OracleNVarchar2 {
 message OracleRaw {
   uint32 length = 1;
 }
-message OracleLongRaw {}
-message OracleLong {}
-message OracleClob {}
-message OracleNClob {}
-message OracleSdeGeometry {}
 
 
-message SqliteNull {}
-message SqliteInteger {}
-message SqliteReal {}
-message SqliteText {}
-message SqliteBlob {}
-
-message DmTinyInt {}
-message DmSmallInt {}
-message DmInteger {}
-message DmBigInt {}
-message DmReal {}
-message DmDouble {}
 message DmNumeric {
   uint32 precision = 1;
   int32 scale = 2;
@@ -377,19 +302,15 @@ message DmChar {
 message DmVarchar {
   optional uint32 length = 1;
 }
-message DmText {}
 message DmBinary {
   uint32 length = 1;
 }
 message DmVarbinary {
   optional uint32 length = 1;
 }
-message DmImage {}
-message DmBit {}
 message DmTimestamp {
   uint32 precision = 1;
 }
 message DmTime {
   uint32 precision = 1;
 }
-message DmDate {}
