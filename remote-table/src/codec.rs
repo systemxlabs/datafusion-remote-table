@@ -31,6 +31,7 @@ use log::debug;
 use prost::Message;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub trait TransformCodec: Debug + Send + Sync {
     fn try_encode(&self, value: &dyn Transform) -> DFResult<Vec<u8>>;
@@ -444,6 +445,11 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     password: options.password.clone(),
                     database: options.database.clone(),
                     pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
                     stream_chunk_size: options.stream_chunk_size as u32,
                     default_numeric_scale: options.default_numeric_scale as i32,
                 },
@@ -458,6 +464,11 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     password: options.password.clone(),
                     database: options.database.clone(),
                     pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
                     stream_chunk_size: options.stream_chunk_size as u32,
                 },
             )),
@@ -471,6 +482,11 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     password: options.password.clone(),
                     service_name: options.service_name.clone(),
                     pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
                     stream_chunk_size: options.stream_chunk_size as u32,
                 },
             )),
@@ -509,6 +525,9 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 password: options.password,
                 database: options.database,
                 pool_max_size: options.pool_max_size as usize,
+                pool_min_idle: options.pool_min_idle as usize,
+                pool_idle_timeout: parse_duration(&options.pool_idle_timeout.unwrap()),
+                pool_ttl_check_interval: parse_duration(&options.pool_ttl_check_interval.unwrap()),
                 stream_chunk_size: options.stream_chunk_size as usize,
                 default_numeric_scale: options.default_numeric_scale as i8,
             })
@@ -521,6 +540,9 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 password: options.password,
                 database: options.database,
                 pool_max_size: options.pool_max_size as usize,
+                pool_min_idle: options.pool_min_idle as usize,
+                pool_idle_timeout: parse_duration(&options.pool_idle_timeout.unwrap()),
+                pool_ttl_check_interval: parse_duration(&options.pool_ttl_check_interval.unwrap()),
                 stream_chunk_size: options.stream_chunk_size as usize,
             })
         }
@@ -532,6 +554,9 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 password: options.password,
                 service_name: options.service_name,
                 pool_max_size: options.pool_max_size as usize,
+                pool_min_idle: options.pool_min_idle as usize,
+                pool_idle_timeout: parse_duration(&options.pool_idle_timeout.unwrap()),
+                pool_ttl_check_interval: parse_duration(&options.pool_ttl_check_interval.unwrap()),
                 stream_chunk_size: options.stream_chunk_size as usize,
             })
         }
@@ -554,6 +579,17 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
         }
         _ => panic!("Failed to parse connection options: {options:?}"),
     }
+}
+
+fn serialize_duration(duration: &Duration) -> protobuf::Duration {
+    protobuf::Duration {
+        secs: duration.as_secs(),
+        nanos: duration.subsec_nanos(),
+    }
+}
+
+fn parse_duration(duration: &protobuf::Duration) -> Duration {
+    Duration::new(duration.secs, duration.nanos)
 }
 
 fn serialize_projection(projection: Option<&Vec<usize>>) -> Option<protobuf::Projection> {
@@ -589,27 +625,27 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
     match remote_type {
         RemoteType::Postgres(PostgresType::Int2) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInt2(
-                protobuf::PostgresInt2 {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Int4) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInt4(
-                protobuf::PostgresInt4 {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Int8) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInt8(
-                protobuf::PostgresInt8 {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Float4) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresFloat4(
-                protobuf::PostgresFloat4 {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Float8) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresFloat8(
-                protobuf::PostgresFloat8 {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Numeric(precision, scale)) => protobuf::RemoteType {
@@ -622,199 +658,189 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         },
         RemoteType::Postgres(PostgresType::Name) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresName(
-                protobuf::PostgresName {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Varchar) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresVarchar(
-                protobuf::PostgresVarchar {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Bpchar) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresBpchar(
-                protobuf::PostgresBpchar {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Text) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresText(
-                protobuf::PostgresText {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Bytea) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresBytea(
-                protobuf::PostgresBytea {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Date) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresDate(
-                protobuf::PostgresDate {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Timestamp) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresTimestamp(
-                protobuf::PostgresTimestamp {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::TimestampTz) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresTimestampTz(
-                protobuf::PostgresTimestampTz {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Time) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresTime(
-                protobuf::PostgresTime {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Interval) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInterval(
-                protobuf::PostgresInterval {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Bool) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresBool(
-                protobuf::PostgresBool {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Json) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresJson(
-                protobuf::PostgresJson {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Jsonb) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresJsonb(
-                protobuf::PostgresJsonb {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Int2Array) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInt2Array(
-                protobuf::PostgresInt2Array {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Int4Array) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInt4Array(
-                protobuf::PostgresInt4Array {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Int8Array) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresInt8Array(
-                protobuf::PostgresInt8Array {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Float4Array) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresFloat4Array(
-                protobuf::PostgresFloat4Array {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Float8Array) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresFloat8Array(
-                protobuf::PostgresFloat8Array {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::VarcharArray) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresVarcharArray(
-                protobuf::PostgresVarcharArray {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::BpcharArray) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresBpcharArray(
-                protobuf::PostgresBpcharArray {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::TextArray) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresTextArray(
-                protobuf::PostgresTextArray {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::ByteaArray) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresByteaArray(
-                protobuf::PostgresByteaArray {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::BoolArray) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresBoolArray(
-                protobuf::PostgresBoolArray {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::PostGisGeometry) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresPostgisGeometry(
-                protobuf::PostgresPostGisGeometry {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Postgres(PostgresType::Oid) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::PostgresOid(
-                protobuf::PostgresOid {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::PostgresOid(protobuf::Empty {})),
         },
         RemoteType::Postgres(PostgresType::Xml) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::PostgresXml(
-                protobuf::PostgresXml {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::PostgresXml(protobuf::Empty {})),
         },
         RemoteType::Postgres(PostgresType::Uuid) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::PostgresUuid(
-                protobuf::PostgresUuid {},
+                protobuf::Empty {},
             )),
         },
 
         RemoteType::Mysql(MysqlType::TinyInt) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlTinyInt(
-                protobuf::MysqlTinyInt {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::TinyIntUnsigned) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlTinyIntUnsigned(
-                protobuf::MysqlTinyIntUnsigned {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::SmallInt) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlSmallInt(
-                protobuf::MysqlSmallInt {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::SmallIntUnsigned) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlSmallIntUnsigned(
-                protobuf::MysqlSmallIntUnsigned {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::MediumInt) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlMediumInt(
-                protobuf::MysqlMediumInt {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::MediumIntUnsigned) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlMediumIntUnsigned(
-                protobuf::MysqlMediumIntUnsigned {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::Integer) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlInteger(
-                protobuf::MysqlInteger {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::IntegerUnsigned) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlIntegerUnsigned(
-                protobuf::MysqlIntegerUnsigned {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::BigInt) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlBigInt(
-                protobuf::MysqlBigInt {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlBigInt(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::BigIntUnsigned) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlBigIntUnsigned(
-                protobuf::MysqlBigIntUnsigned {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::Float) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlFloat(
-                protobuf::MysqlFloat {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlFloat(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Double) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlDouble(
-                protobuf::MysqlDouble {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlDouble(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Decimal(precision, scale)) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlDecimal(
@@ -825,48 +851,38 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::Mysql(MysqlType::Date) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlDate(
-                protobuf::MysqlDate {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlDate(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Datetime) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlDateTime(
-                protobuf::MysqlDateTime {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::Time) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlTime(
-                protobuf::MysqlTime {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlTime(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Timestamp) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlTimestamp(
-                protobuf::MysqlTimestamp {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::Year) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlYear(
-                protobuf::MysqlYear {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlYear(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Char) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlChar(
-                protobuf::MysqlChar {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlChar(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Varchar) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlVarchar(
-                protobuf::MysqlVarchar {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::Binary) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlBinary(
-                protobuf::MysqlBinary {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlBinary(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Varbinary) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlVarbinary(
-                protobuf::MysqlVarbinary {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Mysql(MysqlType::Text(len)) => protobuf::RemoteType {
@@ -880,13 +896,11 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::Mysql(MysqlType::Json) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MysqlJson(
-                protobuf::MysqlJson {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::MysqlJson(protobuf::Empty {})),
         },
         RemoteType::Mysql(MysqlType::Geometry) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MysqlGeometry(
-                protobuf::MysqlGeometry {},
+                protobuf::Empty {},
             )),
         },
 
@@ -909,34 +923,30 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::Oracle(OracleType::Date) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::OracleDate(
-                protobuf::OracleDate {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::OracleDate(protobuf::Empty {})),
         },
         RemoteType::Oracle(OracleType::Timestamp) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleTimestamp(
-                protobuf::OracleTimestamp {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Oracle(OracleType::Boolean) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleBoolean(
-                protobuf::OracleBoolean {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Oracle(OracleType::BinaryFloat) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleBinaryFloat(
-                protobuf::OracleBinaryFloat {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Oracle(OracleType::BinaryDouble) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleBinaryDouble(
-                protobuf::OracleBinaryDouble {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Oracle(OracleType::Blob) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::OracleBlob(
-                protobuf::OracleBlob {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::OracleBlob(protobuf::Empty {})),
         },
         RemoteType::Oracle(OracleType::Float(precision)) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleFloat(
@@ -962,77 +972,57 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         },
         RemoteType::Oracle(OracleType::LongRaw) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleLongRaw(
-                protobuf::OracleLongRaw {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Oracle(OracleType::Long) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::OracleLong(
-                protobuf::OracleLong {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::OracleLong(protobuf::Empty {})),
         },
         RemoteType::Oracle(OracleType::Clob) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::OracleClob(
-                protobuf::OracleClob {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::OracleClob(protobuf::Empty {})),
         },
         RemoteType::Oracle(OracleType::NClob) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::OracleNclob(
-                protobuf::OracleNClob {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::OracleNclob(protobuf::Empty {})),
         },
         RemoteType::Oracle(OracleType::SdeGeometry) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::OracleSdeGeometry(
-                protobuf::OracleSdeGeometry {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Sqlite(SqliteType::Null) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::SqliteNull(
-                protobuf::SqliteNull {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::SqliteNull(protobuf::Empty {})),
         },
         RemoteType::Sqlite(SqliteType::Integer) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::SqliteInteger(
-                protobuf::SqliteInteger {},
+                protobuf::Empty {},
             )),
         },
         RemoteType::Sqlite(SqliteType::Real) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::SqliteReal(
-                protobuf::SqliteReal {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::SqliteReal(protobuf::Empty {})),
         },
         RemoteType::Sqlite(SqliteType::Text) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::SqliteText(
-                protobuf::SqliteText {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::SqliteText(protobuf::Empty {})),
         },
         RemoteType::Sqlite(SqliteType::Blob) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::SqliteBlob(
-                protobuf::SqliteBlob {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::SqliteBlob(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::TinyInt) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmTinyInt(
-                protobuf::DmTinyInt {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::DmTinyInt(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::SmallInt) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmSmallInt(
-                protobuf::DmSmallInt {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::DmSmallInt(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Integer) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmInteger(
-                protobuf::DmInteger {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::DmInteger(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::BigInt) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmBigInt(protobuf::DmBigInt {})),
+            r#type: Some(protobuf::remote_type::Type::DmBigInt(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Real) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmReal(protobuf::DmReal {})),
+            r#type: Some(protobuf::remote_type::Type::DmReal(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Double) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmDouble(protobuf::DmDouble {})),
+            r#type: Some(protobuf::remote_type::Type::DmDouble(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Numeric(precision, scale)) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::DmNumeric(
@@ -1063,7 +1053,7 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::Dm(DmType::Text) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmText(protobuf::DmText {})),
+            r#type: Some(protobuf::remote_type::Type::DmText(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Binary(len)) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::DmBinary(protobuf::DmBinary {
@@ -1078,10 +1068,10 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::Dm(DmType::Image) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmImage(protobuf::DmImage {})),
+            r#type: Some(protobuf::remote_type::Type::DmImage(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Bit) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmBit(protobuf::DmBit {})),
+            r#type: Some(protobuf::remote_type::Type::DmBit(protobuf::Empty {})),
         },
         RemoteType::Dm(DmType::Timestamp(precision)) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::DmTimestamp(
@@ -1096,7 +1086,7 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             })),
         },
         RemoteType::Dm(DmType::Date) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::DmDate(protobuf::DmDate {})),
+            r#type: Some(protobuf::remote_type::Type::DmDate(protobuf::Empty {})),
         },
     }
 }
@@ -1298,15 +1288,15 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
         protobuf::remote_type::Type::DmVarchar(protobuf::DmVarchar { length }) => {
             RemoteType::Dm(DmType::Varchar(length.map(|s| s as u16)))
         }
-        protobuf::remote_type::Type::DmText(protobuf::DmText {}) => RemoteType::Dm(DmType::Text),
+        protobuf::remote_type::Type::DmText(_) => RemoteType::Dm(DmType::Text),
         protobuf::remote_type::Type::DmBinary(protobuf::DmBinary { length }) => {
             RemoteType::Dm(DmType::Binary(*length as u16))
         }
         protobuf::remote_type::Type::DmVarbinary(protobuf::DmVarbinary { length }) => {
             RemoteType::Dm(DmType::Varbinary(length.map(|s| s as u16)))
         }
-        protobuf::remote_type::Type::DmImage(protobuf::DmImage {}) => RemoteType::Dm(DmType::Image),
-        protobuf::remote_type::Type::DmBit(protobuf::DmBit {}) => RemoteType::Dm(DmType::Bit),
+        protobuf::remote_type::Type::DmImage(_) => RemoteType::Dm(DmType::Image),
+        protobuf::remote_type::Type::DmBit(_) => RemoteType::Dm(DmType::Bit),
         protobuf::remote_type::Type::DmTimestamp(protobuf::DmTimestamp { precision }) => {
             RemoteType::Dm(DmType::Timestamp(*precision as u8))
         }

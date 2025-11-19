@@ -40,6 +40,13 @@ pub static ODBC_ENV: std::sync::OnceLock<odbc_api::Environment> = std::sync::Onc
 #[async_trait::async_trait]
 pub trait Pool: Debug + Send + Sync {
     async fn get(&self) -> DFResult<Arc<dyn Connection>>;
+    async fn state(&self) -> DFResult<PoolState>;
+}
+
+#[derive(Debug, Clone)]
+pub struct PoolState {
+    pub connections: usize,
+    pub idle_connections: usize,
 }
 
 #[async_trait::async_trait]

@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-remote-table"
-version = "0.23.1"
+version = "0.24.0"
 edition = "2024"
 authors = ["lewiszlw <lewiszlw520@gmail.com>"]
 description = "A DataFusion table provider for executing SQL on remote databases"
@@ -30,7 +30,7 @@ num-bigint = "0.4"
 byteorder = "1.5.0"
 serde_json = "1.0"
 prost = { workspace = true }
-derive-with = "0.6.1"
+derive-with = "0.7"
 derive-getters = "0.5"
 itertools = "0.14"
 log = { version = "0.4", features = [] }

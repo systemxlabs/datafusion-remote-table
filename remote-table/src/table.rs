@@ -286,6 +286,10 @@ impl RemoteTable {
     pub fn remote_schema(&self) -> Option<RemoteSchemaRef> {
         self.remote_schema.clone()
     }
+
+    pub fn pool(&self) -> &Arc<dyn Pool> {
+        &self.pool
+    }
 }
 
 #[async_trait::async_trait]

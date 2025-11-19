@@ -1,5 +1,4 @@
 use crate::cmd::{get_cmd_output, get_cmd_output_result, run_command};
-use std::net::IpAddr;
 use std::process::Command;
 
 /// A utility to manage the lifecycle of `docker compose`.
@@ -93,23 +92,6 @@ impl DockerCompose {
                 self.docker_compose_dir, self.project_name
             ),
         )
-    }
-
-    pub fn get_container_ip(&self, service_name: impl AsRef<str>) -> IpAddr {
-        let container_name = format!("{}-{}-1", self.project_name, service_name.as_ref());
-        let mut cmd = Command::new("docker");
-        cmd.arg("inspect")
-            .arg("-f")
-            .arg("{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}")
-            .arg(&container_name);
-
-        let ip_result = get_cmd_output(cmd, format!("Get container ip of {container_name}"))
-            .trim()
-            .parse::<IpAddr>();
-        ip_result.unwrap_or_else(|e| {
-            println!("Invalid IP, {e}");
-            panic!("Failed to parse IP for {container_name}")
-        })
     }
 }
 

@@ -3,7 +3,7 @@ use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
 use crate::{
     Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
-    RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use datafusion::arrow::array::RecordBatch;
@@ -19,6 +19,7 @@ use odbc_api::handles::StatementImpl;
 use odbc_api::{Cursor, CursorImpl, Environment, ResultSetMetadata};
 use std::any::Any;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::runtime::Handle;
 
 mod buffer;
@@ -27,11 +28,13 @@ mod row;
 #[derive(Debug)]
 pub struct DmPool {
     options: DmConnectionOptions,
+    connections: Arc<AtomicUsize>,
 }
 
 pub(crate) fn connect_dm(options: &DmConnectionOptions) -> DFResult<DmPool> {
     Ok(DmPool {
         options: options.clone(),
+        connections: Arc::new(AtomicUsize::new(0)),
     })
 }
 
@@ -55,15 +58,33 @@ impl Pool for DmPool {
             .map_err(|e| {
                 DataFusionError::Execution(format!("Failed to create odbc connection: {e:?}"))
             })?;
+
+        self.connections.fetch_add(1, Ordering::SeqCst);
+
         Ok(Arc::new(DmConnection {
             conn: Arc::new(Mutex::new(connection)),
+            pool_connections: self.connections.clone(),
         }))
+    }
+
+    async fn state(&self) -> DFResult<PoolState> {
+        Ok(PoolState {
+            connections: self.connections.load(Ordering::SeqCst),
+            idle_connections: 0,
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct DmConnection {
     conn: Arc<Mutex<odbc_api::Connection<'static>>>,
+    pool_connections: Arc<AtomicUsize>,
+}
+
+impl Drop for DmConnection {
+    fn drop(&mut self) {
+        self.pool_connections.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 #[async_trait::async_trait]

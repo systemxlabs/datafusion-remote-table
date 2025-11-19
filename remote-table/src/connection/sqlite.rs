@@ -1,7 +1,7 @@
 use crate::connection::{RemoteDbType, projections_contains};
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, Pool, RemoteField, RemoteSchema,
-    RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
+    Connection, ConnectionOptions, DFResult, Literalize, Pool, PoolState, RemoteField,
+    RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
     literalize_array,
 };
 use datafusion::arrow::array::{
@@ -21,10 +21,12 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug)]
 pub struct SqlitePool {
     path: PathBuf,
+    connections: Arc<AtomicUsize>,
 }
 
 pub async fn connect_sqlite(options: &SqliteConnectionOptions) -> DFResult<SqlitePool> {
@@ -33,21 +35,38 @@ pub async fn connect_sqlite(options: &SqliteConnectionOptions) -> DFResult<Sqlit
     })?;
     Ok(SqlitePool {
         path: options.path.clone(),
+        connections: Arc::new(AtomicUsize::new(0)),
     })
 }
 
 #[async_trait::async_trait]
 impl Pool for SqlitePool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
+        self.connections.fetch_add(1, Ordering::SeqCst);
         Ok(Arc::new(SqliteConnection {
             path: self.path.clone(),
+            pool_connections: self.connections.clone(),
         }))
+    }
+
+    async fn state(&self) -> DFResult<PoolState> {
+        Ok(PoolState {
+            connections: self.connections.load(Ordering::SeqCst),
+            idle_connections: 0,
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct SqliteConnection {
     path: PathBuf,
+    pool_connections: Arc<AtomicUsize>,
+}
+
+impl Drop for SqliteConnection {
+    fn drop(&mut self) {
+        self.pool_connections.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 #[async_trait::async_trait]

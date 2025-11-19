@@ -2,7 +2,7 @@ use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::big_decimal_to_i128;
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, MysqlConnectionOptions, MysqlType, Pool,
-    RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
 use bigdecimal::{BigDecimal, num_bigint};
@@ -33,10 +33,13 @@ pub struct MysqlPool {
 }
 
 pub(crate) fn connect_mysql(options: &MysqlConnectionOptions) -> DFResult<MysqlPool> {
-    let pool_opts = mysql_async::PoolOpts::new().with_constraints(
-        mysql_async::PoolConstraints::new(0, options.pool_max_size)
-            .expect("Failed to create pool constraints"),
-    );
+    let pool_opts = mysql_async::PoolOpts::new()
+        .with_constraints(
+            mysql_async::PoolConstraints::new(options.pool_min_idle, options.pool_max_size)
+                .expect("Failed to create pool constraints"),
+        )
+        .with_inactive_connection_ttl(options.pool_idle_timeout)
+        .with_ttl_check_interval(options.pool_ttl_check_interval);
     let opts_builder = mysql_async::OptsBuilder::default()
         .ip_or_hostname(options.host.clone())
         .tcp_port(options.port)
@@ -58,6 +61,15 @@ impl Pool for MysqlPool {
         Ok(Arc::new(MysqlConnection {
             conn: Arc::new(Mutex::new(conn)),
         }))
+    }
+
+    async fn state(&self) -> DFResult<PoolState> {
+        use std::sync::atomic::Ordering;
+        let metrics = self.pool.metrics();
+        Ok(PoolState {
+            connections: metrics.connection_count.load(Ordering::SeqCst),
+            idle_connections: metrics.connections_in_pool.load(Ordering::SeqCst),
+        })
     }
 }
 

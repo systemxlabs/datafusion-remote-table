@@ -1,7 +1,7 @@
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use datafusion_remote_table::{RemoteDbType, RemoteSource, RemoteTable};
+use datafusion_remote_table::{RemoteDbType, RemoteSource, RemoteTable, connect};
 use integration_tests::setup_dm_db;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
 use std::sync::Arc;
@@ -125,4 +125,17 @@ async fn empty_table(#[case] source: RemoteSource) {
         "++\n++",
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+pub async fn pool_state() {
+    setup_dm_db().await;
+
+    let options = build_conn_options(RemoteDbType::Dm);
+    let pool = connect(&options).await.unwrap();
+
+    let conn = pool.get().await.unwrap();
+    assert_eq!(pool.state().await.unwrap().connections, 1);
+    drop(conn);
+    assert_eq!(pool.state().await.unwrap().connections, 0);
 }
