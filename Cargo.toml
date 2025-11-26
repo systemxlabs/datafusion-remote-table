@@ -1,5 +1,5 @@
 [workspace]
-members = ["integration-tests", "remote-table", "remote-table/gen"]
+members = ["benchmarks", "integration-tests", "remote-table", "remote-table/gen"]
 resolver = "3"
 
 [workspace.dependencies]

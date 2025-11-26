@@ -12,7 +12,6 @@ use datafusion::arrow::datatypes::{DataType, SchemaRef};
 use datafusion::common::{DataFusionError, project_schema};
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use futures::StreamExt;
 use itertools::Itertools;
 use log::{debug, error};
 use rusqlite::types::ValueRef;
@@ -153,69 +152,64 @@ impl Connection for SqliteConnection {
         literalizer: Arc<dyn Literalize>,
         table: &[String],
         remote_schema: RemoteSchemaRef,
-        mut input: SendableRecordBatchStream,
+        batch: RecordBatch,
     ) -> DFResult<usize> {
-        let input_schema = input.schema();
         let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
             DataFusionError::Execution(format!("Failed to open sqlite connection: {e:?}"))
         })?;
 
-        let mut total_count = 0;
-        while let Some(batch) = input.next().await {
-            let batch = batch?;
-
-            let mut columns = Vec::with_capacity(remote_schema.fields.len());
-            for i in 0..batch.num_columns() {
-                let input_field = input_schema.field(i);
-                let remote_field = &remote_schema.fields[i];
-                if remote_field.auto_increment && input_field.is_nullable() {
-                    continue;
-                }
-
-                let remote_type = remote_schema.fields[i].remote_type.clone();
-                let array = batch.column(i);
-                let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
-                columns.push(column);
+        let mut columns = Vec::with_capacity(remote_schema.fields.len());
+        for i in 0..batch.num_columns() {
+            let input_field = batch.schema_ref().field(i);
+            let remote_field = &remote_schema.fields[i];
+            if remote_field.auto_increment && input_field.is_nullable() {
+                continue;
             }
 
-            let num_rows = columns[0].len();
-            let num_columns = columns.len();
-
-            let mut values = Vec::with_capacity(num_rows);
-            for i in 0..num_rows {
-                let mut value = Vec::with_capacity(num_columns);
-                for col in columns.iter() {
-                    value.push(col[i].as_str());
-                }
-                values.push(format!("({})", value.join(",")));
-            }
-
-            let mut col_names = Vec::with_capacity(remote_schema.fields.len());
-            for (remote_field, input_field) in
-                remote_schema.fields.iter().zip(input_schema.fields.iter())
-            {
-                if remote_field.auto_increment && input_field.is_nullable() {
-                    continue;
-                }
-                col_names.push(RemoteDbType::Sqlite.sql_identifier(&remote_field.name));
-            }
-
-            let sql = format!(
-                "INSERT INTO {} ({}) VALUES {}",
-                RemoteDbType::Sqlite.sql_table_name(table),
-                col_names.join(","),
-                values.join(",")
-            );
-
-            let count = conn.execute(&sql, []).map_err(|e| {
-                DataFusionError::Execution(format!(
-                    "Failed to execute insert statement on sqlite: {e:?}, sql: {sql}"
-                ))
-            })?;
-            total_count += count;
+            let remote_type = remote_schema.fields[i].remote_type.clone();
+            let array = batch.column(i);
+            let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
+            columns.push(column);
         }
 
-        Ok(total_count)
+        let num_rows = columns[0].len();
+        let num_columns = columns.len();
+
+        let mut values = Vec::with_capacity(num_rows);
+        for i in 0..num_rows {
+            let mut value = Vec::with_capacity(num_columns);
+            for col in columns.iter() {
+                value.push(col[i].as_str());
+            }
+            values.push(format!("({})", value.join(",")));
+        }
+
+        let mut col_names = Vec::with_capacity(remote_schema.fields.len());
+        for (remote_field, input_field) in remote_schema
+            .fields
+            .iter()
+            .zip(batch.schema_ref().fields.iter())
+        {
+            if remote_field.auto_increment && input_field.is_nullable() {
+                continue;
+            }
+            col_names.push(RemoteDbType::Sqlite.sql_identifier(&remote_field.name));
+        }
+
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES {}",
+            RemoteDbType::Sqlite.sql_table_name(table),
+            col_names.join(","),
+            values.join(",")
+        );
+
+        let count = conn.execute(&sql, []).map_err(|e| {
+            DataFusionError::Execution(format!(
+                "Failed to execute insert statement on sqlite: {e:?}, sql: {sql}"
+            ))
+        })?;
+
+        Ok(count)
     }
 }
 

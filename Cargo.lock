@@ -429,6 +429,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "benchmarks"
+version = "0.0.0"
+dependencies = [
+ "datafusion",
+ "datafusion-remote-table",
+ "futures",
+ "integration-tests",
+ "tokio",
+]
+
+[[package]]
 name = "bigdecimal"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2066,7 +2077,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
 
 [[package]]
-name = "integration_tests"
+name = "integration-tests"
 version = "0.1.0"
 dependencies = [
  "datafusion",

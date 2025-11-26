@@ -135,7 +135,7 @@ impl Connection for OracleConnection {
         _literalizer: Arc<dyn Literalize>,
         _table: &[String],
         _remote_schema: RemoteSchemaRef,
-        _input: SendableRecordBatchStream,
+        _batch: RecordBatch,
     ) -> DFResult<usize> {
         Err(DataFusionError::Execution(
             "Insert operation is not supported for oracle".to_string(),

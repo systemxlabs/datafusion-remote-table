@@ -1,0 +1,11 @@
+[package]
+name = "benchmarks"
+edition = "2024"
+publish = false
+
+[dependencies]
+datafusion = { workspace = true }
+datafusion-remote-table = { path = "../remote-table" }
+futures = { version = "0.3" }
+integration-tests = { path = "../integration-tests" }
+tokio = { workspace = true }

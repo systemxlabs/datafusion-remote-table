@@ -1,5 +1,5 @@
 use crate::{Connection, ConnectionOptions, DFResult, Literalize, RemoteSchemaRef};
-use datafusion::arrow::array::{ArrayRef, RecordBatch, UInt64Array};
+use datafusion::arrow::array::{ArrayRef, Int64Array, RecordBatch};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion::common::stats::Precision;
 use datafusion::execution::{SendableRecordBatchStream, TaskContext};
@@ -89,7 +89,7 @@ impl ExecutionPlan for RemoteTableInsertExec {
         partition: usize,
         context: Arc<TaskContext>,
     ) -> DFResult<SendableRecordBatchStream> {
-        let input_stream = self.input.execute(partition, context)?;
+        let mut input_stream = self.input.execute(partition, context)?;
         let conn_options = self.conn_options.clone();
         let literalizer = self.literalizer.clone();
         let table = self.table.clone();
@@ -97,16 +97,21 @@ impl ExecutionPlan for RemoteTableInsertExec {
         let conn = self.conn.clone();
 
         let stream = futures::stream::once(async move {
-            let count = conn
-                .insert(
-                    &conn_options,
-                    literalizer.clone(),
-                    &table,
-                    remote_schema.clone(),
-                    input_stream,
-                )
-                .await?;
-            make_result_batch(count as u64)
+            let mut total_count = 0;
+            while let Some(batch) = input_stream.next().await {
+                let batch = batch?;
+                let count = conn
+                    .insert(
+                        &conn_options,
+                        literalizer.clone(),
+                        &table,
+                        remote_schema.clone(),
+                        batch,
+                    )
+                    .await?;
+                total_count += count;
+            }
+            make_result_batch(total_count as i64)
         })
         .boxed();
 
@@ -131,9 +136,9 @@ impl DisplayAs for RemoteTableInsertExec {
     }
 }
 
-fn make_result_batch(count: u64) -> DFResult<RecordBatch> {
+fn make_result_batch(count: i64) -> DFResult<RecordBatch> {
     let schema = make_count_schema();
-    let array = Arc::new(UInt64Array::from(vec![count])) as ArrayRef;
+    let array = Arc::new(Int64Array::from(vec![count])) as ArrayRef;
     let batch = RecordBatch::try_new(schema, vec![array])?;
     Ok(batch)
 }
@@ -141,7 +146,7 @@ fn make_result_batch(count: u64) -> DFResult<RecordBatch> {
 fn make_count_schema() -> SchemaRef {
     Arc::new(Schema::new(vec![Field::new(
         "count",
-        DataType::UInt64,
+        DataType::Int64,
         false,
     )]))
 }

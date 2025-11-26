@@ -25,6 +25,7 @@ pub use sqlite::*;
 use std::any::Any;
 
 use crate::{DFResult, Literalize, RemoteSchemaRef, RemoteSource, extract_primitive_array};
+use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
 use datafusion::common::DataFusionError;
 use datafusion::execution::SendableRecordBatchStream;
@@ -71,7 +72,7 @@ pub trait Connection: Debug + Send + Sync {
         literalizer: Arc<dyn Literalize>,
         table: &[String],
         remote_schema: RemoteSchemaRef,
-        input: SendableRecordBatchStream,
+        batch: RecordBatch,
     ) -> DFResult<usize>;
 }
 
