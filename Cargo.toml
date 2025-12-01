@@ -3,8 +3,8 @@ members = ["benchmarks", "integration-tests", "remote-table", "remote-table/gen"
 resolver = "3"
 
 [workspace.dependencies]
-datafusion = "49"
-datafusion-proto = "49"
+datafusion = "50"
+datafusion-proto = "50"
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.37" }
 prost = "0.13"

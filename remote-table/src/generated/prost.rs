@@ -3,7 +3,7 @@
 pub struct RemoteTablePhysicalPlanNode {
     #[prost(
         oneof = "remote_table_physical_plan_node::RemoteTablePhysicalPlanType",
-        tags = "1, 2, 3"
+        tags = "1, 2"
     )]
     pub remote_table_physical_plan_type:
         ::core::option::Option<remote_table_physical_plan_node::RemoteTablePhysicalPlanType>,
@@ -16,8 +16,6 @@ pub mod remote_table_physical_plan_node {
         Scan(super::RemoteTableScanExec),
         #[prost(message, tag = "2")]
         Insert(super::RemoteTableInsertExec),
-        #[prost(message, tag = "3")]
-        MemoryDatasource(super::MemoryDatasourceNode),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -53,22 +51,6 @@ pub struct RemoteTableInsertExec {
     pub literalizer: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "5")]
     pub connection: ::prost::alloc::vec::Vec<u8>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MemoryDatasourceNode {
-    #[prost(bytes = "vec", repeated, tag = "1")]
-    pub partitions: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
-    #[prost(message, optional, tag = "2")]
-    pub schema: ::core::option::Option<::datafusion_proto::protobuf::Schema>,
-    #[prost(message, optional, tag = "3")]
-    pub projection: ::core::option::Option<Projection>,
-    #[prost(message, repeated, tag = "4")]
-    pub sort_information:
-        ::prost::alloc::vec::Vec<::datafusion_proto::protobuf::PhysicalSortExprNodeCollection>,
-    #[prost(bool, tag = "5")]
-    pub show_sizes: bool,
-    #[prost(uint32, optional, tag = "6")]
-    pub fetch: ::core::option::Option<u32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectionOptions {
