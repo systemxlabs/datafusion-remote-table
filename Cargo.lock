@@ -1425,7 +1425,7 @@ dependencies = [
 
 [[package]]
 name = "datafusion-remote-table"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "async-stream",
  "async-trait",
