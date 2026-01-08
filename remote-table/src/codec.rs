@@ -4,6 +4,7 @@ use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
+use crate::panic_payload_as_str;
 use crate::{
     Connection, ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType,
     Literalize, MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef,
@@ -125,13 +126,30 @@ impl ConnectionCodec for DefaultConnectionCodec {
                 "DefaultConnectionCodec only supports {DEFAULT_CONNECTION_VALUE} value but got: {value:?}"
             )));
         }
-        let conn_options = conn_options.clone().with_pool_max_size(1);
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let pool = connect(&conn_options).await?;
-                let conn = pool.get().await?;
-                Ok::<_, DataFusionError>(conn)
+        let conn_options = conn_options
+            .clone()
+            .with_pool_max_size(1)
+            .with_pool_min_idle(0);
+
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("create runtime")
+                    .block_on(async {
+                        let pool = connect(&conn_options).await?;
+                        let conn = pool.get().await?;
+                        Ok::<_, DataFusionError>(conn)
+                    })
             })
+            .join()
+            .map_err(|e| {
+                DataFusionError::Internal(format!(
+                    "Thread panicked: {:?}",
+                    panic_payload_as_str(&e)
+                ))
+            })?
         })
     }
 }

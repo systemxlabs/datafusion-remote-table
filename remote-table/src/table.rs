@@ -1,7 +1,7 @@
 use crate::{
     ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, Literalize, Pool,
     RemoteDbType, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec,
-    Transform, TransformArgs, connect, transform_schema,
+    Transform, TransformArgs, connect, panic_payload_as_str, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
@@ -392,15 +392,29 @@ impl TableProvider for RemoteTable {
         let db_type = self.conn_options.db_type();
         if let Some(count1_query) = db_type.try_count1_query(&self.source) {
             let conn_options = self.conn_options.clone();
-            let row_count_result = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let pool = connect(&conn_options).await?;
-                    let conn = pool.get().await?;
-                    conn_options
-                        .db_type()
-                        .fetch_count(conn, &conn_options, &count1_query)
-                        .await
+
+            let row_count_result = std::thread::scope(|s| {
+                s.spawn(|| {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("create runtime")
+                        .block_on(async {
+                            let pool = connect(&conn_options).await?;
+                            let conn = pool.get().await?;
+                            conn_options
+                                .db_type()
+                                .fetch_count(conn, &conn_options, &count1_query)
+                                .await
+                        })
                 })
+                .join()
+                .map_err(|e| {
+                    DataFusionError::Internal(format!(
+                        "Thread panicked: {:?}",
+                        panic_payload_as_str(&e)
+                    ))
+                })?
             });
 
             match row_count_result {

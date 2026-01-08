@@ -48,6 +48,22 @@ impl ConnectionOptions {
             ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
         }
     }
+
+    pub fn with_pool_min_idle(self, pool_min_idle: usize) -> Self {
+        match self {
+            ConnectionOptions::Postgres(options) => {
+                ConnectionOptions::Postgres(options.with_pool_min_idle(pool_min_idle))
+            }
+            ConnectionOptions::Oracle(options) => {
+                ConnectionOptions::Oracle(options.with_pool_min_idle(pool_min_idle))
+            }
+            ConnectionOptions::Mysql(options) => {
+                ConnectionOptions::Mysql(options.with_pool_min_idle(pool_min_idle))
+            }
+            ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
+            ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
+        }
+    }
 }
 
 #[derive(Debug, Clone, With, Getters)]

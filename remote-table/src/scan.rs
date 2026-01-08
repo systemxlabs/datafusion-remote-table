@@ -1,6 +1,6 @@
 use crate::{
     Connection, ConnectionOptions, DFResult, DefaultTransform, RemoteSchemaRef, RemoteSource,
-    Transform, TransformStream, transform_schema,
+    Transform, TransformStream, panic_payload_as_str, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Statistics;
@@ -139,12 +139,26 @@ impl ExecutionPlan for RemoteTableScanExec {
         if let Some(count1_query) = db_type.try_count1_query(&RemoteSource::Query(real_sql)) {
             let conn = self.conn.clone();
             let conn_options = self.conn_options.clone();
-            let row_count_result = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    db_type
-                        .fetch_count(conn, &conn_options, &count1_query)
-                        .await
+
+            let row_count_result = std::thread::scope(|s| {
+                s.spawn(|| {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("create runtime")
+                        .block_on(async {
+                            db_type
+                                .fetch_count(conn, &conn_options, &count1_query)
+                                .await
+                        })
                 })
+                .join()
+                .map_err(|e| {
+                    DataFusionError::Internal(format!(
+                        "Thread panicked: {:?}",
+                        panic_payload_as_str(&e)
+                    ))
+                })?
             });
 
             match row_count_result {
