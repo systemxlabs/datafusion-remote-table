@@ -5,8 +5,9 @@ use crate::{
     literalize_array,
 };
 use datafusion::arrow::array::{
-    ArrayBuilder, ArrayRef, BinaryBuilder, Float64Builder, Int32Builder, Int64Builder, NullBuilder,
-    RecordBatch, RecordBatchOptions, StringBuilder, make_builder,
+    ArrayBuilder, ArrayRef, BinaryBuilder, BinaryViewBuilder, Float64Builder, Int32Builder,
+    Int64Builder, NullBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
+    make_builder,
 };
 use datafusion::arrow::datatypes::{DataType, SchemaRef};
 use datafusion::common::{DataFusionError, project_schema};
@@ -567,8 +568,14 @@ fn append_rows_to_array_builders(
             DataType::Utf8 => {
                 handle_primitive_type!(builder, field, col, StringBuilder, String, row, idx);
             }
+            DataType::Utf8View => {
+                handle_primitive_type!(builder, field, col, StringViewBuilder, String, row, idx);
+            }
             DataType::Binary => {
                 handle_primitive_type!(builder, field, col, BinaryBuilder, Vec<u8>, row, idx);
+            }
+            DataType::BinaryView => {
+                handle_primitive_type!(builder, field, col, BinaryViewBuilder, Vec<u8>, row, idx);
             }
             _ => {
                 return Err(DataFusionError::NotImplemented(format!(

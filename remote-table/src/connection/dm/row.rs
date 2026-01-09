@@ -5,9 +5,9 @@ use crate::connection::{
 };
 use chrono::{NaiveDate, NaiveTime, Timelike};
 use datafusion::arrow::array::{
-    ArrayRef, BinaryBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
+    ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
     FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int8Builder, Int16Builder,
-    Int32Builder, Int64Builder, RecordBatch, RecordBatchOptions, StringBuilder,
+    Int32Builder, Int64Builder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
     Time32MillisecondBuilder, Time32SecondBuilder, Time64MicrosecondBuilder,
     TimestampMicrosecondBuilder, TimestampMillisecondBuilder, TimestampNanosecondBuilder,
     TimestampSecondBuilder, make_builder,
@@ -188,6 +188,16 @@ pub(crate) fn row_to_batch(
                     just_return
                 );
             }
+            DataType::Utf8View => {
+                read_text!(
+                    builder,
+                    field,
+                    StringViewBuilder,
+                    row,
+                    odbc_col_idx,
+                    just_return
+                );
+            }
             DataType::FixedSizeBinary(_) => {
                 let builder = builder
                     .as_any_mut()
@@ -214,6 +224,26 @@ pub(crate) fn row_to_batch(
                     .downcast_mut::<BinaryBuilder>()
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to BinaryBuilder for {field:?}")
+                    });
+                let mut value = Vec::new();
+                let is_not_null = row.get_binary(odbc_col_idx, &mut value).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to get value for field {:?}: {e:?}",
+                        field
+                    ))
+                })?;
+                if is_not_null {
+                    builder.append_value(&value);
+                } else {
+                    builder.append_null();
+                }
+            }
+            DataType::BinaryView => {
+                let builder = builder
+                    .as_any_mut()
+                    .downcast_mut::<BinaryViewBuilder>()
+                    .unwrap_or_else(|| {
+                        panic!("Failed to downcast builder to BinaryViewBuilder for {field:?}")
                     });
                 let mut value = Vec::new();
                 let is_not_null = row.get_binary(odbc_col_idx, &mut value).map_err(|e| {
