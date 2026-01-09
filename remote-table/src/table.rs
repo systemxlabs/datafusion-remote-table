@@ -333,13 +333,6 @@ impl TableProvider for RemoteTable {
             unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
-        let now = std::time::Instant::now();
-        let conn = self.pool.get().await?;
-        debug!(
-            "[remote-table] Getting connection from pool cost: {}ms",
-            now.elapsed().as_millis()
-        );
-
         Ok(Arc::new(RemoteTableScanExec::try_new(
             self.conn_options.clone(),
             self.source.clone(),
@@ -349,7 +342,7 @@ impl TableProvider for RemoteTable {
             unparsed_filters,
             limit,
             self.transform.clone(),
-            conn,
+            Some(self.pool.clone()),
         )?))
     }
 
@@ -456,20 +449,13 @@ impl TableProvider for RemoteTable {
             ));
         };
 
-        let now = std::time::Instant::now();
-        let conn = self.pool.get().await?;
-        debug!(
-            "[remote-table] Getting connection from pool cost: {}ms",
-            now.elapsed().as_millis()
-        );
-
         let exec = RemoteTableInsertExec::new(
             input,
             self.conn_options.clone(),
             self.literalizer.clone(),
             table.clone(),
             remote_schema,
-            conn,
+            Some(self.pool.clone()),
         );
         Ok(Arc::new(exec))
     }
