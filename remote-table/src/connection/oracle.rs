@@ -6,10 +6,10 @@ use crate::{
 };
 use bb8_oracle::OracleConnectionManager;
 use datafusion::arrow::array::{
-    ArrayRef, BinaryBuilder, BooleanBuilder, Date64Builder, Decimal128Builder, Float32Builder,
-    Float64Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder,
-    LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StructBuilder,
-    TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
+    ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date64Builder, Decimal128Builder,
+    Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder,
+    LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
+    StructBuilder, TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
 };
 use datafusion::arrow::datatypes::{DataType, Fields, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
@@ -316,6 +316,18 @@ fn rows_to_batch(
                         just_return
                     );
                 }
+                DataType::Utf8View => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        StringViewBuilder,
+                        String,
+                        row,
+                        idx,
+                        just_return
+                    );
+                }
                 DataType::Decimal128(_precision, scale) => {
                     handle_primitive_type!(
                         builder,
@@ -412,6 +424,18 @@ fn rows_to_batch(
                         field,
                         col,
                         LargeBinaryBuilder,
+                        Vec<u8>,
+                        row,
+                        idx,
+                        just_return
+                    );
+                }
+                DataType::BinaryView => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        BinaryViewBuilder,
                         Vec<u8>,
                         row,
                         idx,

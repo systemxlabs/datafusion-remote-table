@@ -12,12 +12,12 @@ use bigdecimal::BigDecimal;
 use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
 use datafusion::arrow::array::{
-    ArrayBuilder, ArrayRef, BinaryBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
-    Decimal256Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int16Builder,
-    Int32Builder, Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder, ListBuilder,
-    RecordBatch, RecordBatchOptions, StringBuilder, Time64MicrosecondBuilder,
-    Time64NanosecondBuilder, TimestampMicrosecondBuilder, TimestampNanosecondBuilder,
-    UInt32Builder, make_builder,
+    ArrayBuilder, ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder,
+    Decimal128Builder, Decimal256Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder,
+    Int16Builder, Int32Builder, Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder,
+    ListBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
+    Time64MicrosecondBuilder, Time64NanosecondBuilder, TimestampMicrosecondBuilder,
+    TimestampNanosecondBuilder, UInt32Builder, make_builder,
 };
 use datafusion::arrow::datatypes::{
     DECIMAL256_MAX_PRECISION, DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit,
@@ -833,6 +833,48 @@ fn rows_to_batch(
                         );
                     }
                 }
+                DataType::Utf8View => {
+                    if col.is_some() && col.unwrap().type_().name().eq_ignore_ascii_case("xml") {
+                        let convert: for<'a> fn(XmlFromSql<'a>) -> DFResult<&'a str> =
+                            |v| Ok(v.xml);
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            StringViewBuilder,
+                            XmlFromSql,
+                            row,
+                            idx,
+                            convert
+                        );
+                    } else if col.is_some()
+                        && matches!(col.unwrap().type_(), &Type::JSON | &Type::JSONB)
+                    {
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            StringViewBuilder,
+                            serde_json::value::Value,
+                            row,
+                            idx,
+                            |v: serde_json::value::Value| {
+                                Ok::<_, DataFusionError>(v.to_string())
+                            }
+                        );
+                    } else {
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            StringViewBuilder,
+                            &str,
+                            row,
+                            idx,
+                            just_return
+                        );
+                    }
+                }
                 DataType::Binary => {
                     if col.is_some() && col.unwrap().type_().name().eq_ignore_ascii_case("geometry")
                     {
@@ -869,6 +911,49 @@ fn rows_to_batch(
                             field,
                             col,
                             BinaryBuilder,
+                            Vec<u8>,
+                            row,
+                            idx,
+                            just_return
+                        );
+                    }
+                }
+                DataType::BinaryView => {
+                    if col.is_some() && col.unwrap().type_().name().eq_ignore_ascii_case("geometry")
+                    {
+                        let convert: for<'a> fn(GeometryFromSql<'a>) -> DFResult<&'a [u8]> =
+                            |v| Ok(v.wkb);
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            BinaryViewBuilder,
+                            GeometryFromSql,
+                            row,
+                            idx,
+                            convert
+                        );
+                    } else if col.is_some()
+                        && matches!(col.unwrap().type_(), &Type::JSON | &Type::JSONB)
+                    {
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            BinaryViewBuilder,
+                            serde_json::value::Value,
+                            row,
+                            idx,
+                            |v: serde_json::value::Value| {
+                                Ok::<_, DataFusionError>(v.to_string().into_bytes())
+                            }
+                        );
+                    } else {
+                        handle_primitive_type!(
+                            builder,
+                            field,
+                            col,
+                            BinaryViewBuilder,
                             Vec<u8>,
                             row,
                             idx,

@@ -8,11 +8,12 @@ use async_stream::stream;
 use bigdecimal::{BigDecimal, num_bigint};
 use chrono::Timelike;
 use datafusion::arrow::array::{
-    ArrayRef, BinaryBuilder, Date32Builder, Decimal128Builder, Decimal256Builder, Float32Builder,
-    Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder,
-    LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, Time32SecondBuilder,
-    Time64NanosecondBuilder, TimestampMicrosecondBuilder, UInt8Builder, UInt16Builder,
-    UInt32Builder, UInt64Builder, make_builder,
+    ArrayRef, BinaryBuilder, BinaryViewBuilder, Date32Builder, Decimal128Builder,
+    Decimal256Builder, Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder,
+    Int64Builder, LargeBinaryBuilder, LargeStringBuilder, RecordBatch, RecordBatchOptions,
+    StringBuilder, StringViewBuilder, Time32SecondBuilder, Time64NanosecondBuilder,
+    TimestampMicrosecondBuilder, UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder,
+    make_builder,
 };
 use datafusion::arrow::datatypes::{DataType, Date32Type, SchemaRef, TimeUnit, i256};
 use datafusion::common::{DataFusionError, project_schema};
@@ -560,6 +561,18 @@ fn rows_to_batch(
                         just_return
                     );
                 }
+                DataType::Utf8View => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        StringViewBuilder,
+                        String,
+                        row,
+                        idx,
+                        just_return
+                    );
+                }
                 DataType::Binary => {
                     handle_primitive_type!(
                         builder,
@@ -578,6 +591,18 @@ fn rows_to_batch(
                         field,
                         col,
                         LargeBinaryBuilder,
+                        Vec<u8>,
+                        row,
+                        idx,
+                        just_return
+                    );
+                }
+                DataType::BinaryView => {
+                    handle_primitive_type!(
+                        builder,
+                        field,
+                        col,
+                        BinaryViewBuilder,
                         Vec<u8>,
                         row,
                         idx,

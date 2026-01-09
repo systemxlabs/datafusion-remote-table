@@ -5,11 +5,12 @@ use crate::connection::{
 };
 use chrono::{NaiveDate, NaiveTime, Timelike};
 use datafusion::arrow::array::{
-    BinaryBuilder, BooleanBuilder, Date32Builder, Decimal128Builder, FixedSizeBinaryBuilder,
-    Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
-    RecordBatch, RecordBatchOptions, StringBuilder, Time32MillisecondBuilder, Time32SecondBuilder,
-    Time64MicrosecondBuilder, TimestampMicrosecondBuilder, TimestampMillisecondBuilder,
-    TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
+    BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
+    FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int8Builder, Int16Builder,
+    Int32Builder, Int64Builder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
+    Time32MillisecondBuilder, Time32SecondBuilder, Time64MicrosecondBuilder,
+    TimestampMicrosecondBuilder, TimestampMillisecondBuilder, TimestampNanosecondBuilder,
+    TimestampSecondBuilder, make_builder,
 };
 use datafusion::arrow::datatypes::{DataType, Date32Type, Field, SchemaRef, TimeUnit};
 use datafusion::common::{DataFusionError, project_schema};
@@ -37,7 +38,7 @@ pub(crate) fn build_buffer_desc(
                 max_str_len: *precision as usize + 2,
             })
         }
-        DataType::Utf8 => {
+        DataType::Utf8 | DataType::Utf8View => {
             let column_size = cursor
                 .col_data_type(col_idx as u16 + 1)
                 .map_err(|e| DataFusionError::External(Box::new(e)))?
@@ -53,7 +54,7 @@ pub(crate) fn build_buffer_desc(
         DataType::FixedSizeBinary(size) => Ok(BufferDesc::Binary {
             length: *size as usize,
         }),
-        DataType::Binary => {
+        DataType::Binary | DataType::BinaryView => {
             let column_size = cursor
                 .col_data_type(col_idx as u16 + 1)
                 .map_err(|e| DataFusionError::External(Box::new(e)))?
@@ -262,6 +263,10 @@ pub(crate) fn buffer_to_batch(
                 let convert: for<'a> fn(&'a str) -> DFResult<&'a str> = |v| Ok(v);
                 handle_text_view!(builder, field, StringBuilder, col_slice, convert);
             }
+            DataType::Utf8View => {
+                let convert: for<'a> fn(&'a str) -> DFResult<&'a str> = |v| Ok(v);
+                handle_text_view!(builder, field, StringViewBuilder, col_slice, convert);
+            }
             DataType::FixedSizeBinary(_) => {
                 let builder = builder
                     .as_any_mut()
@@ -289,6 +294,27 @@ pub(crate) fn buffer_to_batch(
                     .downcast_mut::<BinaryBuilder>()
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to BinaryBuilder for {field:?}")
+                    });
+                let values = col_slice.as_bin_view().ok_or_else(|| {
+                    DataFusionError::Execution(format!("Failed to get bin view for {field:?}"))
+                })?;
+                for value in values.iter() {
+                    match value {
+                        Some(v) => {
+                            builder.append_value(v);
+                        }
+                        None => {
+                            builder.append_null();
+                        }
+                    }
+                }
+            }
+            DataType::BinaryView => {
+                let builder = builder
+                    .as_any_mut()
+                    .downcast_mut::<BinaryViewBuilder>()
+                    .unwrap_or_else(|| {
+                        panic!("Failed to downcast builder to BinaryViewBuilder for {field:?}")
                     });
                 let values = col_slice.as_bin_view().ok_or_else(|| {
                     DataFusionError::Execution(format!("Failed to get bin view for {field:?}"))
