@@ -5,8 +5,9 @@ pub struct RemoteTablePhysicalPlanNode {
         oneof = "remote_table_physical_plan_node::RemoteTablePhysicalPlanType",
         tags = "1, 2"
     )]
-    pub remote_table_physical_plan_type:
-        ::core::option::Option<remote_table_physical_plan_node::RemoteTablePhysicalPlanType>,
+    pub remote_table_physical_plan_type: ::core::option::Option<
+        remote_table_physical_plan_node::RemoteTablePhysicalPlanType,
+    >,
 }
 /// Nested message and enum types in `RemoteTablePhysicalPlanNode`.
 pub mod remote_table_physical_plan_node {
@@ -36,8 +37,6 @@ pub struct RemoteTableScanExec {
     pub limit: ::core::option::Option<u32>,
     #[prost(bytes = "vec", tag = "8")]
     pub transform: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "9")]
-    pub connection: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RemoteTableInsertExec {
@@ -49,16 +48,13 @@ pub struct RemoteTableInsertExec {
     pub remote_schema: ::core::option::Option<RemoteSchema>,
     #[prost(bytes = "vec", tag = "4")]
     pub literalizer: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "5")]
-    pub connection: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectionOptions {
-    #[prost(
-        oneof = "connection_options::ConnectionOptions",
-        tags = "1, 2, 3, 4, 5"
-    )]
-    pub connection_options: ::core::option::Option<connection_options::ConnectionOptions>,
+    #[prost(oneof = "connection_options::ConnectionOptions", tags = "1, 2, 3, 4, 5")]
+    pub connection_options: ::core::option::Option<
+        connection_options::ConnectionOptions,
+    >,
 }
 /// Nested message and enum types in `ConnectionOptions`.
 pub mod connection_options {

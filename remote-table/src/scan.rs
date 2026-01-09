@@ -18,6 +18,7 @@ use futures::TryStreamExt;
 use log::{debug, warn};
 use std::any::Any;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct RemoteTableScanExec {
@@ -29,7 +30,7 @@ pub struct RemoteTableScanExec {
     pub(crate) unparsed_filters: Vec<String>,
     pub(crate) limit: Option<usize>,
     pub(crate) transform: Arc<dyn Transform>,
-    pub(crate) pool: Option<Arc<dyn Pool>>,
+    pub(crate) pool: Arc<Mutex<Option<Arc<dyn Pool>>>>,
     plan_properties: PlanProperties,
 }
 
@@ -68,7 +69,7 @@ impl RemoteTableScanExec {
             unparsed_filters,
             limit,
             transform,
-            pool,
+            pool: Arc::new(Mutex::new(pool)),
             plan_properties,
         })
     }
@@ -137,14 +138,11 @@ impl ExecutionPlan for RemoteTableScanExec {
         let real_sql = db_type.rewrite_query(&self.source, &self.unparsed_filters, limit);
 
         if let Some(count1_query) = db_type.try_count1_query(&RemoteSource::Query(real_sql)) {
-            let pool = self.pool.clone();
+            let pool_mutex = self.pool.clone();
             let conn_options = self.conn_options.clone();
             let row_count_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    let pool = match pool {
-                        Some(p) => p,
-                        None => connect(&conn_options).await?,
-                    };
+                    let pool = get_or_create_pool(&pool_mutex, &conn_options).await?;
                     let conn = pool.get().await?;
                     db_type
                         .fetch_count(conn, &conn_options, &count1_query)
@@ -202,7 +200,7 @@ impl ExecutionPlan for RemoteTableScanExec {
 
 #[allow(clippy::too_many_arguments)]
 async fn build_and_transform_stream(
-    pool: Option<Arc<dyn Pool>>,
+    pool_mutex: Arc<Mutex<Option<Arc<dyn Pool>>>>,
     conn_options: Arc<ConnectionOptions>,
     source: RemoteSource,
     table_schema: SchemaRef,
@@ -219,10 +217,7 @@ async fn build_and_transform_stream(
         None
     };
 
-    let pool = match pool {
-        Some(p) => p,
-        None => connect(&conn_options).await?,
-    };
+    let pool = get_or_create_pool(&pool_mutex, &conn_options).await?;
     let conn = pool.get().await?;
 
     if transform.as_any().is::<DefaultTransform>() {
@@ -260,6 +255,19 @@ async fn build_and_transform_stream(
             db_type,
         )?))
     }
+}
+
+async fn get_or_create_pool(
+    pool_mutex: &Arc<Mutex<Option<Arc<dyn Pool>>>>,
+    conn_options: &ConnectionOptions,
+) -> DFResult<Arc<dyn Pool>> {
+    let mut guard = pool_mutex.lock().await;
+    if let Some(pool) = guard.as_ref() {
+        return Ok(pool.clone());
+    }
+    let pool = connect(conn_options).await?;
+    *guard = Some(pool.clone());
+    Ok(pool)
 }
 
 impl DisplayAs for RemoteTableScanExec {

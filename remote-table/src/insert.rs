@@ -11,6 +11,7 @@ use datafusion::physical_plan::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct RemoteTableInsertExec {
@@ -19,7 +20,7 @@ pub struct RemoteTableInsertExec {
     pub(crate) literalizer: Arc<dyn Literalize>,
     pub(crate) table: Vec<String>,
     pub(crate) remote_schema: RemoteSchemaRef,
-    pub(crate) pool: Option<Arc<dyn Pool>>,
+    pub(crate) pool: Arc<Mutex<Option<Arc<dyn Pool>>>>,
     plan_properties: PlanProperties,
 }
 
@@ -45,7 +46,7 @@ impl RemoteTableInsertExec {
             literalizer,
             table,
             remote_schema,
-            pool,
+            pool: Arc::new(Mutex::new(pool)),
             plan_properties,
         }
     }
@@ -73,15 +74,22 @@ impl ExecutionPlan for RemoteTableInsertExec {
         children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
         let input = children[0].clone();
-        let exec = Self::new(
-            input,
-            self.conn_options.clone(),
-            self.literalizer.clone(),
-            self.table.clone(),
-            self.remote_schema.clone(),
-            self.pool.clone(),
+        let pool = self.pool.clone();
+        let plan_properties = PlanProperties::new(
+            EquivalenceProperties::new(make_count_schema()),
+            Partitioning::UnknownPartitioning(input.output_partitioning().partition_count()),
+            input.pipeline_behavior(),
+            input.boundedness(),
         );
-        Ok(Arc::new(exec))
+        Ok(Arc::new(Self {
+            input,
+            conn_options: self.conn_options.clone(),
+            literalizer: self.literalizer.clone(),
+            table: self.table.clone(),
+            remote_schema: self.remote_schema.clone(),
+            pool,
+            plan_properties,
+        }))
     }
 
     fn execute(
@@ -94,13 +102,10 @@ impl ExecutionPlan for RemoteTableInsertExec {
         let literalizer = self.literalizer.clone();
         let table = self.table.clone();
         let remote_schema = self.remote_schema.clone();
-        let pool = self.pool.clone();
+        let pool_mutex = self.pool.clone();
 
         let stream = futures::stream::once(async move {
-            let pool = match pool {
-                Some(p) => p,
-                None => connect(&conn_options).await?,
-            };
+            let pool = get_or_create_pool(&pool_mutex, &conn_options).await?;
             let conn = pool.get().await?;
 
             let mut total_count = 0;
@@ -155,4 +160,17 @@ fn make_count_schema() -> SchemaRef {
         DataType::Int64,
         false,
     )]))
+}
+
+async fn get_or_create_pool(
+    pool_mutex: &Arc<Mutex<Option<Arc<dyn Pool>>>>,
+    conn_options: &ConnectionOptions,
+) -> DFResult<Arc<dyn Pool>> {
+    let mut guard = pool_mutex.lock().await;
+    if let Some(pool) = guard.as_ref() {
+        return Ok(pool.clone());
+    }
+    let pool = connect(conn_options).await?;
+    *guard = Some(pool.clone());
+    Ok(pool)
 }
