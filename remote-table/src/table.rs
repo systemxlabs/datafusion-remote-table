@@ -457,8 +457,8 @@ impl TableProvider for RemoteTable {
             self.literalizer.clone(),
             table.clone(),
             remote_schema,
-            Some(self.pool.clone()),
-        );
+        )
+        .with_pool(Some(self.pool.clone()));
         Ok(Arc::new(exec))
     }
 }

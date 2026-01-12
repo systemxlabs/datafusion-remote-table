@@ -187,7 +187,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     literalizer,
                     table,
                     remote_schema,
-                    None,
                 )))
             }
         }

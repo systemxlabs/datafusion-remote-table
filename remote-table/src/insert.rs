@@ -31,7 +31,6 @@ impl RemoteTableInsertExec {
         literalizer: Arc<dyn Literalize>,
         table: Vec<String>,
         remote_schema: RemoteSchemaRef,
-        pool: Option<Arc<dyn Pool>>,
     ) -> Self {
         // TODO sqlite does not support parallel insert
         let plan_properties = PlanProperties::new(
@@ -46,9 +45,14 @@ impl RemoteTableInsertExec {
             literalizer,
             table,
             remote_schema,
-            pool: Arc::new(Mutex::new(pool)),
+            pool: Arc::new(Mutex::new(None)),
             plan_properties,
         }
+    }
+
+    pub fn with_pool(mut self, pool: Option<Arc<dyn Pool>>) -> Self {
+        self.pool = Arc::new(Mutex::new(pool));
+        self
     }
 }
 
