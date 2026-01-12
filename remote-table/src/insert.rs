@@ -54,6 +54,11 @@ impl RemoteTableInsertExec {
         self.pool = Arc::new(Mutex::new(pool));
         self
     }
+
+    pub fn with_mutex_pool(mut self, pool: Arc<Mutex<Option<Arc<dyn Pool>>>>) -> Self {
+        self.pool = pool;
+        self
+    }
 }
 
 impl ExecutionPlan for RemoteTableInsertExec {
@@ -78,22 +83,15 @@ impl ExecutionPlan for RemoteTableInsertExec {
         children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
         let input = children[0].clone();
-        let pool = self.pool.clone();
-        let plan_properties = PlanProperties::new(
-            EquivalenceProperties::new(make_count_schema()),
-            Partitioning::UnknownPartitioning(input.output_partitioning().partition_count()),
-            input.pipeline_behavior(),
-            input.boundedness(),
-        );
-        Ok(Arc::new(Self {
+        let exec = Self::new(
             input,
-            conn_options: self.conn_options.clone(),
-            literalizer: self.literalizer.clone(),
-            table: self.table.clone(),
-            remote_schema: self.remote_schema.clone(),
-            pool,
-            plan_properties,
-        }))
+            self.conn_options.clone(),
+            self.literalizer.clone(),
+            self.table.clone(),
+            self.remote_schema.clone(),
+        )
+        .with_mutex_pool(self.pool.clone());
+        Ok(Arc::new(exec))
     }
 
     fn execute(
