@@ -5,10 +5,9 @@ use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
-    Connection, ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType,
-    Literalize, MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteSource, RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
-    connect,
+    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize,
+    MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
+    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::DataFusionError;
@@ -18,7 +17,6 @@ use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
 use datafusion_proto::protobuf::proto_error;
 use derive_with::With;
-use log::debug;
 use prost::Message;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -88,59 +86,10 @@ impl LiteralizeCodec for DefaultLiteralizeCodec {
     }
 }
 
-pub trait ConnectionCodec: Debug + Send + Sync {
-    fn try_encode(
-        &self,
-        value: &dyn Connection,
-        conn_options: &ConnectionOptions,
-    ) -> DFResult<Vec<u8>>;
-    fn try_decode(
-        &self,
-        value: &[u8],
-        conn_options: &ConnectionOptions,
-    ) -> DFResult<Arc<dyn Connection>>;
-}
-
-#[derive(Debug)]
-pub struct DefaultConnectionCodec;
-
-const DEFAULT_CONNECTION_VALUE: &str = "__default";
-
-impl ConnectionCodec for DefaultConnectionCodec {
-    fn try_encode(
-        &self,
-        _value: &dyn Connection,
-        _conn_options: &ConnectionOptions,
-    ) -> DFResult<Vec<u8>> {
-        Ok(DEFAULT_CONNECTION_VALUE.as_bytes().to_vec())
-    }
-
-    fn try_decode(
-        &self,
-        value: &[u8],
-        conn_options: &ConnectionOptions,
-    ) -> DFResult<Arc<dyn Connection>> {
-        if value != DEFAULT_CONNECTION_VALUE.as_bytes() {
-            return Err(DataFusionError::Execution(format!(
-                "DefaultConnectionCodec only supports {DEFAULT_CONNECTION_VALUE} value but got: {value:?}"
-            )));
-        }
-        let conn_options = conn_options.clone().with_pool_max_size(1);
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let pool = connect(&conn_options).await?;
-                let conn = pool.get().await?;
-                Ok::<_, DataFusionError>(conn)
-            })
-        })
-    }
-}
-
 #[derive(Debug, With)]
 pub struct RemotePhysicalCodec {
     pub transform_codec: Arc<dyn TransformCodec>,
     pub literalize_codec: Arc<dyn LiteralizeCodec>,
-    pub connection_codec: Arc<dyn ConnectionCodec>,
 }
 
 impl RemotePhysicalCodec {
@@ -148,7 +97,6 @@ impl RemotePhysicalCodec {
         Self {
             transform_codec: Arc::new(DefaultTransformCodec {}),
             literalize_codec: Arc::new(DefaultLiteralizeCodec {}),
-            connection_codec: Arc::new(DefaultConnectionCodec {}),
         }
     }
 }
@@ -201,15 +149,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
                 let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
 
-                let now = std::time::Instant::now();
-                let conn = self
-                    .connection_codec
-                    .try_decode(&proto.connection, &conn_options)?;
-                debug!(
-                    "[remote-table] Decoding connection cost {}ms",
-                    now.elapsed().as_millis()
-                );
-
                 Ok(Arc::new(RemoteTableScanExec::try_new(
                     conn_options,
                     source,
@@ -219,7 +158,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     proto.unparsed_filters,
                     limit,
                     transform,
-                    conn,
                 )?))
             }
             protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Insert(
@@ -243,22 +181,12 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     self.literalize_codec.try_decode(&proto.literalizer)?
                 };
 
-                let now = std::time::Instant::now();
-                let conn = self
-                    .connection_codec
-                    .try_decode(&proto.connection, &conn_options)?;
-                debug!(
-                    "[remote-table] Decoding connection cost {}ms",
-                    now.elapsed().as_millis()
-                );
-
                 Ok(Arc::new(RemoteTableInsertExec::new(
                     input,
                     conn_options,
                     literalizer,
                     table,
                     remote_schema,
-                    conn,
                 )))
             }
         }
@@ -276,11 +204,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
             let serialized_connection_options = serialize_connection_options(&exec.conn_options);
             let remote_schema = exec.remote_schema.as_ref().map(serialize_remote_schema);
-
-            let serialized_conn = self
-                .connection_codec
-                .try_encode(exec.conn.as_ref(), &exec.conn_options)?;
-
             let serialized_source = serialize_remote_source(&exec.source);
 
             let proto = protobuf::RemoteTablePhysicalPlanNode {
@@ -295,7 +218,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                             unparsed_filters: exec.unparsed_filters.clone(),
                             limit: exec.limit.map(|l| l as u32),
                             transform: serialized_transform,
-                            connection: serialized_conn,
                         },
                     ),
                 ),
@@ -316,9 +238,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
             let serialized_literalizer = self
                 .literalize_codec
                 .try_encode(exec.literalizer.as_ref())?;
-            let serialized_conn = self
-                .connection_codec
-                .try_encode(exec.conn.as_ref(), &exec.conn_options)?;
 
             let proto = protobuf::RemoteTablePhysicalPlanNode {
                 remote_table_physical_plan_type: Some(
@@ -328,7 +247,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                             table: Some(serialized_table),
                             remote_schema: Some(remote_schema),
                             literalizer: serialized_literalizer,
-                            connection: serialized_conn,
                         },
                     ),
                 ),

@@ -21,7 +21,6 @@ message RemoteTableScanExec {
   repeated string unparsed_filters = 6;
   optional uint32 limit = 7;
   bytes transform = 8;
-  bytes connection = 9;
 }
 
 message RemoteTableInsertExec {
@@ -29,7 +28,6 @@ message RemoteTableInsertExec {
   Identifiers table = 2;
   RemoteSchema remote_schema = 3;
   bytes literalizer = 4;
-  bytes connection = 5;
 }
 
 message ConnectionOptions {

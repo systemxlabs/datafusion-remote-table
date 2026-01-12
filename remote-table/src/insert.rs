@@ -1,4 +1,4 @@
-use crate::{Connection, ConnectionOptions, DFResult, Literalize, RemoteSchemaRef};
+use crate::{ConnectionOptions, DFResult, Literalize, Pool, RemoteSchemaRef, get_or_create_pool};
 use datafusion::arrow::array::{ArrayRef, Int64Array, RecordBatch};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion::common::stats::Precision;
@@ -11,6 +11,7 @@ use datafusion::physical_plan::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct RemoteTableInsertExec {
@@ -19,7 +20,7 @@ pub struct RemoteTableInsertExec {
     pub(crate) literalizer: Arc<dyn Literalize>,
     pub(crate) table: Vec<String>,
     pub(crate) remote_schema: RemoteSchemaRef,
-    pub(crate) conn: Arc<dyn Connection>,
+    pub(crate) pool: Arc<Mutex<Option<Arc<dyn Pool>>>>,
     plan_properties: PlanProperties,
 }
 
@@ -30,7 +31,6 @@ impl RemoteTableInsertExec {
         literalizer: Arc<dyn Literalize>,
         table: Vec<String>,
         remote_schema: RemoteSchemaRef,
-        conn: Arc<dyn Connection>,
     ) -> Self {
         // TODO sqlite does not support parallel insert
         let plan_properties = PlanProperties::new(
@@ -45,9 +45,19 @@ impl RemoteTableInsertExec {
             literalizer,
             table,
             remote_schema,
-            conn,
+            pool: Arc::new(Mutex::new(None)),
             plan_properties,
         }
+    }
+
+    pub fn with_pool(mut self, pool: Option<Arc<dyn Pool>>) -> Self {
+        self.pool = Arc::new(Mutex::new(pool));
+        self
+    }
+
+    pub fn with_mutex_pool(mut self, pool: Arc<Mutex<Option<Arc<dyn Pool>>>>) -> Self {
+        self.pool = pool;
+        self
     }
 }
 
@@ -79,8 +89,8 @@ impl ExecutionPlan for RemoteTableInsertExec {
             self.literalizer.clone(),
             self.table.clone(),
             self.remote_schema.clone(),
-            self.conn.clone(),
-        );
+        )
+        .with_mutex_pool(self.pool.clone());
         Ok(Arc::new(exec))
     }
 
@@ -94,9 +104,12 @@ impl ExecutionPlan for RemoteTableInsertExec {
         let literalizer = self.literalizer.clone();
         let table = self.table.clone();
         let remote_schema = self.remote_schema.clone();
-        let conn = self.conn.clone();
+        let pool_mutex = self.pool.clone();
 
         let stream = futures::stream::once(async move {
+            let pool = get_or_create_pool(&pool_mutex, &conn_options).await?;
+            let conn = pool.get().await?;
+
             let mut total_count = 0;
             while let Some(batch) = input_stream.next().await {
                 let batch = batch?;

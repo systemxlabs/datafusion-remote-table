@@ -333,24 +333,19 @@ impl TableProvider for RemoteTable {
             unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
-        let now = std::time::Instant::now();
-        let conn = self.pool.get().await?;
-        debug!(
-            "[remote-table] Getting connection from pool cost: {}ms",
-            now.elapsed().as_millis()
-        );
-
-        Ok(Arc::new(RemoteTableScanExec::try_new(
-            self.conn_options.clone(),
-            self.source.clone(),
-            self.table_schema.clone(),
-            self.remote_schema.clone(),
-            projection.cloned(),
-            unparsed_filters,
-            limit,
-            self.transform.clone(),
-            conn,
-        )?))
+        Ok(Arc::new(
+            RemoteTableScanExec::try_new(
+                self.conn_options.clone(),
+                self.source.clone(),
+                self.table_schema.clone(),
+                self.remote_schema.clone(),
+                projection.cloned(),
+                unparsed_filters,
+                limit,
+                self.transform.clone(),
+            )?
+            .with_pool(Some(self.pool.clone())),
+        ))
     }
 
     fn supports_filters_pushdown(
@@ -456,21 +451,14 @@ impl TableProvider for RemoteTable {
             ));
         };
 
-        let now = std::time::Instant::now();
-        let conn = self.pool.get().await?;
-        debug!(
-            "[remote-table] Getting connection from pool cost: {}ms",
-            now.elapsed().as_millis()
-        );
-
         let exec = RemoteTableInsertExec::new(
             input,
             self.conn_options.clone(),
             self.literalizer.clone(),
             table.clone(),
             remote_schema,
-            conn,
-        );
+        )
+        .with_pool(Some(self.pool.clone()));
         Ok(Arc::new(exec))
     }
 }
