@@ -1,6 +1,6 @@
 use crate::{
     ConnectionOptions, DFResult, DefaultTransform, Pool, RemoteSchemaRef, RemoteSource, Transform,
-    TransformStream, connect, transform_schema,
+    TransformStream, get_or_create_pool, transform_schema,
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Statistics;
@@ -45,7 +45,6 @@ impl RemoteTableScanExec {
         unparsed_filters: Vec<String>,
         limit: Option<usize>,
         transform: Arc<dyn Transform>,
-        pool: Option<Arc<dyn Pool>>,
     ) -> DFResult<Self> {
         let transformed_table_schema = transform_schema(
             transform.as_ref(),
@@ -69,9 +68,16 @@ impl RemoteTableScanExec {
             unparsed_filters,
             limit,
             transform,
-            pool: Arc::new(Mutex::new(pool)),
+            pool: Arc::new(Mutex::new(None)),
             plan_properties,
         })
+    }
+
+    pub fn with_pool(self, pool: Option<Arc<dyn Pool>>) -> Self {
+        Self {
+            pool: Arc::new(Mutex::new(pool)),
+            ..self
+        }
     }
 }
 
@@ -255,19 +261,6 @@ async fn build_and_transform_stream(
             db_type,
         )?))
     }
-}
-
-async fn get_or_create_pool(
-    pool_mutex: &Arc<Mutex<Option<Arc<dyn Pool>>>>,
-    conn_options: &ConnectionOptions,
-) -> DFResult<Arc<dyn Pool>> {
-    let mut guard = pool_mutex.lock().await;
-    if let Some(pool) = guard.as_ref() {
-        return Ok(pool.clone());
-    }
-    let pool = connect(conn_options).await?;
-    *guard = Some(pool.clone());
-    Ok(pool)
 }
 
 impl DisplayAs for RemoteTableScanExec {

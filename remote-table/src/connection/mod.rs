@@ -21,6 +21,7 @@ pub use oracle::*;
 pub use postgres::*;
 #[cfg(feature = "sqlite")]
 pub use sqlite::*;
+use tokio::sync::Mutex;
 
 use std::any::Any;
 
@@ -386,7 +387,15 @@ fn just_deref<T: Copy>(t: &T) -> DFResult<T> {
     Ok(*t)
 }
 
-#[test]
-fn tst_f32() {
-    println!("{}", 10f32.powi(40));
+pub(crate) async fn get_or_create_pool(
+    pool_mutex: &Arc<Mutex<Option<Arc<dyn Pool>>>>,
+    conn_options: &ConnectionOptions,
+) -> DFResult<Arc<dyn Pool>> {
+    let mut guard = pool_mutex.lock().await;
+    if let Some(pool) = guard.as_ref() {
+        return Ok(pool.clone());
+    }
+    let pool = connect(conn_options).await?;
+    *guard = Some(pool.clone());
+    Ok(pool)
 }

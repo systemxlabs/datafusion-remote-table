@@ -158,7 +158,6 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     proto.unparsed_filters,
                     limit,
                     transform,
-                    None,
                 )?))
             }
             protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Insert(

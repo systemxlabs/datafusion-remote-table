@@ -333,17 +333,19 @@ impl TableProvider for RemoteTable {
             unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
-        Ok(Arc::new(RemoteTableScanExec::try_new(
-            self.conn_options.clone(),
-            self.source.clone(),
-            self.table_schema.clone(),
-            self.remote_schema.clone(),
-            projection.cloned(),
-            unparsed_filters,
-            limit,
-            self.transform.clone(),
-            Some(self.pool.clone()),
-        )?))
+        Ok(Arc::new(
+            RemoteTableScanExec::try_new(
+                self.conn_options.clone(),
+                self.source.clone(),
+                self.table_schema.clone(),
+                self.remote_schema.clone(),
+                projection.cloned(),
+                unparsed_filters,
+                limit,
+                self.transform.clone(),
+            )?
+            .with_pool(Some(self.pool.clone())),
+        ))
     }
 
     fn supports_filters_pushdown(

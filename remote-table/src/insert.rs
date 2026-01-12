@@ -1,4 +1,4 @@
-use crate::{ConnectionOptions, DFResult, Literalize, Pool, RemoteSchemaRef, connect};
+use crate::{ConnectionOptions, DFResult, Literalize, Pool, RemoteSchemaRef, get_or_create_pool};
 use datafusion::arrow::array::{ArrayRef, Int64Array, RecordBatch};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion::common::stats::Precision;
@@ -160,17 +160,4 @@ fn make_count_schema() -> SchemaRef {
         DataType::Int64,
         false,
     )]))
-}
-
-async fn get_or_create_pool(
-    pool_mutex: &Arc<Mutex<Option<Arc<dyn Pool>>>>,
-    conn_options: &ConnectionOptions,
-) -> DFResult<Arc<dyn Pool>> {
-    let mut guard = pool_mutex.lock().await;
-    if let Some(pool) = guard.as_ref() {
-        return Ok(pool.clone());
-    }
-    let pool = connect(conn_options).await?;
-    *guard = Some(pool.clone());
-    Ok(pool)
 }
