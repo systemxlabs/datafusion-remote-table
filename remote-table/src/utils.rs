@@ -8,79 +8,7 @@ use arrow::datatypes::{
     ArrowPrimitiveType, BooleanType, ByteArrayType, i256,
 };
 use datafusion_common::DataFusionError;
-#[cfg(feature = "utils")]
-use crate::{ConnectionOptions, RemoteSource, RemoteTable};
-#[cfg(feature = "utils")]
-use arrow::datatypes::{BinaryType, LargeBinaryType, LargeUtf8Type, Utf8Type};
-#[cfg(feature = "utils")]
-use datafusion::prelude::SessionContext;
-#[cfg(feature = "utils")]
-use std::sync::Arc;
 use std::str::FromStr;
-
-#[cfg(feature = "utils")]
-pub async fn remote_collect(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-) -> DFResult<Vec<RecordBatch>> {
-    let table = RemoteTable::try_new(options, RemoteSource::Query(sql.into())).await?;
-    let ctx = SessionContext::new();
-    ctx.read_table(Arc::new(table))?.collect().await
-}
-
-#[cfg(feature = "utils")]
-pub async fn remote_collect_primitive_column<T: ArrowPrimitiveType>(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<T::Native>>> {
-    let batches = remote_collect(options, sql).await?;
-    extract_primitive_array::<T>(&batches, col_idx)
-}
-
-#[cfg(feature = "utils")]
-pub async fn remote_collect_utf8_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<String>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<Utf8Type>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_string())).collect())
-}
-
-#[cfg(feature = "utils")]
-pub async fn remote_collect_large_utf8_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<String>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<LargeUtf8Type>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_string())).collect())
-}
-
-#[cfg(feature = "utils")]
-pub async fn remote_collect_binary_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<Vec<u8>>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<BinaryType>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_vec())).collect())
-}
-
-#[cfg(feature = "utils")]
-pub async fn remote_collect_large_binary_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<Vec<u8>>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<LargeBinaryType>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_vec())).collect())
-}
 
 pub fn extract_primitive_array<T: ArrowPrimitiveType>(
     batches: &[RecordBatch],
