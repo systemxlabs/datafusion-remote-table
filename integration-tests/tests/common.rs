@@ -259,7 +259,7 @@ impl Transform for MyTransform {
         let transformed_table_schema = transform_schema(
             self,
             args.table_schema.clone(),
-            Some(&args.remote_schema),
+            Some(args.remote_schema),
             args.db_type,
         )?;
         let rewritten_filter = filter
