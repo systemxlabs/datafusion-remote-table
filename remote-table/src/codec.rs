@@ -11,7 +11,7 @@ use crate::{
 };
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::DataFusionError;
-use datafusion::execution::FunctionRegistry;
+use datafusion::execution::TaskContext;
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
@@ -112,7 +112,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         &self,
         buf: &[u8],
         inputs: &[Arc<dyn ExecutionPlan>],
-        _registry: &dyn FunctionRegistry,
+        _ctx: &TaskContext,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
         let remote_table_node =
             protobuf::RemoteTablePhysicalPlanNode::decode(buf).map_err(|e| {
