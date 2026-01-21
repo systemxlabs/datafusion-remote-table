@@ -90,7 +90,7 @@ async fn transform_serialization(#[case] source: RemoteSource) {
     plan_proto.try_encode(&mut plan_buf).unwrap();
 
     let new_plan: Arc<dyn ExecutionPlan> = PhysicalPlanNode::try_decode(&plan_buf)
-        .and_then(|proto| proto.try_into_physical_plan(&ctx, &ctx.runtime_env(), &codec))
+        .and_then(|proto| proto.try_into_physical_plan(&ctx.task_ctx(), &codec))
         .unwrap();
     println!(
         "plan: {}",
@@ -459,7 +459,7 @@ async fn insert_serialization() -> Result<(), DataFusionError> {
     let plan_proto = PhysicalPlanNode::try_from_physical_plan(plan, &codec)?;
     plan_proto.try_encode(&mut plan_buf)?;
     let new_plan: Arc<dyn ExecutionPlan> = PhysicalPlanNode::try_decode(&plan_buf)
-        .and_then(|proto| proto.try_into_physical_plan(&ctx, &ctx.runtime_env(), &codec))?;
+        .and_then(|proto| proto.try_into_physical_plan(&ctx.task_ctx(), &codec))?;
     println!(
         "deserialized plan: {}",
         DisplayableExecutionPlan::new(new_plan.as_ref()).indent(true)
