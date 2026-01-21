@@ -1468,6 +1468,7 @@ dependencies = [
  "bigdecimal",
  "byteorder",
  "chrono",
+ "datafusion",
  "datafusion-catalog",
  "datafusion-common",
  "datafusion-datasource",

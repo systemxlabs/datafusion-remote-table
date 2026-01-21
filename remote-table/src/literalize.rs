@@ -1,6 +1,5 @@
 use crate::PostgresType;
 use crate::{DFResult, RemoteType};
-use chrono::{TimeZone, Utc};
 use arrow::array::timezone::Tz;
 use arrow::array::*;
 use arrow::datatypes::*;
@@ -8,6 +7,7 @@ use arrow::temporal_conversions::{
     date32_to_datetime, time64ns_to_time, time64us_to_time, timestamp_ns_to_datetime,
     timestamp_us_to_datetime,
 };
+use chrono::{TimeZone, Utc};
 use datafusion_common::DataFusionError;
 use std::any::Any;
 use std::fmt::Debug;

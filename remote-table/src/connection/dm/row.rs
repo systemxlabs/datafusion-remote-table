@@ -3,7 +3,6 @@ use crate::connection::{
     just_return, ms_since_epoch, ns_since_epoch, projections_contains, seconds_since_epoch,
     us_since_epoch,
 };
-use chrono::{NaiveDate, NaiveTime, Timelike};
 use arrow::array::{
     ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
     FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int8Builder, Int16Builder,
@@ -13,6 +12,7 @@ use arrow::array::{
     TimestampSecondBuilder, make_builder,
 };
 use arrow::datatypes::{DataType, Date32Type, SchemaRef, TimeUnit};
+use chrono::{NaiveDate, NaiveTime, Timelike};
 use datafusion_common::{DataFusionError, project_schema};
 use odbc_api::{Bit, CursorRow, decimal_text_to_i128};
 

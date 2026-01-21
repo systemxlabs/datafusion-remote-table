@@ -63,3 +63,6 @@ bb8-oracle = { version = "0.3", features = ["chrono"], optional = true}
 rusqlite = { workspace = true, features = ["column_decltype", "bundled"], optional = true }
 # Dm
 odbc-api = { workspace = true, optional = true }
+
+[dev-dependencies]
+datafusion = { workspace = true }

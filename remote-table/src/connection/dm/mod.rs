@@ -5,11 +5,11 @@ use crate::{
     Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
     PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
-use async_stream::stream;
 use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
-use datafusion_common::project_schema;
+use async_stream::stream;
 use datafusion_common::DataFusionError;
+use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;

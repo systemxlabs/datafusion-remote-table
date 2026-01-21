@@ -3,9 +3,9 @@ use crate::{
     TransformStream, get_or_create_pool, transform_schema,
 };
 use arrow::datatypes::SchemaRef;
+use datafusion_common::DataFusionError;
 use datafusion_common::Statistics;
 use datafusion_common::stats::Precision;
-use datafusion_common::DataFusionError;
 use datafusion_execution::{SendableRecordBatchStream, TaskContext};
 use datafusion_physical_expr::{EquivalenceProperties, Partitioning};
 use datafusion_physical_plan::display::ProjectSchemaDisplay;

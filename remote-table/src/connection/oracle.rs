@@ -4,7 +4,6 @@ use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, OracleConnectionOptions, OracleType, Pool,
     PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
-use bb8_oracle::OracleConnectionManager;
 use arrow::array::{
     ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date64Builder, Decimal128Builder,
     Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder,
@@ -12,6 +11,7 @@ use arrow::array::{
     StructBuilder, TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
 };
 use arrow::datatypes::{DataType, Fields, SchemaRef, TimeUnit};
+use bb8_oracle::OracleConnectionManager;
 use datafusion_common::{DataFusionError, project_schema};
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;

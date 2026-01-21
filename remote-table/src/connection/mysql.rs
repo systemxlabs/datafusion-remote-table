@@ -4,9 +4,6 @@ use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, MysqlConnectionOptions, MysqlType, Pool,
     PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
-use async_stream::stream;
-use bigdecimal::{BigDecimal, num_bigint};
-use chrono::Timelike;
 use arrow::array::{
     ArrayRef, BinaryBuilder, BinaryViewBuilder, Date32Builder, Decimal128Builder,
     Decimal256Builder, Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder,
@@ -16,6 +13,9 @@ use arrow::array::{
     make_builder,
 };
 use arrow::datatypes::{DataType, Date32Type, SchemaRef, TimeUnit, i256};
+use async_stream::stream;
+use bigdecimal::{BigDecimal, num_bigint};
+use chrono::Timelike;
 use datafusion_common::{DataFusionError, project_schema};
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;

@@ -5,10 +5,10 @@ use crate::{
 };
 use arrow::datatypes::SchemaRef;
 use datafusion_catalog::{Session, TableProvider};
+use datafusion_common::DataFusionError;
 use datafusion_common::Statistics;
 use datafusion_common::stats::Precision;
 use datafusion_expr::TableType;
-use datafusion_common::DataFusionError;
 use datafusion_expr::dml::InsertOp;
 use datafusion_expr::{Expr, TableProviderFilterPushDown};
 use datafusion_physical_plan::ExecutionPlan;

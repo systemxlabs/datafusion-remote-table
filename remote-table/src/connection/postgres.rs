@@ -5,12 +5,6 @@ use crate::{
     PostgresConnectionOptions, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef,
     RemoteSource, RemoteType, literalize_array,
 };
-use bb8_postgres::PostgresConnectionManager;
-use bb8_postgres::tokio_postgres::types::{FromSql, Type};
-use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
-use bigdecimal::BigDecimal;
-use byteorder::{BigEndian, ReadBytesExt};
-use chrono::Timelike;
 use arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder,
     Decimal128Builder, Decimal256Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder,
@@ -23,9 +17,15 @@ use arrow::datatypes::{
     DECIMAL256_MAX_PRECISION, DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit,
     SchemaRef, TimeUnit, i256,
 };
+use bb8_postgres::PostgresConnectionManager;
+use bb8_postgres::tokio_postgres::types::{FromSql, Type};
+use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
+use bigdecimal::BigDecimal;
+use byteorder::{BigEndian, ReadBytesExt};
+use chrono::Timelike;
 
-use datafusion_common::project_schema;
 use datafusion_common::DataFusionError;
+use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;

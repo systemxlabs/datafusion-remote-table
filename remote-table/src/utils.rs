@@ -1,12 +1,8 @@
 use crate::DFResult;
+use arrow::array::{Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch};
+use arrow::datatypes::{ArrowPrimitiveType, BooleanType, ByteArrayType, i256};
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
-use arrow::array::{
-    Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch,
-};
-use arrow::datatypes::{
-    ArrowPrimitiveType, BooleanType, ByteArrayType, i256,
-};
 use datafusion_common::DataFusionError;
 use std::str::FromStr;
 
