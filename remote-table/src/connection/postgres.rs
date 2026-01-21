@@ -11,7 +11,7 @@ use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
 use bigdecimal::BigDecimal;
 use byteorder::{BigEndian, ReadBytesExt};
 use chrono::Timelike;
-use datafusion::arrow::array::{
+use arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder,
     Decimal128Builder, Decimal256Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder,
     Int16Builder, Int32Builder, Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder,
@@ -19,15 +19,15 @@ use datafusion::arrow::array::{
     Time64MicrosecondBuilder, Time64NanosecondBuilder, TimestampMicrosecondBuilder,
     TimestampNanosecondBuilder, UInt32Builder, make_builder,
 };
-use datafusion::arrow::datatypes::{
+use arrow::datatypes::{
     DECIMAL256_MAX_PRECISION, DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit,
     SchemaRef, TimeUnit, i256,
 };
 
-use datafusion::common::project_schema;
-use datafusion::error::DataFusionError;
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use datafusion_common::project_schema;
+use datafusion_common::DataFusionError;
+use datafusion_execution::SendableRecordBatchStream;
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;
 use log::debug;
 use num_bigint::{BigInt, Sign};

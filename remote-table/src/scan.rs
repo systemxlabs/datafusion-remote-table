@@ -2,16 +2,16 @@ use crate::{
     ConnectionOptions, DFResult, DefaultTransform, Pool, RemoteSchemaRef, RemoteSource, Transform,
     TransformStream, get_or_create_pool, transform_schema,
 };
-use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::common::Statistics;
-use datafusion::common::stats::Precision;
-use datafusion::error::DataFusionError;
-use datafusion::execution::{SendableRecordBatchStream, TaskContext};
-use datafusion::physical_expr::{EquivalenceProperties, Partitioning};
-use datafusion::physical_plan::display::ProjectSchemaDisplay;
-use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use datafusion::physical_plan::{
+use arrow::datatypes::SchemaRef;
+use datafusion_common::Statistics;
+use datafusion_common::stats::Precision;
+use datafusion_common::DataFusionError;
+use datafusion_execution::{SendableRecordBatchStream, TaskContext};
+use datafusion_physical_expr::{EquivalenceProperties, Partitioning};
+use datafusion_physical_plan::display::ProjectSchemaDisplay;
+use datafusion_physical_plan::execution_plan::{Boundedness, EmissionType};
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
+use datafusion_physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, project_schema,
 };
 use futures::TryStreamExt;

@@ -1459,6 +1459,7 @@ dependencies = [
 name = "datafusion-remote-table"
 version = "0.25.0"
 dependencies = [
+ "arrow",
  "async-stream",
  "async-trait",
  "bb8",
@@ -1468,7 +1469,15 @@ dependencies = [
  "byteorder",
  "chrono",
  "datafusion",
+ "datafusion-catalog",
+ "datafusion-common",
+ "datafusion-datasource",
+ "datafusion-execution",
+ "datafusion-expr",
+ "datafusion-physical-expr",
+ "datafusion-physical-plan",
  "datafusion-proto",
+ "datafusion-sql",
  "derive-getters",
  "derive-with",
  "futures",

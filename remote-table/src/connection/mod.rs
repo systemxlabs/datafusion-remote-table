@@ -26,13 +26,13 @@ use tokio::sync::Mutex;
 use std::any::Any;
 
 use crate::{DFResult, Literalize, RemoteSchemaRef, RemoteSource, extract_primitive_array};
-use datafusion::arrow::array::RecordBatch;
-use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
-use datafusion::common::DataFusionError;
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::common::collect;
-use datafusion::sql::unparser::Unparser;
-use datafusion::sql::unparser::dialect::{MySqlDialect, PostgreSqlDialect, SqliteDialect};
+use arrow::array::RecordBatch;
+use arrow::datatypes::{DataType, Field, Int64Type, Schema, SchemaRef};
+use datafusion_common::DataFusionError;
+use datafusion_execution::SendableRecordBatchStream;
+use datafusion_physical_plan::common::collect;
+use datafusion_sql::unparser::Unparser;
+use datafusion_sql::unparser::dialect::{MySqlDialect, PostgreSqlDialect, SqliteDialect};
 use std::fmt::Debug;
 use std::sync::Arc;
 

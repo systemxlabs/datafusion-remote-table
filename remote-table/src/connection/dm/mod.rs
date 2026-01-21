@@ -6,12 +6,12 @@ use crate::{
     PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use async_stream::stream;
-use datafusion::arrow::array::RecordBatch;
-use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::common::project_schema;
-use datafusion::error::DataFusionError;
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use arrow::array::RecordBatch;
+use arrow::datatypes::SchemaRef;
+use datafusion_common::project_schema;
+use datafusion_common::DataFusionError;
+use datafusion_execution::SendableRecordBatchStream;
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
 use odbc_api::buffers::ColumnarAnyBuffer;

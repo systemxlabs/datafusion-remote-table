@@ -19,7 +19,7 @@ pub use table::*;
 pub use transform::*;
 pub use utils::*;
 
-pub(crate) type DFResult<T> = datafusion::common::Result<T>;
+pub(crate) type DFResult<T> = datafusion_common::Result<T>;
 
 #[cfg(not(any(
     feature = "mysql",

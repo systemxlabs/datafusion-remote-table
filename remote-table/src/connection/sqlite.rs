@@ -4,15 +4,15 @@ use crate::{
     RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType, SqliteConnectionOptions, SqliteType,
     literalize_array,
 };
-use datafusion::arrow::array::{
+use arrow::array::{
     ArrayBuilder, ArrayRef, BinaryBuilder, BinaryViewBuilder, Float64Builder, Int32Builder,
     Int64Builder, NullBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
     make_builder,
 };
-use datafusion::arrow::datatypes::{DataType, SchemaRef};
-use datafusion::common::{DataFusionError, project_schema};
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use arrow::datatypes::{DataType, SchemaRef};
+use datafusion_common::{DataFusionError, project_schema};
+use datafusion_execution::SendableRecordBatchStream;
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use itertools::Itertools;
 use log::{debug, error};
 use rusqlite::types::ValueRef;

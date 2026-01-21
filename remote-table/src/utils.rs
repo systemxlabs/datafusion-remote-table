@@ -1,18 +1,24 @@
-use crate::{ConnectionOptions, DFResult, RemoteSource, RemoteTable};
+use crate::DFResult;
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
-use datafusion::arrow::array::{
+use arrow::array::{
     Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch,
 };
-use datafusion::arrow::datatypes::{
-    ArrowPrimitiveType, BinaryType, BooleanType, ByteArrayType, LargeBinaryType, LargeUtf8Type,
-    Utf8Type, i256,
+use arrow::datatypes::{
+    ArrowPrimitiveType, BooleanType, ByteArrayType, i256,
 };
-use datafusion::error::DataFusionError;
+use datafusion_common::DataFusionError;
+#[cfg(feature = "utils")]
+use crate::{ConnectionOptions, RemoteSource, RemoteTable};
+#[cfg(feature = "utils")]
+use arrow::datatypes::{BinaryType, LargeBinaryType, LargeUtf8Type, Utf8Type};
+#[cfg(feature = "utils")]
 use datafusion::prelude::SessionContext;
-use std::str::FromStr;
+#[cfg(feature = "utils")]
 use std::sync::Arc;
+use std::str::FromStr;
 
+#[cfg(feature = "utils")]
 pub async fn remote_collect(
     options: ConnectionOptions,
     sql: impl Into<String>,
@@ -22,6 +28,7 @@ pub async fn remote_collect(
     ctx.read_table(Arc::new(table))?.collect().await
 }
 
+#[cfg(feature = "utils")]
 pub async fn remote_collect_primitive_column<T: ArrowPrimitiveType>(
     options: ConnectionOptions,
     sql: impl Into<String>,
@@ -31,6 +38,7 @@ pub async fn remote_collect_primitive_column<T: ArrowPrimitiveType>(
     extract_primitive_array::<T>(&batches, col_idx)
 }
 
+#[cfg(feature = "utils")]
 pub async fn remote_collect_utf8_column(
     options: ConnectionOptions,
     sql: impl Into<String>,
@@ -41,6 +49,7 @@ pub async fn remote_collect_utf8_column(
     Ok(vec.into_iter().map(|s| s.map(|s| s.to_string())).collect())
 }
 
+#[cfg(feature = "utils")]
 pub async fn remote_collect_large_utf8_column(
     options: ConnectionOptions,
     sql: impl Into<String>,
@@ -51,6 +60,7 @@ pub async fn remote_collect_large_utf8_column(
     Ok(vec.into_iter().map(|s| s.map(|s| s.to_string())).collect())
 }
 
+#[cfg(feature = "utils")]
 pub async fn remote_collect_binary_column(
     options: ConnectionOptions,
     sql: impl Into<String>,
@@ -61,6 +71,7 @@ pub async fn remote_collect_binary_column(
     Ok(vec.into_iter().map(|s| s.map(|s| s.to_vec())).collect())
 }
 
+#[cfg(feature = "utils")]
 pub async fn remote_collect_large_binary_column(
     options: ConnectionOptions,
     sql: impl Into<String>,
@@ -186,8 +197,8 @@ pub fn big_decimal_to_i256(decimal: &BigDecimal, scale: Option<i32>) -> DFResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datafusion::arrow::array::{BooleanArray, Int32Array, RecordBatch, StringArray};
-    use datafusion::arrow::datatypes::{DataType, Field, Int32Type, Schema, Utf8Type};
+    use arrow::array::{BooleanArray, Int32Array, RecordBatch, StringArray};
+    use arrow::datatypes::{DataType, Field, Int32Type, Schema, Utf8Type};
     use std::sync::Arc;
 
     #[tokio::test]

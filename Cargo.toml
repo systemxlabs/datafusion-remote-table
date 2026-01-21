@@ -5,6 +5,15 @@ resolver = "3"
 [workspace.dependencies]
 datafusion = "51"
 datafusion-proto = "51"
+arrow = "57"
+datafusion-common = "51"
+datafusion-execution = "51"
+datafusion-expr = "51"
+datafusion-physical-plan = "51"
+datafusion-physical-expr = "51"
+datafusion-catalog = "51"
+datafusion-datasource = "51"
+datafusion-sql = "51"
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.37" }
 prost = "0.14"

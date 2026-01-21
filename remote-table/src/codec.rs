@@ -9,10 +9,10 @@ use crate::{
     MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
     RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
 };
-use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::common::DataFusionError;
-use datafusion::execution::TaskContext;
-use datafusion::physical_plan::ExecutionPlan;
+use arrow::datatypes::SchemaRef;
+use datafusion_common::DataFusionError;
+use datafusion_execution::TaskContext;
+use datafusion_physical_plan::ExecutionPlan;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
 use datafusion_proto::protobuf::proto_error;

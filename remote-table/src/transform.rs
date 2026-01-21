@@ -1,11 +1,11 @@
 use crate::{DFResult, RemoteDbType, RemoteSchemaRef};
-use datafusion::arrow::array::RecordBatch;
-use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::common::tree_node::{TreeNode, TreeNodeRecursion};
-use datafusion::common::{DataFusionError, project_schema};
-use datafusion::execution::{RecordBatchStream, SendableRecordBatchStream};
-use datafusion::logical_expr::TableProviderFilterPushDown;
-use datafusion::prelude::Expr;
+use arrow::array::RecordBatch;
+use arrow::datatypes::SchemaRef;
+use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
+use datafusion_common::{DataFusionError, project_schema};
+use datafusion_execution::{RecordBatchStream, SendableRecordBatchStream};
+use datafusion_expr::TableProviderFilterPushDown;
+use datafusion_expr::Expr;
 use futures::{Stream, StreamExt};
 use std::any::Any;
 use std::fmt::Debug;

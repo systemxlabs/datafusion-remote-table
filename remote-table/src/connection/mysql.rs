@@ -7,7 +7,7 @@ use crate::{
 use async_stream::stream;
 use bigdecimal::{BigDecimal, num_bigint};
 use chrono::Timelike;
-use datafusion::arrow::array::{
+use arrow::array::{
     ArrayRef, BinaryBuilder, BinaryViewBuilder, Date32Builder, Decimal128Builder,
     Decimal256Builder, Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder,
     Int64Builder, LargeBinaryBuilder, LargeStringBuilder, RecordBatch, RecordBatchOptions,
@@ -15,10 +15,10 @@ use datafusion::arrow::array::{
     TimestampMicrosecondBuilder, UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder,
     make_builder,
 };
-use datafusion::arrow::datatypes::{DataType, Date32Type, SchemaRef, TimeUnit, i256};
-use datafusion::common::{DataFusionError, project_schema};
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use arrow::datatypes::{DataType, Date32Type, SchemaRef, TimeUnit, i256};
+use datafusion_common::{DataFusionError, project_schema};
+use datafusion_execution::SendableRecordBatchStream;
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;
 use futures::lock::Mutex;
 use log::debug;

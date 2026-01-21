@@ -1,11 +1,11 @@
 use crate::{ConnectionOptions, DFResult, Literalize, Pool, RemoteSchemaRef, get_or_create_pool};
-use datafusion::arrow::array::{ArrayRef, Int64Array, RecordBatch};
-use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion::common::stats::Precision;
-use datafusion::execution::{SendableRecordBatchStream, TaskContext};
-use datafusion::physical_expr::EquivalenceProperties;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use datafusion::physical_plan::{
+use arrow::array::{ArrayRef, Int64Array, RecordBatch};
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion_common::stats::Precision;
+use datafusion_execution::{SendableRecordBatchStream, TaskContext};
+use datafusion_physical_expr::EquivalenceProperties;
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
+use datafusion_physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, ExecutionPlanProperties, Partitioning,
     PlanProperties,
 };
