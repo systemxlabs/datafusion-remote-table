@@ -15,7 +15,6 @@ use datafusion_physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, project_schema,
 };
 use futures::TryStreamExt;
-use log::{debug, warn};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -30,6 +29,7 @@ pub struct RemoteTableScanExec {
     pub(crate) unparsed_filters: Vec<String>,
     pub(crate) limit: Option<usize>,
     pub(crate) transform: Arc<dyn Transform>,
+    pub(crate) row_count: Option<usize>,
     plan_properties: PlanProperties,
 }
 
@@ -45,6 +45,7 @@ impl RemoteTableScanExec {
         unparsed_filters: Vec<String>,
         limit: Option<usize>,
         transform: Arc<dyn Transform>,
+        row_count: Option<usize>,
     ) -> DFResult<Self> {
         let transformed_table_schema = transform_schema(
             transform.as_ref(),
@@ -69,6 +70,7 @@ impl RemoteTableScanExec {
             unparsed_filters,
             limit,
             transform,
+            row_count,
             plan_properties,
         })
     }
@@ -128,45 +130,20 @@ impl ExecutionPlan for RemoteTableScanExec {
                 "Invalid partition index: {partition}"
             )));
         }
-        let db_type = self.conn_options.db_type();
-        let limit = if db_type.support_rewrite_with_filters_limit(&self.source) {
-            self.limit
-        } else {
-            None
-        };
-        let real_sql = db_type.rewrite_query(&self.source, &self.unparsed_filters, limit);
 
-        if let Some(count1_query) = db_type.try_count1_query(&RemoteSource::Query(real_sql)) {
-            let pool = self.pool.clone();
-            let conn_options = self.conn_options.clone();
-            let row_count_result = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let conn = pool.get().await?;
-                    db_type
-                        .fetch_count(conn, &conn_options, &count1_query)
-                        .await
-                })
-            });
-
-            match row_count_result {
-                Ok(row_count) => {
-                    let column_stat = Statistics::unknown_column(self.schema().as_ref());
-                    Ok(Statistics {
-                        num_rows: Precision::Exact(row_count),
-                        total_byte_size: Precision::Absent,
-                        column_statistics: column_stat,
-                    })
-                }
-                Err(e) => {
-                    warn!("[remote-table] Failed to fetch exec statistics: {e}");
-                    Err(e)
-                }
-            }
+        if let Some(count) = self.row_count {
+            let column_stat = Statistics::unknown_column(self.schema().as_ref());
+            let row_count_after_limit = if let Some(limit) = self.limit {
+                std::cmp::min(count, limit)
+            } else {
+                count
+            };
+            Ok(Statistics {
+                num_rows: Precision::Exact(row_count_after_limit),
+                total_byte_size: Precision::Absent,
+                column_statistics: column_stat,
+            })
         } else {
-            debug!(
-                "[remote-table] Query can not be rewritten as count1 query: {}",
-                self.source
-            );
             Ok(Statistics::new_unknown(self.schema().as_ref()))
         }
     }
@@ -184,6 +161,7 @@ impl ExecutionPlan for RemoteTableScanExec {
                 limit,
                 transform: self.transform.clone(),
                 pool: self.pool.clone(),
+                row_count: self.row_count,
                 plan_properties: self.plan_properties.clone(),
             }))
         } else {

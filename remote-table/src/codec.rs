@@ -151,6 +151,8 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
                 let pool = LazyPool::new(conn_options.clone());
 
+                let row_count = proto.row_count.map(|c| c as usize);
+
                 Ok(Arc::new(RemoteTableScanExec::try_new(
                     conn_options,
                     pool,
@@ -161,6 +163,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                     proto.unparsed_filters,
                     limit,
                     transform,
+                    row_count,
                 )?))
             }
             protobuf::remote_table_physical_plan_node::RemoteTablePhysicalPlanType::Insert(
@@ -223,6 +226,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                             unparsed_filters: exec.unparsed_filters.clone(),
                             limit: exec.limit.map(|l| l as u32),
                             transform: serialized_transform,
+                            row_count: exec.row_count.map(|c| c as u32),
                         },
                     ),
                 ),

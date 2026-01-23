@@ -344,6 +344,15 @@ impl TableProvider for RemoteTable {
             unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
+        let row_count = fetch_row_count(
+            &self.pool,
+            &self.conn_options,
+            &self.source,
+            &unparsed_filters,
+            None,
+        )
+        .await?;
+
         Ok(Arc::new(RemoteTableScanExec::try_new(
             self.conn_options.clone(),
             self.pool.clone(),
@@ -354,6 +363,7 @@ impl TableProvider for RemoteTable {
             unparsed_filters,
             limit,
             self.transform.clone(),
+            row_count,
         )?))
     }
 

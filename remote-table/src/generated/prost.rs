@@ -36,6 +36,8 @@ pub struct RemoteTableScanExec {
     pub limit: ::core::option::Option<u32>,
     #[prost(bytes = "vec", tag = "8")]
     pub transform: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint32, optional, tag = "9")]
+    pub row_count: ::core::option::Option<u32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RemoteTableInsertExec {
@@ -48,7 +50,7 @@ pub struct RemoteTableInsertExec {
     #[prost(bytes = "vec", tag = "4")]
     pub literalizer: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ConnectionOptions {
     #[prost(
         oneof = "connection_options::ConnectionOptions",
@@ -58,7 +60,7 @@ pub struct ConnectionOptions {
 }
 /// Nested message and enum types in `ConnectionOptions`.
 pub mod connection_options {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum ConnectionOptions {
         #[prost(message, tag = "1")]
         Postgres(super::PostgresConnectionOptions),
@@ -72,14 +74,14 @@ pub mod connection_options {
         Dm(super::DmConnectionOptions),
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteSource {
     #[prost(oneof = "remote_source::Source", tags = "1, 2")]
     pub source: ::core::option::Option<remote_source::Source>,
 }
 /// Nested message and enum types in `RemoteSource`.
 pub mod remote_source {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Source {
         #[prost(string, tag = "1")]
         Query(::prost::alloc::string::String),
@@ -87,12 +89,12 @@ pub mod remote_source {
         Table(super::Identifiers),
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Identifiers {
     #[prost(string, repeated, tag = "1")]
     pub idents: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PostgresConnectionOptions {
     #[prost(string, tag = "1")]
     pub host: ::prost::alloc::string::String,
@@ -117,7 +119,7 @@ pub struct PostgresConnectionOptions {
     #[prost(int32, tag = "11")]
     pub default_numeric_scale: i32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MysqlConnectionOptions {
     #[prost(string, tag = "1")]
     pub host: ::prost::alloc::string::String,
@@ -140,7 +142,7 @@ pub struct MysqlConnectionOptions {
     #[prost(uint32, tag = "10")]
     pub stream_chunk_size: u32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleConnectionOptions {
     #[prost(string, tag = "1")]
     pub host: ::prost::alloc::string::String,
@@ -163,14 +165,14 @@ pub struct OracleConnectionOptions {
     #[prost(uint32, tag = "10")]
     pub stream_chunk_size: u32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SqliteConnectionOptions {
     #[prost(string, tag = "1")]
     pub path: ::prost::alloc::string::String,
     #[prost(uint32, tag = "2")]
     pub stream_chunk_size: u32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmConnectionOptions {
     #[prost(string, tag = "1")]
     pub host: ::prost::alloc::string::String,
@@ -187,14 +189,14 @@ pub struct DmConnectionOptions {
     #[prost(string, tag = "7")]
     pub driver: ::prost::alloc::string::String,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Duration {
     #[prost(uint64, tag = "1")]
     pub secs: u64,
     #[prost(uint32, tag = "2")]
     pub nanos: u32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Projection {
     #[prost(uint32, repeated, tag = "1")]
     pub projection: ::prost::alloc::vec::Vec<u32>,
@@ -204,7 +206,7 @@ pub struct RemoteSchema {
     #[prost(message, repeated, tag = "1")]
     pub fields: ::prost::alloc::vec::Vec<RemoteField>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteField {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
@@ -215,7 +217,7 @@ pub struct RemoteField {
     #[prost(bool, tag = "4")]
     pub auto_increment: bool,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteType {
     #[prost(
         oneof = "remote_type::Type",
@@ -225,7 +227,7 @@ pub struct RemoteType {
 }
 /// Nested message and enum types in `RemoteType`.
 pub mod remote_type {
-    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Type {
         #[prost(message, tag = "1")]
         PostgresInt2(super::Empty),
@@ -430,109 +432,109 @@ pub mod remote_type {
     }
 }
 /// Place holder type for primitive types
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Empty {}
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PostgresNumeric {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
     #[prost(int32, tag = "2")]
     pub scale: i32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MysqlDecimal {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
     #[prost(uint32, tag = "2")]
     pub scale: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MysqlText {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MysqlBlob {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleVarchar2 {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleChar {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleNumber {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
     #[prost(int32, tag = "2")]
     pub scale: i32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleFloat {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleNChar {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleNVarchar2 {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OracleRaw {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmNumeric {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
     #[prost(int32, tag = "2")]
     pub scale: i32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmDecimal {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
     #[prost(int32, tag = "2")]
     pub scale: i32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmChar {
     #[prost(uint32, optional, tag = "1")]
     pub length: ::core::option::Option<u32>,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmVarchar {
     #[prost(uint32, optional, tag = "1")]
     pub length: ::core::option::Option<u32>,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmBinary {
     #[prost(uint32, tag = "1")]
     pub length: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmVarbinary {
     #[prost(uint32, optional, tag = "1")]
     pub length: ::core::option::Option<u32>,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmTimestamp {
     #[prost(uint32, tag = "1")]
     pub precision: u32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmTime {
     #[prost(uint32, tag = "1")]
     pub precision: u32,

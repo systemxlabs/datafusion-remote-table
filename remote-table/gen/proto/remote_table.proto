@@ -21,6 +21,7 @@ message RemoteTableScanExec {
   repeated string unparsed_filters = 6;
   optional uint32 limit = 7;
   bytes transform = 8;
+  optional uint32 row_count = 9;
 }
 
 message RemoteTableInsertExec {
