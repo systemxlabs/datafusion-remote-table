@@ -1,4 +1,4 @@
-use crate::{ConnectionOptions, DFResult, LazyPool, Literalize RemoteSchemaRef};
+use crate::{ConnectionOptions, DFResult, LazyPool, Literalize, RemoteSchemaRef};
 use arrow::array::{ArrayRef, Int64Array, RecordBatch};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion_common::stats::Precision;

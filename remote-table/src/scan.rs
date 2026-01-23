@@ -196,26 +196,6 @@ impl ExecutionPlan for RemoteTableScanExec {
     }
 }
 
-// async fn fetch_row_count(
-//     pool: &LazyPool,
-//     conn_options: &ConnectionOptions,
-//     source: &RemoteSource,
-//     unparsed_filters: &[String],
-// ) -> DFResult<Option<usize>> {
-//     let db_type = conn_options.db_type();
-//     let real_sql = db_type.rewrite_query(source, unparsed_filters, None);
-
-//     if let Some(count1_query) = db_type.try_count1_query(&RemoteSource::Query(real_sql)) {
-//         let conn = pool.get().await?;
-//         let row_count = db_type
-//             .fetch_count(conn, &conn_options, &count1_query)
-//             .await?;
-//         Ok(Some(row_count))
-//     } else {
-//         Ok(None)
-//     }
-// }
-
 #[allow(clippy::too_many_arguments)]
 async fn build_and_transform_stream(
     pool: LazyPool,

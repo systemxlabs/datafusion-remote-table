@@ -12,7 +12,7 @@ use datafusion_expr::TableType;
 use datafusion_expr::dml::InsertOp;
 use datafusion_expr::{Expr, TableProviderFilterPushDown};
 use datafusion_physical_plan::ExecutionPlan;
-use log::{debug, warn};
+use log::debug;
 use std::any::Any;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -85,13 +85,14 @@ impl From<Vec<&String>> for RemoteSource {
 #[derive(Debug)]
 pub struct RemoteTable {
     pub(crate) conn_options: Arc<ConnectionOptions>,
+    pub(crate) pool: LazyPool,
     pub(crate) source: RemoteSource,
     pub(crate) table_schema: SchemaRef,
     pub(crate) transformed_table_schema: SchemaRef,
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
     pub(crate) transform: Arc<dyn Transform>,
     pub(crate) literalizer: Arc<dyn Literalize>,
-    pub(crate) pool: LazyPool,
+    pub(crate) row_count: Option<usize>,
 }
 
 impl RemoteTable {
@@ -106,6 +107,7 @@ impl RemoteTable {
             None,
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultLiteralizer {}),
+            false,
         )
         .await
     }
@@ -122,6 +124,7 @@ impl RemoteTable {
             None,
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultLiteralizer {}),
+            false,
         )
         .await
     }
@@ -138,6 +141,7 @@ impl RemoteTable {
             Some(remote_schema),
             Arc::new(DefaultTransform {}),
             Arc::new(DefaultLiteralizer {}),
+            false,
         )
         .await
     }
@@ -154,6 +158,7 @@ impl RemoteTable {
             None,
             transform,
             Arc::new(DefaultLiteralizer {}),
+            false,
         )
         .await
     }
@@ -171,6 +176,7 @@ impl RemoteTable {
             None,
             transform,
             Arc::new(DefaultLiteralizer {}),
+            false,
         )
         .await
     }
@@ -188,6 +194,7 @@ impl RemoteTable {
             Some(remote_schema),
             transform,
             Arc::new(DefaultLiteralizer {}),
+            false,
         )
         .await
     }
@@ -199,6 +206,7 @@ impl RemoteTable {
         remote_schema: Option<RemoteSchemaRef>,
         transform: Arc<dyn Transform>,
         literalizer: Arc<dyn Literalize>,
+        enable_table_statistics: bool,
     ) -> DFResult<Self> {
         let conn_options = Arc::new(conn_options.into());
         let source = source.into();
@@ -267,15 +275,22 @@ impl RemoteTable {
             conn_options.db_type(),
         )?;
 
+        let row_count = if enable_table_statistics {
+            fetch_row_count(&pool, &conn_options, &source, &[], None).await?
+        } else {
+            None
+        };
+
         Ok(RemoteTable {
             conn_options,
+            pool,
             source,
             table_schema,
             transformed_table_schema,
             remote_schema: remote_schema_opt,
             transform,
             literalizer,
-            pool,
+            row_count,
         })
     }
 
@@ -378,42 +393,14 @@ impl TableProvider for RemoteTable {
     }
 
     fn statistics(&self) -> Option<Statistics> {
-        let db_type = self.conn_options.db_type();
-        if let Some(count1_query) = db_type.try_count1_query(&self.source) {
-            let conn_options = self.conn_options.clone();
-            let row_count_result = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let pool = connect(&conn_options).await?;
-                    let conn = pool.get().await?;
-                    conn_options
-                        .db_type()
-                        .fetch_count(conn, &conn_options, &count1_query)
-                        .await
-                })
-            });
-
-            match row_count_result {
-                Ok(row_count) => {
-                    let column_stat =
-                        Statistics::unknown_column(self.transformed_table_schema.as_ref());
-                    Some(Statistics {
-                        num_rows: Precision::Exact(row_count),
-                        total_byte_size: Precision::Absent,
-                        column_statistics: column_stat,
-                    })
-                }
-                Err(e) => {
-                    warn!("[remote-table] Failed to fetch table statistics: {e}");
-                    None
-                }
+        self.row_count.map(|count| {
+            let column_stat = Statistics::unknown_column(self.transformed_table_schema.as_ref());
+            Statistics {
+                num_rows: Precision::Exact(count),
+                total_byte_size: Precision::Absent,
+                column_statistics: column_stat,
             }
-        } else {
-            debug!(
-                "[remote-table] Query can not be rewritten as count1 query: {}",
-                self.source
-            );
-            None
-        }
+        })
     }
 
     async fn insert_into(
@@ -480,5 +467,31 @@ impl LazyPool {
     pub async fn get(&self) -> DFResult<Arc<dyn Connection>> {
         let pool = self.get_or_init_pool().await?;
         pool.get().await
+    }
+}
+
+pub(crate) async fn fetch_row_count(
+    pool: &LazyPool,
+    conn_options: &ConnectionOptions,
+    source: &RemoteSource,
+    unparsed_filters: &[String],
+    limit: Option<usize>,
+) -> DFResult<Option<usize>> {
+    let db_type = conn_options.db_type();
+    let count1_query = if unparsed_filters.is_empty() && limit.is_none() {
+        db_type.try_count1_query(source)
+    } else {
+        let real_sql = db_type.rewrite_query(source, unparsed_filters, limit);
+        db_type.try_count1_query(&RemoteSource::Query(real_sql))
+    };
+
+    if let Some(count1_query) = count1_query {
+        let conn = pool.get().await?;
+        let row_count = db_type
+            .fetch_count(conn, conn_options, &count1_query)
+            .await?;
+        Ok(Some(row_count))
+    } else {
+        Ok(None)
     }
 }
