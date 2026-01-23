@@ -1,6 +1,6 @@
 use crate::{
-    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, Literalize, Pool,
-    RemoteDbType, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec,
+    Connection, ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, Literalize,
+    Pool, RemoteDbType, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec,
     Transform, TransformArgs, connect, transform_schema,
 };
 use arrow::datatypes::SchemaRef;
@@ -15,6 +15,7 @@ use datafusion_physical_plan::ExecutionPlan;
 use log::{debug, warn};
 use std::any::Any;
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
 pub enum RemoteSource {
@@ -90,7 +91,7 @@ pub struct RemoteTable {
     pub(crate) remote_schema: Option<RemoteSchemaRef>,
     pub(crate) transform: Arc<dyn Transform>,
     pub(crate) literalizer: Arc<dyn Literalize>,
-    pub(crate) pool: Arc<dyn Pool>,
+    pub(crate) pool: LazyPool,
 }
 
 impl RemoteTable {
@@ -199,7 +200,7 @@ impl RemoteTable {
         transform: Arc<dyn Transform>,
         literalizer: Arc<dyn Literalize>,
     ) -> DFResult<Self> {
-        let conn_options = conn_options.into();
+        let conn_options = Arc::new(conn_options.into());
         let source = source.into();
 
         if let RemoteSource::Table(table) = &source
@@ -210,15 +211,10 @@ impl RemoteTable {
             ));
         }
 
-        let now = std::time::Instant::now();
-        let pool = connect(&conn_options).await?;
-        debug!(
-            "[remote-table] Creating connection pool cost: {}ms",
-            now.elapsed().as_millis()
-        );
+        let pool = LazyPool::new(conn_options.clone());
 
         let infer_schema_fn =
-            async |pool: &Arc<dyn Pool>, source: &RemoteSource| -> DFResult<RemoteSchemaRef> {
+            async |pool: &LazyPool, source: &RemoteSource| -> DFResult<RemoteSchemaRef> {
                 let now = std::time::Instant::now();
                 let conn = pool.get().await?;
                 let remote_schema = conn.infer_schema(source).await?;
@@ -272,7 +268,7 @@ impl RemoteTable {
         )?;
 
         Ok(RemoteTable {
-            conn_options: Arc::new(conn_options),
+            conn_options,
             source,
             table_schema,
             transformed_table_schema,
@@ -287,8 +283,8 @@ impl RemoteTable {
         self.remote_schema.clone()
     }
 
-    pub fn pool(&self) -> &Arc<dyn Pool> {
-        &self.pool
+    pub async fn pool(&self) -> DFResult<&Arc<dyn Pool>> {
+        self.pool.get_or_init_pool().await
     }
 }
 
@@ -333,19 +329,17 @@ impl TableProvider for RemoteTable {
             unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
-        Ok(Arc::new(
-            RemoteTableScanExec::try_new(
-                self.conn_options.clone(),
-                self.source.clone(),
-                self.table_schema.clone(),
-                self.remote_schema.clone(),
-                projection.cloned(),
-                unparsed_filters,
-                limit,
-                self.transform.clone(),
-            )?
-            .with_pool(Some(self.pool.clone())),
-        ))
+        Ok(Arc::new(RemoteTableScanExec::try_new(
+            self.conn_options.clone(),
+            self.pool.clone(),
+            self.source.clone(),
+            self.table_schema.clone(),
+            self.remote_schema.clone(),
+            projection.cloned(),
+            unparsed_filters,
+            limit,
+            self.transform.clone(),
+        )?))
     }
 
     fn supports_filters_pushdown(
@@ -454,11 +448,37 @@ impl TableProvider for RemoteTable {
         let exec = RemoteTableInsertExec::new(
             input,
             self.conn_options.clone(),
+            self.pool.clone(),
             self.literalizer.clone(),
             table.clone(),
             remote_schema,
-        )
-        .with_pool(Some(self.pool.clone()));
+        );
         Ok(Arc::new(exec))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LazyPool {
+    pub conn_options: Arc<ConnectionOptions>,
+    pub pool: Arc<OnceCell<Arc<dyn Pool>>>,
+}
+
+impl LazyPool {
+    pub fn new(conn_options: Arc<ConnectionOptions>) -> Self {
+        Self {
+            conn_options,
+            pool: Arc::new(OnceCell::new()),
+        }
+    }
+
+    pub async fn get_or_init_pool(&self) -> DFResult<&Arc<dyn Pool>> {
+        self.pool
+            .get_or_try_init(|| async { connect(&self.conn_options).await })
+            .await
+    }
+
+    pub async fn get(&self) -> DFResult<Arc<dyn Connection>> {
+        let pool = self.get_or_init_pool().await?;
+        pool.get().await
     }
 }
