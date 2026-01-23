@@ -13,3 +13,4 @@ rusqlite = { workspace = true, features = ["bundled"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 rstest = "0.26"
 odbc-api = { workspace = true }
+env_logger = "0.10"

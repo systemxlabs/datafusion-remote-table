@@ -324,7 +324,10 @@ impl RemoteDbType {
             return None;
         }
         match source {
-            RemoteSource::Table(table) => Some(self.select_all_query(table)),
+            RemoteSource::Table(table) => Some(format!(
+                "SELECT COUNT(1) FROM {}",
+                self.sql_table_name(table)
+            )),
             RemoteSource::Query(query) => match self {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql

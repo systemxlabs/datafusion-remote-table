@@ -10,6 +10,16 @@ use odbc_api::Environment;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+static ENV_LOGGER: OnceLock<()> = OnceLock::new();
+pub fn init_env_logger() {
+    unsafe {
+        std::env::set_var("RUST_LOG", "info,datafusion_remote_table=debug");
+    }
+    ENV_LOGGER.get_or_init(|| {
+        env_logger::init();
+    });
+}
+
 static POSTGRES_DB: OnceLock<DockerCompose> = OnceLock::new();
 pub async fn setup_postgres_db() {
     let _ = POSTGRES_DB.get_or_init(|| {

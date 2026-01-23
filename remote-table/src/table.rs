@@ -496,6 +496,7 @@ pub(crate) async fn fetch_row_count(
     };
 
     if let Some(count1_query) = count1_query {
+        debug!("[remote-table] fetching row count with query: {count1_query}");
         let conn = pool.get().await?;
         let row_count = db_type
             .fetch_count(conn, conn_options, &count1_query)

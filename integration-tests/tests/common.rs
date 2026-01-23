@@ -16,7 +16,7 @@ use datafusion_remote_table::{
     DefaultTransform, RemotePhysicalCodec, RemoteSource, RemoteTable, SqliteConnectionOptions,
     Transform, TransformArgs, TransformCodec, transform_schema,
 };
-use integration_tests::setup_sqlite_db;
+use integration_tests::{init_env_logger, setup_sqlite_db};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -25,6 +25,8 @@ use std::sync::Arc;
 #[case(vec!["supported_data_types"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn transform_changing_field(#[case] source: RemoteSource) {
+    init_env_logger();
+
     let db_path = setup_sqlite_db();
     let options = SqliteConnectionOptions::new(db_path.clone());
 
