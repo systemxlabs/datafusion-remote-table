@@ -10,10 +10,10 @@ use crate::{
     MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
     RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
 };
-use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::common::DataFusionError;
-use datafusion::execution::FunctionRegistry;
-use datafusion::physical_plan::ExecutionPlan;
+use arrow::datatypes::SchemaRef;
+use datafusion_common::DataFusionError;
+use datafusion_execution::TaskContext;
+use datafusion_physical_plan::ExecutionPlan;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
 use datafusion_proto::protobuf::proto_error;
@@ -113,7 +113,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         &self,
         buf: &[u8],
         inputs: &[Arc<dyn ExecutionPlan>],
-        _registry: &dyn FunctionRegistry,
+        _ctx: &TaskContext,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
         let remote_table_node =
             protobuf::RemoteTablePhysicalPlanNode::decode(buf).map_err(|e| {

@@ -3,15 +3,15 @@ use crate::{
     Pool, RemoteDbType, RemoteSchema, RemoteSchemaRef, RemoteTableInsertExec, RemoteTableScanExec,
     Transform, TransformArgs, connect, transform_schema,
 };
-use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::catalog::{Session, TableProvider};
-use datafusion::common::Statistics;
-use datafusion::common::stats::Precision;
-use datafusion::datasource::TableType;
-use datafusion::error::DataFusionError;
-use datafusion::logical_expr::dml::InsertOp;
-use datafusion::logical_expr::{Expr, TableProviderFilterPushDown};
-use datafusion::physical_plan::ExecutionPlan;
+use arrow::datatypes::SchemaRef;
+use datafusion_catalog::{Session, TableProvider};
+use datafusion_common::DataFusionError;
+use datafusion_common::Statistics;
+use datafusion_common::stats::Precision;
+use datafusion_expr::TableType;
+use datafusion_expr::dml::InsertOp;
+use datafusion_expr::{Expr, TableProviderFilterPushDown};
+use datafusion_physical_plan::ExecutionPlan;
 use log::{debug, warn};
 use std::any::Any;
 use std::sync::Arc;

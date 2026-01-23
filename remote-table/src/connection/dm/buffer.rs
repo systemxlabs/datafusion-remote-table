@@ -3,8 +3,7 @@ use crate::connection::{
     just_deref, ms_since_epoch, ns_since_epoch, projections_contains, seconds_since_epoch,
     us_since_epoch,
 };
-use chrono::{NaiveDate, NaiveTime, Timelike};
-use datafusion::arrow::array::{
+use arrow::array::{
     BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder, Decimal128Builder,
     FixedSizeBinaryBuilder, Float32Builder, Float64Builder, Int8Builder, Int16Builder,
     Int32Builder, Int64Builder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
@@ -12,8 +11,9 @@ use datafusion::arrow::array::{
     TimestampMicrosecondBuilder, TimestampMillisecondBuilder, TimestampNanosecondBuilder,
     TimestampSecondBuilder, make_builder,
 };
-use datafusion::arrow::datatypes::{DataType, Date32Type, Field, SchemaRef, TimeUnit};
-use datafusion::common::{DataFusionError, project_schema};
+use arrow::datatypes::{DataType, Date32Type, Field, SchemaRef, TimeUnit};
+use chrono::{NaiveDate, NaiveTime, Timelike};
+use datafusion_common::{DataFusionError, project_schema};
 use odbc_api::buffers::{BufferDesc, ColumnarAnyBuffer};
 use odbc_api::handles::StatementImpl;
 use odbc_api::{Bit, CursorImpl, ResultSetMetadata, decimal_text_to_i128};

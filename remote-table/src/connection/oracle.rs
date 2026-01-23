@@ -4,17 +4,17 @@ use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, OracleConnectionOptions, OracleType, Pool,
     PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
-use bb8_oracle::OracleConnectionManager;
-use datafusion::arrow::array::{
+use arrow::array::{
     ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date64Builder, Decimal128Builder,
     Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder,
     LargeStringBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
     StructBuilder, TimestampNanosecondBuilder, TimestampSecondBuilder, make_builder,
 };
-use datafusion::arrow::datatypes::{DataType, Fields, SchemaRef, TimeUnit};
-use datafusion::common::{DataFusionError, project_schema};
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use arrow::datatypes::{DataType, Fields, SchemaRef, TimeUnit};
+use bb8_oracle::OracleConnectionManager;
+use datafusion_common::{DataFusionError, project_schema};
+use datafusion_execution::SendableRecordBatchStream;
+use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;
 use log::debug;
 use oracle::sql_type::{Object, OracleType as ColumnType};

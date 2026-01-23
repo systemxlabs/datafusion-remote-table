@@ -1,4 +1,4 @@
-use datafusion::arrow::datatypes::{
+use arrow::datatypes::{
     DECIMAL128_MAX_PRECISION, DataType, Field, FieldRef, Fields, IntervalUnit, Schema, TimeUnit,
 };
 use std::sync::{Arc, LazyLock};

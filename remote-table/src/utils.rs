@@ -1,75 +1,10 @@
-use crate::{ConnectionOptions, DFResult, RemoteSource, RemoteTable};
+use crate::DFResult;
+use arrow::array::{Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch};
+use arrow::datatypes::{ArrowPrimitiveType, BooleanType, ByteArrayType, i256};
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
-use datafusion::arrow::array::{
-    Array, BooleanArray, GenericByteArray, PrimitiveArray, RecordBatch,
-};
-use datafusion::arrow::datatypes::{
-    ArrowPrimitiveType, BinaryType, BooleanType, ByteArrayType, LargeBinaryType, LargeUtf8Type,
-    Utf8Type, i256,
-};
-use datafusion::error::DataFusionError;
-use datafusion::prelude::SessionContext;
+use datafusion_common::DataFusionError;
 use std::str::FromStr;
-use std::sync::Arc;
-
-pub async fn remote_collect(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-) -> DFResult<Vec<RecordBatch>> {
-    let table = RemoteTable::try_new(options, RemoteSource::Query(sql.into())).await?;
-    let ctx = SessionContext::new();
-    ctx.read_table(Arc::new(table))?.collect().await
-}
-
-pub async fn remote_collect_primitive_column<T: ArrowPrimitiveType>(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<T::Native>>> {
-    let batches = remote_collect(options, sql).await?;
-    extract_primitive_array::<T>(&batches, col_idx)
-}
-
-pub async fn remote_collect_utf8_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<String>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<Utf8Type>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_string())).collect())
-}
-
-pub async fn remote_collect_large_utf8_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<String>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<LargeUtf8Type>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_string())).collect())
-}
-
-pub async fn remote_collect_binary_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<Vec<u8>>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<BinaryType>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_vec())).collect())
-}
-
-pub async fn remote_collect_large_binary_column(
-    options: ConnectionOptions,
-    sql: impl Into<String>,
-    col_idx: usize,
-) -> DFResult<Vec<Option<Vec<u8>>>> {
-    let batches = remote_collect(options, sql).await?;
-    let vec = extract_byte_array::<LargeBinaryType>(&batches, col_idx)?;
-    Ok(vec.into_iter().map(|s| s.map(|s| s.to_vec())).collect())
-}
 
 pub fn extract_primitive_array<T: ArrowPrimitiveType>(
     batches: &[RecordBatch],
@@ -186,8 +121,8 @@ pub fn big_decimal_to_i256(decimal: &BigDecimal, scale: Option<i32>) -> DFResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datafusion::arrow::array::{BooleanArray, Int32Array, RecordBatch, StringArray};
-    use datafusion::arrow::datatypes::{DataType, Field, Int32Type, Schema, Utf8Type};
+    use arrow::array::{BooleanArray, Int32Array, RecordBatch, StringArray};
+    use arrow::datatypes::{DataType, Field, Int32Type, Schema, Utf8Type};
     use std::sync::Arc;
 
     #[tokio::test]
