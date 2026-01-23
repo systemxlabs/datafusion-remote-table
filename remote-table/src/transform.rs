@@ -13,6 +13,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+#[derive(Debug, Clone)]
 pub struct TransformArgs<'a> {
     pub db_type: RemoteDbType,
     pub table_schema: &'a SchemaRef,
