@@ -278,7 +278,7 @@ pub async fn disable_pooled_connections() {
     let table = RemoteTable::try_new(options, "select * from SYS.\"simple_table\"")
         .await
         .unwrap();
-    let pool = table.pool().clone();
+    let pool = table.pool().await.unwrap().clone();
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
 

@@ -1,4 +1,5 @@
 use crate::DmConnectionOptions;
+use crate::LazyPool;
 use crate::MysqlConnectionOptions;
 use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
@@ -148,9 +149,11 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 let limit = proto.limit.map(|l| l as usize);
 
                 let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
+                let pool = LazyPool::new(conn_options.clone());
 
                 Ok(Arc::new(RemoteTableScanExec::try_new(
                     conn_options,
+                    pool,
                     source,
                     table_schema,
                     remote_schema,
@@ -172,6 +175,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 let input = inputs[0].clone();
 
                 let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
+                let pool = LazyPool::new(conn_options.clone());
                 let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap()));
                 let table = proto.table.unwrap().idents;
 
@@ -184,6 +188,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 Ok(Arc::new(RemoteTableInsertExec::new(
                     input,
                     conn_options,
+                    pool,
                     literalizer,
                     table,
                     remote_schema,
