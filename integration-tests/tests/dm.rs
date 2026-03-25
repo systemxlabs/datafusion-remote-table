@@ -55,15 +55,13 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         source,
         r#"select * from remote_table where "ID" = 1"#,
         vec![
-            r#"CoalesceBatchesExec: target_batch_size=8192
-  FilterExec: ID@0 = 1
-    CooperativeExec
-      RemoteTableExec: source=query
+            r#"FilterExec: ID@0 = 1
+  CooperativeExec
+    RemoteTableExec: source=query
 "#,
-            r#"CoalesceBatchesExec: target_batch_size=8192
-  FilterExec: ID@0 = 1
-    CooperativeExec
-      RemoteTableExec: source=simple_table
+            r#"FilterExec: ID@0 = 1
+  CooperativeExec
+    RemoteTableExec: source=simple_table
 "#,
         ],
         r#"+----+------+

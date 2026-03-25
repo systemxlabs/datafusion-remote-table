@@ -125,11 +125,10 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         "describe simple_table",
         r#"SELECT * FROM remote_table where "Key" = 'PRI'"#,
         vec![
-            r#"CoalesceBatchesExec: target_batch_size=8192
-  FilterExec: Key@3 = PRI
-    RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-      CooperativeExec
-        RemoteTableExec: source=query
+            r#"FilterExec: Key@3 = PRI
+  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
+    CooperativeExec
+      RemoteTableExec: source=query
 "#,
         ],
         r#"+-------+------+------+-----+---------+-------+
