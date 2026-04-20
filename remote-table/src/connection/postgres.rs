@@ -3,10 +3,10 @@ use crate::utils::{big_decimal_to_i128, big_decimal_to_i256};
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, Pool, PoolState,
     PostgresConnectionOptions, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteSource, RemoteType, literalize_array,
+    RemoteSource, RemoteType,
 };
 use arrow::array::{
-    ArrayBuilder, ArrayRef, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder,
+    Array, ArrayBuilder, ArrayRef, AsArray, BinaryBuilder, BinaryViewBuilder, BooleanBuilder, Date32Builder,
     Decimal128Builder, Decimal256Builder, FixedSizeBinaryBuilder, Float32Builder, Float64Builder,
     Int16Builder, Int32Builder, Int64Builder, IntervalMonthDayNanoBuilder, LargeStringBuilder,
     ListBuilder, RecordBatch, RecordBatchOptions, StringBuilder, StringViewBuilder,
@@ -18,10 +18,12 @@ use arrow::datatypes::{
     SchemaRef, TimeUnit, i256,
 };
 use bb8_postgres::PostgresConnectionManager;
-use bb8_postgres::tokio_postgres::types::{FromSql, Type};
+use bb8_postgres::tokio_postgres::binary_copy::BinaryCopyInWriter;
+use bb8_postgres::tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
 use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
+use bytes::{BytesMut, BufMut};
 use bigdecimal::BigDecimal;
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
 use chrono::Timelike;
 
 use datafusion_common::DataFusionError;
@@ -32,6 +34,7 @@ use futures::StreamExt;
 use log::debug;
 use num_bigint::{BigInt, Sign};
 use std::any::Any;
+use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -221,63 +224,70 @@ order by ordinal_position",
     async fn insert(
         &self,
         _conn_options: &ConnectionOptions,
-        literalizer: Arc<dyn Literalize>,
+        _literalizer: Arc<dyn Literalize>,
         table: &[String],
         remote_schema: RemoteSchemaRef,
         batch: RecordBatch,
     ) -> DFResult<usize> {
-        let mut columns = Vec::with_capacity(remote_schema.fields.len());
+        let mut col_names = Vec::new();
+        let mut pg_types = Vec::new();
+        let mut arrays = Vec::new();
+
         for i in 0..batch.num_columns() {
             let input_field = batch.schema_ref().field(i);
             let remote_field = &remote_schema.fields[i];
             if remote_field.auto_increment && input_field.is_nullable() {
                 continue;
             }
-
-            let remote_type = remote_schema.fields[i].remote_type.clone();
-            let array = batch.column(i);
-            let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
-            columns.push(column);
-        }
-
-        let num_rows = columns[0].len();
-        let num_columns = columns.len();
-
-        let mut values = Vec::with_capacity(num_rows);
-        for i in 0..num_rows {
-            let mut value = Vec::with_capacity(num_columns);
-            for col in columns.iter() {
-                value.push(col[i].as_str());
-            }
-            values.push(format!("({})", value.join(",")));
-        }
-
-        let mut col_names = Vec::with_capacity(remote_schema.fields.len());
-        for (remote_field, input_field) in remote_schema
-            .fields
-            .iter()
-            .zip(batch.schema_ref().fields.iter())
-        {
-            if remote_field.auto_increment && input_field.is_nullable() {
-                continue;
-            }
             col_names.push(RemoteDbType::Postgres.sql_identifier(&remote_field.name));
+            let pg_type = remote_type_to_pg_type(&remote_field.remote_type)?;
+            pg_types.push(pg_type);
+            arrays.push(batch.column(i).clone());
         }
 
-        let sql = format!(
-            "INSERT INTO {} ({}) VALUES {}",
+        let copy_sql = format!(
+            "COPY {} ({}) FROM STDIN BINARY",
             RemoteDbType::Postgres.sql_table_name(table),
-            col_names.join(","),
-            values.join(",")
+            col_names.join(", ")
         );
 
-        let count = self.conn.execute(&sql, &[]).await.map_err(|e| {
+        let sink = self.conn.copy_in(&copy_sql).await.map_err(|e| {
             DataFusionError::Execution(format!(
-                "Failed to execute insert statement on postgres: {e:?}, sql: {sql}"
+                "Failed to start COPY on postgres: {e:?}, sql: {copy_sql}"
             ))
         })?;
 
-        Ok(count as usize)
+        let mut writer = std::pin::pin!(BinaryCopyInWriter::new(sink, &pg_types));
+        let num_rows = arrays[0].len();
+
+        for row_idx in 0..num_rows {
+            let mut values: Vec<PgValue> = Vec::with_capacity(arrays.len());
+            for (array, pg_type) in arrays.iter().zip(&pg_types) {
+                values.push(array_value_to_pg_value(array, row_idx, pg_type)?);
+            }
+            let refs: Vec<&(dyn ToSql + Sync)> =
+                values.iter().map(|v| v as &(dyn ToSql + Sync)).collect();
+            writer
+                .as_mut()
+                .write(&refs)
+                .await
+                .map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to write COPY row on postgres: {e:?}"
+                    ))
+                })?;
+        }
+
+        let rows = writer
+            .finish()
+            .await
+            .map_err(|e| {
+                DataFusionError::Execution(format!(
+                    "Failed to finish COPY on postgres: {e:?}"
+                ))
+            })?;
+
+        Ok(rows as usize)
     }
 }
 
@@ -1251,4 +1261,579 @@ fn rows_to_batch(
         projected_columns,
         &options,
     )?)
+}
+
+
+#[derive(Debug)]
+enum PgValue {
+    Bool(Option<bool>),
+    Int2(Option<i16>),
+    Int4(Option<i32>),
+    Int8(Option<i64>),
+    Float4(Option<f32>),
+    Float8(Option<f64>),
+    Varchar(Option<String>),
+    Bytea(Option<Vec<u8>>),
+    Uuid(Option<uuid::Uuid>),
+    Json(Option<serde_json::Value>),
+    Jsonb(Option<serde_json::Value>),
+    Timestamp(Option<chrono::NaiveDateTime>),
+    TimestampTz(Option<chrono::DateTime<chrono::Utc>>),
+    Date(Option<chrono::NaiveDate>),
+    Time(Option<chrono::NaiveTime>),
+    Interval(Option<IntervalFromSql>),
+    Numeric(Option<BigDecimal>),
+    Array(Box<dyn ToSql + Sync + Send>),
+}
+
+impl ToSql for PgValue {
+    fn to_sql(
+        &self,
+        ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        match self {
+            PgValue::Bool(v) => v.to_sql(ty, out),
+            PgValue::Int2(v) => v.to_sql(ty, out),
+            PgValue::Int4(v) => v.to_sql(ty, out),
+            PgValue::Int8(v) => v.to_sql(ty, out),
+            PgValue::Float4(v) => v.to_sql(ty, out),
+            PgValue::Float8(v) => v.to_sql(ty, out),
+            PgValue::Varchar(v) => v.to_sql(ty, out),
+            PgValue::Bytea(v) => v.to_sql(ty, out),
+            PgValue::Uuid(v) => v.to_sql(ty, out),
+            PgValue::Json(v) => {
+                match v {
+                    Some(val) => {
+                        let s = val.to_string();
+                        out.extend_from_slice(s.as_bytes());
+                        Ok(IsNull::No)
+                    }
+                    None => Ok(IsNull::Yes),
+                }
+            }
+            PgValue::Jsonb(v) => {
+                match v {
+                    Some(val) => {
+                        out.put_u8(1); // JSONB version byte
+                        let s = val.to_string();
+                        out.extend_from_slice(s.as_bytes());
+                        Ok(IsNull::No)
+                    }
+                    None => Ok(IsNull::Yes),
+                }
+            }
+            PgValue::Timestamp(v) => v.to_sql(ty, out),
+            PgValue::TimestampTz(v) => v.to_sql(ty, out),
+            PgValue::Date(v) => v.to_sql(ty, out),
+            PgValue::Time(v) => v.to_sql(ty, out),
+            PgValue::Interval(v) => {
+                match v {
+                    Some(interval) => {
+                        let mut buf = [0u8; 16];
+                        BigEndian::write_i64(&mut buf[0..8], interval.time);
+                        BigEndian::write_i32(&mut buf[8..12], interval.day);
+                        BigEndian::write_i32(&mut buf[12..16], interval.month);
+                        out.extend_from_slice(&buf);
+                        Ok(IsNull::No)
+                    }
+                    None => Ok(IsNull::Yes),
+                }
+            }
+            PgValue::Numeric(v) => {
+                match v {
+                    Some(decimal) => write_numeric_to_sql(decimal, out),
+                    None => Ok(IsNull::Yes),
+                }
+            }
+            PgValue::Array(v) => v.to_sql_checked(ty, out),
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool {
+        true
+    }
+
+    fn to_sql_checked(
+        &self,
+        ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        self.to_sql(ty, out)
+    }
+}
+
+fn remote_type_to_pg_type(remote_type: &RemoteType) -> DFResult<Type> {
+    let RemoteType::Postgres(pg_type) = remote_type else {
+        return Err(DataFusionError::Internal(
+            "Expected postgres remote type".to_string(),
+        ));
+    };
+    match pg_type {
+        PostgresType::Int2 => Ok(Type::INT2),
+        PostgresType::Int4 => Ok(Type::INT4),
+        PostgresType::Int8 => Ok(Type::INT8),
+        PostgresType::Float4 => Ok(Type::FLOAT4),
+        PostgresType::Float8 => Ok(Type::FLOAT8),
+        PostgresType::Numeric(_, _) => Ok(Type::NUMERIC),
+        PostgresType::Oid => Ok(Type::OID),
+        PostgresType::Name => Ok(Type::NAME),
+        PostgresType::Varchar => Ok(Type::VARCHAR),
+        PostgresType::Bpchar => Ok(Type::BPCHAR),
+        PostgresType::Text => Ok(Type::TEXT),
+        PostgresType::Bytea => Ok(Type::BYTEA),
+        PostgresType::Date => Ok(Type::DATE),
+        PostgresType::Timestamp => Ok(Type::TIMESTAMP),
+        PostgresType::TimestampTz => Ok(Type::TIMESTAMPTZ),
+        PostgresType::Time => Ok(Type::TIME),
+        PostgresType::Interval => Ok(Type::INTERVAL),
+        PostgresType::Bool => Ok(Type::BOOL),
+        PostgresType::Json => Ok(Type::JSON),
+        PostgresType::Jsonb => Ok(Type::JSONB),
+        PostgresType::Int2Array => Ok(Type::INT2_ARRAY),
+        PostgresType::Int4Array => Ok(Type::INT4_ARRAY),
+        PostgresType::Int8Array => Ok(Type::INT8_ARRAY),
+        PostgresType::Float4Array => Ok(Type::FLOAT4_ARRAY),
+        PostgresType::Float8Array => Ok(Type::FLOAT8_ARRAY),
+        PostgresType::VarcharArray => Ok(Type::VARCHAR_ARRAY),
+        PostgresType::BpcharArray => Ok(Type::BPCHAR_ARRAY),
+        PostgresType::TextArray => Ok(Type::TEXT_ARRAY),
+        PostgresType::ByteaArray => Ok(Type::BYTEA_ARRAY),
+        PostgresType::BoolArray => Ok(Type::BOOL_ARRAY),
+        PostgresType::Xml => Ok(Type::XML),
+        PostgresType::Uuid => Ok(Type::UUID),
+        PostgresType::PostGisGeometry => Ok(Type::BYTEA),
+    }
+}
+
+fn format_decimal_i128(v: i128, scale: i8) -> String {
+    if scale == 0 {
+        return v.to_string();
+    }
+    if scale < 0 {
+        let zeros = (-scale) as usize;
+        return format!("{}{}", v, "0".repeat(zeros));
+    }
+    let scale_usize = scale as usize;
+    let v_str = v.to_string();
+    let negative = v_str.starts_with('-');
+    let digits = if negative { &v_str[1..] } else { &v_str };
+    if digits.len() <= scale_usize {
+        let padded = format!("{:0>width$}", digits, width = scale_usize + 1);
+        let int_part = &padded[..padded.len() - scale_usize];
+        let frac_part = &padded[padded.len() - scale_usize..];
+        if negative {
+            format!("-{}.{}", int_part, frac_part)
+        } else {
+            format!("{}.{}", int_part, frac_part)
+        }
+    } else {
+        let split = digits.len() - scale_usize;
+        let int_part = &digits[..split];
+        let frac_part = &digits[split..];
+        if negative {
+            format!("-{}.{}", int_part, frac_part)
+        } else {
+            format!("{}.{}", int_part, frac_part)
+        }
+    }
+}
+
+fn format_decimal_i256(v: i256, scale: i8) -> String {
+    if scale == 0 {
+        return v.to_string();
+    }
+    if scale < 0 {
+        let zeros = (-scale) as usize;
+        return format!("{}{}", v, "0".repeat(zeros));
+    }
+    let scale_usize = scale as usize;
+    let v_str = v.to_string();
+    let negative = v_str.starts_with('-');
+    let digits = if negative { &v_str[1..] } else { &v_str };
+    if digits.len() <= scale_usize {
+        let padded = format!("{:0>width$}", digits, width = scale_usize + 1);
+        let int_part = &padded[..padded.len() - scale_usize];
+        let frac_part = &padded[padded.len() - scale_usize..];
+        if negative {
+            format!("-{}.{}", int_part, frac_part)
+        } else {
+            format!("{}.{}", int_part, frac_part)
+        }
+    } else {
+        let split = digits.len() - scale_usize;
+        let int_part = &digits[..split];
+        let frac_part = &digits[split..];
+        if negative {
+            format!("-{}.{}", int_part, frac_part)
+        } else {
+            format!("{}.{}", int_part, frac_part)
+        }
+    }
+}
+
+fn write_numeric_to_sql(
+    value: &BigDecimal,
+    out: &mut BytesMut,
+) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+    let s = value.to_plain_string();
+    let (sign, rest) = if s.starts_with('-') {
+        (0x4000i16, &s[1..])
+    } else {
+        (0x0000i16, s.as_str())
+    };
+
+    let (int_part, frac_part) = if let Some(pos) = rest.find('.') {
+        (&rest[..pos], &rest[pos + 1..])
+    } else {
+        (rest, "")
+    };
+
+    let dscale = frac_part.len() as i16;
+
+    // Handle zero value: write a single zero digit with correct dscale
+    if int_part == "0" && frac_part.is_empty() {
+        out.put_i16(1);
+        out.put_i16(0);
+        out.put_i16(sign);
+        out.put_i16(dscale);
+        out.put_u16(0);
+        return Ok(IsNull::No);
+    }
+
+    // Split integer part into base-10000 groups from right to left
+    let mut int_groups = Vec::new();
+    let int_chars: Vec<char> = int_part.chars().collect();
+    for chunk in int_chars.rchunks(4) {
+        let s: String = chunk.iter().collect();
+        int_groups.push(s.parse::<u16>().map_err(|e| {
+            DataFusionError::Execution(format!("Failed to parse integer group '{s}' for numeric: {e}"))
+        })?);
+    }
+    int_groups.reverse(); // restore left-to-right order
+
+    // Split fractional part into base-10000 groups from left to right
+    let mut frac_groups = Vec::new();
+    let frac_chars: Vec<char> = frac_part.chars().collect();
+    for chunk in frac_chunks_exact(frac_chars) {
+        frac_groups.push(chunk.parse::<u16>().map_err(|e| {
+            DataFusionError::Execution(format!("Failed to parse fractional group '{chunk}' for numeric: {e}"))
+        })?);
+    }
+
+    // Combine groups
+    let mut groups = int_groups.clone();
+    groups.extend(frac_groups);
+
+    // Remove leading zero groups
+    let mut leading_zeros = 0i16;
+    while leading_zeros < groups.len() as i16 && groups[leading_zeros as usize] == 0 {
+        leading_zeros += 1;
+    }
+    if leading_zeros > 0 {
+        groups.drain(0..leading_zeros as usize);
+    }
+
+    let ndigits = groups.len() as i16;
+    let weight = int_groups.len() as i16 - 1 - leading_zeros;
+
+    out.put_i16(ndigits);
+    out.put_i16(weight);
+    out.put_i16(sign);
+    out.put_i16(dscale);
+    for g in groups {
+        out.put_u16(g);
+    }
+
+    Ok(IsNull::No)
+}
+
+fn frac_chunks_exact(frac_chars: Vec<char>) -> Vec<String> {
+    if frac_chars.is_empty() {
+        return Vec::new();
+    }
+    let mut chunks = Vec::new();
+    for chunk in frac_chars.chunks(4) {
+        let mut s: String = chunk.iter().collect();
+        while s.len() < 4 {
+            s.push('0');
+        }
+        chunks.push(s);
+    }
+    chunks
+}
+
+fn array_value_to_pg_value(
+    array: &ArrayRef,
+    row_idx: usize,
+    pg_type: &Type,
+) -> DFResult<PgValue> {
+    use arrow::datatypes::*;
+
+    if array.is_null(row_idx) {
+        return Ok(match *pg_type {
+            Type::BOOL => PgValue::Bool(None),
+            Type::INT2 => PgValue::Int2(None),
+            Type::INT4 => PgValue::Int4(None),
+            Type::INT8 => PgValue::Int8(None),
+            Type::FLOAT4 => PgValue::Float4(None),
+            Type::FLOAT8 => PgValue::Float8(None),
+            Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::NAME => PgValue::Varchar(None),
+            Type::BYTEA | Type::XML => PgValue::Bytea(None),
+            Type::UUID => PgValue::Uuid(None),
+            Type::JSON | Type::JSONB => PgValue::Jsonb(None),
+            Type::TIMESTAMP => PgValue::Timestamp(None),
+            Type::TIMESTAMPTZ => PgValue::TimestampTz(None),
+            Type::DATE => PgValue::Date(None),
+            Type::TIME => PgValue::Time(None),
+            Type::INTERVAL => PgValue::Interval(None),
+            Type::NUMERIC => PgValue::Numeric(None),
+            _ => PgValue::Bytea(None),
+        });
+    }
+
+    match array.data_type() {
+        DataType::Boolean => {
+            let array = array.as_boolean();
+            Ok(PgValue::Bool(Some(array.value(row_idx))))
+        }
+        DataType::Int8 => {
+            let array = array.as_primitive::<Int8Type>();
+            Ok(PgValue::Int2(Some(array.value(row_idx) as i16)))
+        }
+        DataType::Int16 => {
+            let array = array.as_primitive::<Int16Type>();
+            Ok(PgValue::Int2(Some(array.value(row_idx))))
+        }
+        DataType::Int32 => {
+            let array = array.as_primitive::<Int32Type>();
+            Ok(PgValue::Int4(Some(array.value(row_idx))))
+        }
+        DataType::Int64 => {
+            let array = array.as_primitive::<Int64Type>();
+            Ok(PgValue::Int8(Some(array.value(row_idx))))
+        }
+        DataType::UInt8 => {
+            let array = array.as_primitive::<UInt8Type>();
+            Ok(PgValue::Int2(Some(array.value(row_idx) as i16)))
+        }
+        DataType::UInt16 => {
+            let array = array.as_primitive::<UInt16Type>();
+            Ok(PgValue::Int4(Some(array.value(row_idx) as i32)))
+        }
+        DataType::UInt32 => {
+            let array = array.as_primitive::<UInt32Type>();
+            Ok(PgValue::Int8(Some(array.value(row_idx) as i64)))
+        }
+        DataType::UInt64 => {
+            let array = array.as_primitive::<UInt64Type>();
+            Ok(PgValue::Float4(Some(array.value(row_idx) as f32)))
+        }
+        DataType::Float16 => {
+            let array = array.as_primitive::<Float16Type>();
+            Ok(PgValue::Float4(Some(array.value(row_idx).to_f32())))
+        }
+        DataType::Float32 => {
+            let array = array.as_primitive::<Float32Type>();
+            Ok(PgValue::Float4(Some(array.value(row_idx))))
+        }
+        DataType::Float64 => {
+            let array = array.as_primitive::<Float64Type>();
+            Ok(PgValue::Float8(Some(array.value(row_idx))))
+        }
+        DataType::Decimal128(_precision, scale) => {
+            let array = array.as_primitive::<Decimal128Type>();
+            let v = array.value(row_idx);
+            let s = format_decimal_i128(v, *scale);
+            let decimal = BigDecimal::from_str(&s)
+                .map_err(|e| DataFusionError::Execution(format!("Failed to convert Decimal128 {v} to BigDecimal: {e}")))?;
+            Ok(PgValue::Numeric(Some(decimal)))
+        }
+        DataType::Decimal256(_precision, scale) => {
+            let array = array.as_primitive::<Decimal256Type>();
+            let v = array.value(row_idx);
+            let s = format_decimal_i256(v, *scale);
+            let decimal = BigDecimal::from_str(&s)
+                .map_err(|e| DataFusionError::Execution(format!("Failed to convert Decimal256 {v} to BigDecimal: {e}")))?;
+            Ok(PgValue::Numeric(Some(decimal)))
+        }
+        DataType::Utf8 => {
+            let array = array.as_string::<i32>();
+            let s = array.value(row_idx).to_string();
+            if *pg_type == Type::JSON {
+                Ok(PgValue::Json(Some(serde_json::from_str(&s).map_err(|e| DataFusionError::Execution(format!("Failed to parse JSON: {e}")))?)))
+            } else if *pg_type == Type::JSONB {
+                Ok(PgValue::Jsonb(Some(serde_json::from_str(&s).map_err(|e| DataFusionError::Execution(format!("Failed to parse JSONB: {e}")))?)))
+            } else {
+                Ok(PgValue::Varchar(Some(s)))
+            }
+        }
+        DataType::LargeUtf8 => {
+            let array = array.as_string::<i64>();
+            let s = array.value(row_idx).to_string();
+            if *pg_type == Type::JSON {
+                Ok(PgValue::Json(Some(serde_json::from_str(&s).map_err(|e| DataFusionError::Execution(format!("Failed to parse JSON: {e}")))?)))
+            } else if *pg_type == Type::JSONB {
+                Ok(PgValue::Jsonb(Some(serde_json::from_str(&s).map_err(|e| DataFusionError::Execution(format!("Failed to parse JSONB: {e}")))?)))
+            } else {
+                Ok(PgValue::Varchar(Some(s)))
+            }
+        }
+        DataType::Utf8View => {
+            let array = array.as_string_view();
+            let s = array.value(row_idx).to_string();
+            if *pg_type == Type::JSON {
+                Ok(PgValue::Json(Some(serde_json::from_str(&s).map_err(|e| DataFusionError::Execution(format!("Failed to parse JSON: {e}")))?)))
+            } else if *pg_type == Type::JSONB {
+                Ok(PgValue::Jsonb(Some(serde_json::from_str(&s).map_err(|e| DataFusionError::Execution(format!("Failed to parse JSONB: {e}")))?)))
+            } else {
+                Ok(PgValue::Varchar(Some(s)))
+            }
+        }
+        DataType::Binary => {
+            let array = array.as_binary::<i32>();
+            Ok(PgValue::Bytea(Some(array.value(row_idx).to_vec())))
+        }
+        DataType::LargeBinary => {
+            let array = array.as_binary::<i64>();
+            Ok(PgValue::Bytea(Some(array.value(row_idx).to_vec())))
+        }
+        DataType::BinaryView => {
+            let array = array.as_binary_view();
+            Ok(PgValue::Bytea(Some(array.value(row_idx).to_vec())))
+        }
+        DataType::FixedSizeBinary(16) if *pg_type == Type::UUID => {
+            let array = array.as_fixed_size_binary();
+            let bytes = array.value(row_idx);
+            let uuid = uuid::Uuid::from_slice(bytes)
+                .map_err(|e| DataFusionError::Execution(format!("Failed to parse UUID: {e}")))?;
+            Ok(PgValue::Uuid(Some(uuid)))
+        }
+        DataType::FixedSizeBinary(_) => {
+            let array = array.as_fixed_size_binary();
+            Ok(PgValue::Bytea(Some(array.value(row_idx).to_vec())))
+        }
+        DataType::Date32 => {
+            let array = array.as_primitive::<Date32Type>();
+            let days = array.value(row_idx);
+            let date = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                .unwrap()
+                .checked_add_signed(chrono::Duration::days(i64::from(days)))
+                .ok_or_else(|| DataFusionError::Execution(format!("Invalid Date32 value: {days}")))?;
+            Ok(PgValue::Date(Some(date)))
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, None) => {
+            let array = array.as_primitive::<TimestampMicrosecondType>();
+            let us = array.value(row_idx);
+            let dt = chrono::DateTime::from_timestamp_micros(us)
+                .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp microseconds: {us}")))?;
+            Ok(PgValue::Timestamp(Some(dt.naive_utc())))
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, Some(_tz)) => {
+            let array = array.as_primitive::<TimestampMicrosecondType>();
+            let us = array.value(row_idx);
+            let dt = chrono::DateTime::from_timestamp_micros(us)
+                .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp microseconds: {us}")))?;
+            Ok(PgValue::TimestampTz(Some(dt)))
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+            let array = array.as_primitive::<TimestampNanosecondType>();
+            let ns = array.value(row_idx);
+            let dt = chrono::DateTime::from_timestamp_nanos(ns);
+            Ok(PgValue::Timestamp(Some(dt.naive_utc())))
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, Some(_tz)) => {
+            let array = array.as_primitive::<TimestampNanosecondType>();
+            let ns = array.value(row_idx);
+            let dt = chrono::DateTime::from_timestamp_nanos(ns);
+            Ok(PgValue::TimestampTz(Some(dt)))
+        }
+        DataType::Time64(TimeUnit::Microsecond) => {
+            let array = array.as_primitive::<Time64MicrosecondType>();
+            let us = array.value(row_idx);
+            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(
+                (us / 1_000_000) as u32,
+                ((us % 1_000_000) * 1000) as u32,
+            )
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid Time64 microseconds: {us}")))?;
+            Ok(PgValue::Time(Some(time)))
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            let array = array.as_primitive::<Time64NanosecondType>();
+            let ns = array.value(row_idx);
+            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(
+                (ns / 1_000_000_000) as u32,
+                (ns % 1_000_000_000) as u32,
+            )
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid Time64 nanoseconds: {ns}")))?;
+            Ok(PgValue::Time(Some(time)))
+        }
+        DataType::Interval(IntervalUnit::MonthDayNano) => {
+            let array = array.as_primitive::<IntervalMonthDayNanoType>();
+            let v = array.value(row_idx);
+            let (months, days, nanos) = IntervalMonthDayNanoType::to_parts(v);
+            let interval = IntervalFromSql {
+                time: i64::from(nanos) / 1000,
+                day: days,
+                month: months,
+            };
+            Ok(PgValue::Interval(Some(interval)))
+        }
+        DataType::List(inner) => {
+            let list_array = array.as_list::<i32>();
+            if list_array.is_null(row_idx) {
+                return Ok(PgValue::Bytea(None));
+            }
+            let values = list_array.value(row_idx);
+            match inner.data_type() {
+                DataType::Int16 => {
+                    let arr = values.as_primitive::<Int16Type>();
+                    let vec: Vec<Option<i16>> = arr.iter().collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Int32 => {
+                    let arr = values.as_primitive::<Int32Type>();
+                    let vec: Vec<Option<i32>> = arr.iter().collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Int64 => {
+                    let arr = values.as_primitive::<Int64Type>();
+                    let vec: Vec<Option<i64>> = arr.iter().collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Float32 => {
+                    let arr = values.as_primitive::<Float32Type>();
+                    let vec: Vec<Option<f32>> = arr.iter().collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Float64 => {
+                    let arr = values.as_primitive::<Float64Type>();
+                    let vec: Vec<Option<f64>> = arr.iter().collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Utf8 => {
+                    let arr = values.as_string::<i32>();
+                    let vec: Vec<Option<String>> = arr.iter().map(|v| v.map(|s| s.to_string())).collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Binary => {
+                    let arr = values.as_binary::<i32>();
+                    let vec: Vec<Option<Vec<u8>>> = arr.iter().map(|v| v.map(|s| s.to_vec())).collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                DataType::Boolean => {
+                    let arr = values.as_boolean();
+                    let vec: Vec<Option<bool>> = arr.iter().collect();
+                    Ok(PgValue::Array(Box::new(vec)))
+                }
+                _ => Err(DataFusionError::NotImplemented(format!(
+                    "Unsupported list inner data type for postgres binary copy: {}",
+                    inner.data_type()
+                ))),
+            }
+        }
+        other => Err(DataFusionError::NotImplemented(format!(
+            "Unsupported data type for postgres binary copy: {other}"
+        ))),
+    }
 }

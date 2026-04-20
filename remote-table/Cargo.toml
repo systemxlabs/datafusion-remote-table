@@ -41,6 +41,7 @@ prost = { workspace = true }
 derive-with = "0.7"
 derive-getters = "0.5"
 itertools = "0.14"
+bytes = "1"
 log = { version = "0.4", features = [] }
 tokio = { workspace = true, features = ["rt"] }
 bb8 = { version = "0.9", optional = true }
