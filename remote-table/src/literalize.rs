@@ -43,9 +43,7 @@ macro_rules! literalize_array {
     }};
 }
 
-pub trait Literalize: Debug + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-
+pub trait Literalize: Debug + Send + Sync + Any {
     fn literalize_null_array(
         &self,
         array: &NullArray,
@@ -610,11 +608,17 @@ pub fn literalize_array(
     }
 }
 
+impl dyn Literalize {
+    pub fn is<T: Literalize>(&self) -> bool {
+        (self as &dyn Any).is::<T>()
+    }
+
+    pub fn downcast_ref<T: Literalize>(&self) -> Option<&T> {
+        (self as &dyn Any).downcast_ref::<T>()
+    }
+}
+
 #[derive(Debug)]
 pub struct DefaultLiteralizer {}
 
-impl Literalize for DefaultLiteralizer {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
+impl Literalize for DefaultLiteralizer {}

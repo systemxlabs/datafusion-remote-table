@@ -17,7 +17,6 @@ use itertools::Itertools;
 use log::{debug, error};
 use rusqlite::types::ValueRef;
 use rusqlite::{Column, Row, Rows};
-use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,10 +70,6 @@ impl Drop for SqliteConnection {
 
 #[async_trait::async_trait]
 impl Connection for SqliteConnection {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let conn = rusqlite::Connection::open(&self.path).map_err(|e| {
             DataFusionError::Plan(format!("Failed to open sqlite connection: {e:?}"))

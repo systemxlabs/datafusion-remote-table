@@ -19,7 +19,6 @@ use futures::StreamExt;
 use log::debug;
 use oracle::sql_type::{Object, OracleType as ColumnType};
 use oracle::{Connector, Row};
-use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -77,10 +76,6 @@ pub struct OracleConnection {
 
 #[async_trait::async_trait]
 impl Connection for OracleConnection {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
         let result_set = self.conn.query(&sql, &[]).map_err(|e| {

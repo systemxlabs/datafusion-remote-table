@@ -25,7 +25,6 @@ use log::debug;
 use mysql_async::consts::{ColumnFlags, ColumnType};
 use mysql_async::prelude::Queryable;
 use mysql_async::{Column, FromValueError, Row, Value};
-use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -81,10 +80,6 @@ pub struct MysqlConnection {
 
 #[async_trait::async_trait]
 impl Connection for MysqlConnection {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source);
         let mut conn = self.conn.lock().await;
@@ -482,15 +477,14 @@ fn rows_to_batch(
                 DataType::Timestamp(TimeUnit::Microsecond, tz_opt) => {
                     match tz_opt {
                         None => {}
-                        Some(tz) => {
-                            if !tz.eq_ignore_ascii_case("utc") {
-                                return Err(DataFusionError::NotImplemented(format!(
-                                    "Unsupported data type {:?} for col: {:?}",
-                                    field.data_type(),
-                                    col
-                                )));
-                            }
+                        Some(tz) if !tz.eq_ignore_ascii_case("utc") => {
+                            return Err(DataFusionError::NotImplemented(format!(
+                                "Unsupported data type {:?} for col: {:?}",
+                                field.data_type(),
+                                col
+                            )));
                         }
+                        Some(_) => {}
                     }
                     handle_primitive_type!(
                         builder,

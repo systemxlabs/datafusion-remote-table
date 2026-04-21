@@ -237,7 +237,7 @@ impl RemoteTable {
             match (table_schema, remote_schema) {
                 (Some(table_schema), Some(remote_schema)) => (table_schema, Some(remote_schema)),
                 (Some(table_schema), None) => {
-                    let remote_schema = if transform.as_any().is::<DefaultTransform>()
+                    let remote_schema = if transform.is::<DefaultTransform>()
                         && matches!(source, RemoteSource::Query(_))
                     {
                         None
@@ -324,7 +324,7 @@ impl TableProvider for RemoteTable {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
-        let remote_schema = if self.transform.as_any().is::<DefaultTransform>() {
+        let remote_schema = if self.transform.is::<DefaultTransform>() {
             Arc::new(RemoteSchema::empty())
         } else {
             let Some(remote_schema) = &self.remote_schema else {
@@ -379,7 +379,7 @@ impl TableProvider for RemoteTable {
             ]);
         }
 
-        let remote_schema = if self.transform.as_any().is::<DefaultTransform>() {
+        let remote_schema = if self.transform.is::<DefaultTransform>() {
             Arc::new(RemoteSchema::empty())
         } else {
             let Some(remote_schema) = &self.remote_schema else {
