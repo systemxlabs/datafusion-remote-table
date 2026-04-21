@@ -17,7 +17,6 @@ use datafusion_remote_table::{
     Transform, TransformArgs, TransformCodec, transform_schema,
 };
 use integration_tests::{init_env_logger, setup_sqlite_db};
-use std::any::Any;
 use std::sync::Arc;
 
 #[rstest::rstest]
@@ -113,7 +112,7 @@ pub struct MyTransformCodec {}
 
 impl TransformCodec for MyTransformCodec {
     fn try_encode(&self, value: &dyn Transform) -> Result<Vec<u8>, DataFusionError> {
-        if value.as_any().downcast_ref::<MyTransform>().is_some() {
+        if value.downcast_ref::<MyTransform>().is_some() {
             Ok("MyTransform".as_bytes().to_vec())
         } else {
             Err(DataFusionError::Internal(
@@ -137,10 +136,6 @@ impl TransformCodec for MyTransformCodec {
 pub struct MyTransform {}
 
 impl Transform for MyTransform {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn transform(
         &self,
         batch: RecordBatch,
@@ -293,10 +288,6 @@ async fn transform_adding_field(
     struct MyTransform;
 
     impl Transform for MyTransform {
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
         fn transform(
             &self,
             batch: RecordBatch,
@@ -374,10 +365,6 @@ async fn transform_removing_field(
     struct MyTransform;
 
     impl Transform for MyTransform {
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
         fn transform(
             &self,
             batch: RecordBatch,

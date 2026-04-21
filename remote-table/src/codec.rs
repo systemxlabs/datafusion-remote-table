@@ -35,7 +35,7 @@ const DEFAULT_TRANSFORM_ID: &str = "__default";
 
 impl TransformCodec for DefaultTransformCodec {
     fn try_encode(&self, value: &dyn Transform) -> DFResult<Vec<u8>> {
-        if value.as_any().is::<DefaultTransform>() {
+        if value.is::<DefaultTransform>() {
             Ok(DEFAULT_TRANSFORM_ID.as_bytes().to_vec())
         } else {
             Err(DataFusionError::Execution(format!(
@@ -67,7 +67,7 @@ const DEFAULT_LITERALIZE_ID: &str = "__default";
 
 impl LiteralizeCodec for DefaultLiteralizeCodec {
     fn try_encode(&self, value: &dyn Literalize) -> DFResult<Vec<u8>> {
-        if value.as_any().is::<DefaultLiteralizer>() {
+        if value.is::<DefaultLiteralizer>() {
             Ok(DEFAULT_LITERALIZE_ID.as_bytes().to_vec())
         } else {
             Err(DataFusionError::Execution(format!(
@@ -202,7 +202,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
     fn try_encode(&self, node: Arc<dyn ExecutionPlan>, buf: &mut Vec<u8>) -> DFResult<()> {
         if let Some(exec) = node.as_any().downcast_ref::<RemoteTableScanExec>() {
-            let serialized_transform = if exec.transform.as_any().is::<DefaultTransform>() {
+            let serialized_transform = if exec.transform.is::<DefaultTransform>() {
                 DefaultTransformCodec {}.try_encode(exec.transform.as_ref())?
             } else {
                 let bytes = self.transform_codec.try_encode(exec.transform.as_ref())?;

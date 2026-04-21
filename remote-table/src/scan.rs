@@ -195,7 +195,7 @@ async fn build_and_transform_stream(
 
     let conn = pool.get().await?;
 
-    if transform.as_any().is::<DefaultTransform>() {
+    if transform.is::<DefaultTransform>() {
         conn.query(
             &conn_options,
             &source,

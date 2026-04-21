@@ -31,7 +31,6 @@ use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;
 use log::debug;
 use num_bigint::{BigInt, Sign};
-use std::any::Any;
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -103,10 +102,6 @@ pub struct PostgresConnection {
 
 #[async_trait::async_trait]
 impl Connection for PostgresConnection {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         match source {
             RemoteSource::Table(table) => {

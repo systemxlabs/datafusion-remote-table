@@ -51,9 +51,7 @@ pub struct PoolState {
 }
 
 #[async_trait::async_trait]
-pub trait Connection: Debug + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-
+pub trait Connection: Debug + Send + Sync + Any {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef>;
 
     async fn query(
@@ -74,6 +72,16 @@ pub trait Connection: Debug + Send + Sync {
         remote_schema: RemoteSchemaRef,
         batch: RecordBatch,
     ) -> DFResult<usize>;
+}
+
+impl dyn Connection {
+    pub fn is<T: Connection>(&self) -> bool {
+        (self as &dyn Any).is::<T>()
+    }
+
+    pub fn downcast_ref<T: Connection>(&self) -> Option<&T> {
+        (self as &dyn Any).downcast_ref::<T>()
+    }
 }
 
 #[allow(unused_variables)]

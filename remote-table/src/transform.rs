@@ -20,9 +20,7 @@ pub struct TransformArgs<'a> {
     pub remote_schema: &'a RemoteSchemaRef,
 }
 
-pub trait Transform: Debug + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-
+pub trait Transform: Debug + Send + Sync + Any {
     fn transform(&self, batch: RecordBatch, args: TransformArgs) -> DFResult<RecordBatch>;
 
     fn support_filter_pushdown(
@@ -34,14 +32,20 @@ pub trait Transform: Debug + Send + Sync {
     fn unparse_filter(&self, filter: &Expr, args: TransformArgs) -> DFResult<String>;
 }
 
+impl dyn Transform {
+    pub fn is<T: Transform>(&self) -> bool {
+        (self as &dyn Any).is::<T>()
+    }
+
+    pub fn downcast_ref<T: Transform>(&self) -> Option<&T> {
+        (self as &dyn Any).downcast_ref::<T>()
+    }
+}
+
 #[derive(Debug)]
 pub struct DefaultTransform {}
 
 impl Transform for DefaultTransform {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn transform(&self, batch: RecordBatch, _args: TransformArgs) -> DFResult<RecordBatch> {
         Ok(batch)
     }
@@ -168,7 +172,7 @@ pub fn transform_schema(
     remote_schema: Option<&RemoteSchemaRef>,
     db_type: RemoteDbType,
 ) -> DFResult<SchemaRef> {
-    if transform.as_any().is::<DefaultTransform>() {
+    if transform.is::<DefaultTransform>() {
         Ok(schema)
     } else {
         let Some(remote_schema) = remote_schema else {

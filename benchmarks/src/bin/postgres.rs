@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conn = pool.get().await?;
 
     let table_name = "pg_bench";
-    let pg_conn = conn.as_any().downcast_ref::<PostgresConnection>().unwrap();
+    let pg_conn = conn.downcast_ref::<PostgresConnection>().unwrap();
     pg_conn
         .conn
         .batch_execute(&create_table_sql(table_name))
