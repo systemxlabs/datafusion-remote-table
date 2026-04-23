@@ -44,7 +44,7 @@ itertools = "0.14"
 log = { version = "0.4", features = [] }
 tokio = { workspace = true, features = ["rt"] }
 bb8 = { version = "0.9", optional = true }
-uuid = "1.18"
+uuid = "1.23"
 hex = "0.4"
 
 # Postgres
