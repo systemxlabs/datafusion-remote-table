@@ -30,7 +30,7 @@ pub struct RemoteTableScanExec {
     pub(crate) limit: Option<usize>,
     pub(crate) transform: Arc<dyn Transform>,
     pub(crate) row_count: Option<usize>,
-    plan_properties: PlanProperties,
+    plan_properties: Arc<PlanProperties>,
 }
 
 impl RemoteTableScanExec {
@@ -54,12 +54,12 @@ impl RemoteTableScanExec {
             conn_options.db_type(),
         )?;
         let projected_schema = project_schema(&transformed_table_schema, projection.as_ref())?;
-        let plan_properties = PlanProperties::new(
+        let plan_properties = Arc::new(PlanProperties::new(
             EquivalenceProperties::new(projected_schema),
             Partitioning::UnknownPartitioning(1),
             EmissionType::Incremental,
             Boundedness::Bounded,
-        );
+        ));
         Ok(Self {
             conn_options,
             pool,
@@ -85,7 +85,7 @@ impl ExecutionPlan for RemoteTableScanExec {
         self
     }
 
-    fn properties(&self) -> &PlanProperties {
+    fn properties(&self) -> &Arc<PlanProperties> {
         &self.plan_properties
     }
 
