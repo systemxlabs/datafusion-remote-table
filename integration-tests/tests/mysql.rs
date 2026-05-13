@@ -87,11 +87,12 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
         RemoteDbType::Mysql,
         "describe simple_table",
         "SELECT * FROM remote_table limit 1",
-        r#"+-------+------+------+-----+---------+-------+
-| Field | Type | Null | Key | Default | Extra |
-+-------+------+------+-----+---------+-------+
-| id    | int  | NO   | PRI |         |       |
-+-------+------+------+-----+---------+-------+"#,
+        r#"+-------+--------------+------+-----+---------+-------+
+| Field | Type         | Null | Key | Default | Extra |
++-------+--------------+------+-----+---------+-------+
+| id    | int          | NO   | PRI |         |       |
+| name  | varchar(255) | NO   |     |         |       |
++-------+--------------+------+-----+---------+-------+"#,
     )
     .await;
 }
