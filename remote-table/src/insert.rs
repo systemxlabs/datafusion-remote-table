@@ -1,4 +1,4 @@
-use crate::{ConnectionOptions, DFResult, LazyPool, Literalize, RemoteSchemaRef};
+use crate::{ConnectionOptions, DFResult, LazyPool, Literalize, RemoteSchema, RemoteSchemaRef};
 use arrow::array::{ArrayRef, Int64Array, RecordBatch};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion_common::stats::Precision;
@@ -102,12 +102,13 @@ impl ExecutionPlan for RemoteTableInsertExec {
             let mut total_count = 0;
             while let Some(batch) = input_stream.next().await {
                 let batch = batch?;
+                let (batch, filtered_schema) = strip_auto_increment_columns(batch, &remote_schema);
                 let count = conn
                     .insert(
                         &conn_options,
                         literalizer.clone(),
                         &table,
-                        remote_schema.clone(),
+                        filtered_schema,
                         batch,
                     )
                     .await?;
@@ -151,4 +152,54 @@ fn make_count_schema() -> SchemaRef {
         DataType::Int64,
         false,
     )]))
+}
+
+/// Strip auto-increment columns that are entirely null from the batch.
+///
+/// When a user omits the auto-increment column from an INSERT statement
+/// (e.g. `INSERT INTO t (name) VALUES ('Tom')`), datafusion still passes
+/// a RecordBatch with all columns from the table schema, with the omitted
+/// columns filled with NULLs. This function removes those columns so the
+/// database can auto-generate the values.
+fn strip_auto_increment_columns(
+    batch: RecordBatch,
+    remote_schema: &RemoteSchema,
+) -> (RecordBatch, RemoteSchemaRef) {
+    let has_auto_increment = remote_schema.fields.iter().any(|f| f.auto_increment);
+
+    if !has_auto_increment {
+        return (batch, Arc::new(remote_schema.clone()));
+    }
+
+    let mut keep_indices = Vec::new();
+    let mut kept_fields = Vec::new();
+
+    for (i, remote_field) in remote_schema.fields.iter().enumerate() {
+        if remote_field.auto_increment && batch.column(i).null_count() == batch.num_rows() {
+            // All values are null — this column was omitted by the user, skip it
+            continue;
+        }
+        keep_indices.push(i);
+        kept_fields.push(remote_field.clone());
+    }
+
+    // If no columns were removed, return as-is
+    if keep_indices.len() == batch.num_columns() {
+        return (batch, Arc::new(remote_schema.clone()));
+    }
+
+    let columns: Vec<ArrayRef> = keep_indices
+        .iter()
+        .map(|&i| batch.column(i).clone())
+        .collect();
+    let schema = Arc::new(Schema::new(
+        keep_indices
+            .iter()
+            .map(|&i| batch.schema().field(i).clone())
+            .collect::<Vec<_>>(),
+    ));
+    let new_batch = RecordBatch::try_new(schema, columns).expect("failed to create filtered batch");
+    let new_schema = Arc::new(RemoteSchema::new(kept_fields));
+
+    (new_batch, new_schema)
 }

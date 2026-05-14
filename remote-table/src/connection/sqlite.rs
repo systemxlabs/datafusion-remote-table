@@ -156,12 +156,6 @@ impl Connection for SqliteConnection {
 
         let mut columns = Vec::with_capacity(remote_schema.fields.len());
         for i in 0..batch.num_columns() {
-            let input_field = batch.schema_ref().field(i);
-            let remote_field = &remote_schema.fields[i];
-            if remote_field.auto_increment && input_field.is_nullable() {
-                continue;
-            }
-
             let remote_type = remote_schema.fields[i].remote_type.clone();
             let array = batch.column(i);
             let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
@@ -181,14 +175,7 @@ impl Connection for SqliteConnection {
         }
 
         let mut col_names = Vec::with_capacity(remote_schema.fields.len());
-        for (remote_field, input_field) in remote_schema
-            .fields
-            .iter()
-            .zip(batch.schema_ref().fields.iter())
-        {
-            if remote_field.auto_increment && input_field.is_nullable() {
-                continue;
-            }
+        for remote_field in remote_schema.fields.iter() {
             col_names.push(RemoteDbType::Sqlite.sql_identifier(&remote_field.name));
         }
 
@@ -271,11 +258,17 @@ fn build_remote_schema_for_table(mut rows: Rows) -> DFResult<RemoteSchema> {
         let nullable = row.get::<_, i64>(3).map_err(|e| {
             DataFusionError::Execution(format!("Failed to get nullable from sqlite row: {e:?}"))
         })? == 0;
-        remote_fields.push(RemoteField::new(
-            &name,
-            RemoteType::Sqlite(remote_type),
-            nullable,
-        ));
+        // In SQLite, `INTEGER PRIMARY KEY` columns are aliases for rowid and auto-increment.
+        // PRAGMA table_info returns pk=1 for the primary key column.
+        let pk = row.get::<_, i64>(5).map_err(|e| {
+            DataFusionError::Execution(format!("Failed to get pk from sqlite row: {e:?}"))
+        })?;
+        let auto_increment = pk > 0 && decl_type.eq_ignore_ascii_case("integer");
+        let mut field = RemoteField::new(&name, RemoteType::Sqlite(remote_type), nullable);
+        if auto_increment {
+            field = field.with_auto_increment(true);
+        }
+        remote_fields.push(field);
     }
     Ok(RemoteSchema::new(remote_fields))
 }
