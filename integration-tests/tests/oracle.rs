@@ -146,7 +146,6 @@ async fn count1_agg(#[case] source: RemoteSource) {
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
           FilterExec: ID@0 > Some(1),38,0, projection=[]
-            RemoteTableScanExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
@@ -154,7 +153,6 @@ async fn count1_agg(#[case] source: RemoteSource) {
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
           FilterExec: ID@0 > Some(1),38,0, projection=[]
-            RemoteTableScanExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
@@ -176,7 +174,6 @@ async fn count1_agg(#[case] source: RemoteSource) {
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
           FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
-            RemoteTableScanExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
@@ -184,7 +181,6 @@ async fn count1_agg(#[case] source: RemoteSource) {
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
           FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
-            RemoteTableScanExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
