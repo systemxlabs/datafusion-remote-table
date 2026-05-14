@@ -32,8 +32,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
         source,
         "select * from remote_table limit 1",
         vec![
-            "CooperativeExec\n  RemoteTableExec: source=query, limit=1\n",
-            "CooperativeExec\n  RemoteTableExec: source=simple_table, limit=1\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=query, limit=1\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=simple_table, limit=1\n",
         ],
         r#"+----+------+
 | ID | NAME |
@@ -57,11 +57,11 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         vec![
             r#"FilterExec: ID@0 = 1
   CooperativeExec
-    RemoteTableExec: source=query
+    RemoteTableScanExec: source=query
 "#,
             r#"FilterExec: ID@0 = 1
   CooperativeExec
-    RemoteTableExec: source=simple_table
+    RemoteTableScanExec: source=simple_table
 "#,
         ],
         r#"+----+------+
@@ -96,8 +96,8 @@ async fn empty_projection(#[case] source: RemoteSource) {
     println!("{plan_display}");
     assert!(
         [
-            "CooperativeExec\n  RemoteTableExec: source=query, projection=[]\n",
-            "CooperativeExec\n  RemoteTableExec: source=simple_table, projection=[]\n"
+            "CooperativeExec\n  RemoteTableScanExec: source=query, projection=[]\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=simple_table, projection=[]\n"
         ]
         .contains(&plan_display.as_str())
     );

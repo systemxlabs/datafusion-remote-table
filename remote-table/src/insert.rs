@@ -20,7 +20,7 @@ pub struct RemoteTableInsertExec {
     pub(crate) literalizer: Arc<dyn Literalize>,
     pub(crate) table: Vec<String>,
     pub(crate) remote_schema: RemoteSchemaRef,
-    plan_properties: PlanProperties,
+    plan_properties: Arc<PlanProperties>,
 }
 
 impl RemoteTableInsertExec {
@@ -33,12 +33,12 @@ impl RemoteTableInsertExec {
         remote_schema: RemoteSchemaRef,
     ) -> Self {
         // TODO sqlite does not support parallel insert
-        let plan_properties = PlanProperties::new(
+        let plan_properties = Arc::new(PlanProperties::new(
             EquivalenceProperties::new(make_count_schema()),
             Partitioning::UnknownPartitioning(input.output_partitioning().partition_count()),
             input.pipeline_behavior(),
             input.boundedness(),
-        );
+        ));
         Self {
             input,
             conn_options,
@@ -60,7 +60,7 @@ impl ExecutionPlan for RemoteTableInsertExec {
         self
     }
 
-    fn properties(&self) -> &PlanProperties {
+    fn properties(&self) -> &Arc<PlanProperties> {
         &self.plan_properties
     }
 

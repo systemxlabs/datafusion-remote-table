@@ -132,8 +132,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
         source,
         "select * from remote_table limit 1",
         vec![
-            "CooperativeExec\n  RemoteTableExec: source=query, limit=1\n",
-            "CooperativeExec\n  RemoteTableExec: source=simple_table, limit=1\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=query, limit=1\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=simple_table, limit=1\n",
         ],
         r#"+----+------+
 | id | name |
@@ -155,8 +155,8 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         source,
         "select * from remote_table where id = 1",
         vec![
-            "CooperativeExec\n  RemoteTableExec: source=query, filters=[(\"id\" = 1)]\n",
-            "CooperativeExec\n  RemoteTableExec: source=simple_table, filters=[(\"id\" = 1)]\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=query, filters=[(\"id\" = 1)]\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=simple_table, filters=[(\"id\" = 1)]\n",
         ],
         r#"+----+------+
 | id | name |
@@ -255,7 +255,7 @@ async fn empty_projection() {
     println!("{plan_display}");
     assert_eq!(
         plan_display,
-        "CooperativeExec\n  RemoteTableExec: source=query, projection=[]\n"
+        "CooperativeExec\n  RemoteTableScanExec: source=query, projection=[]\n"
     );
 
     let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();

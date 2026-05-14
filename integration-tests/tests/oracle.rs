@@ -74,8 +74,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
         source,
         "select * from remote_table limit 1",
         vec![
-            "CooperativeExec\n  RemoteTableExec: source=query, limit=1\n",
-            "CooperativeExec\n  RemoteTableExec: source=SYS.simple_table, limit=1\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=query, limit=1\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=SYS.simple_table, limit=1\n",
         ],
         r#"+----+------+
 | ID | NAME |
@@ -99,11 +99,11 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         vec![
             r#"FilterExec: ID@0 = Some(1),38,0
   CooperativeExec
-    RemoteTableExec: source=query
+    RemoteTableScanExec: source=query
 "#,
             r#"FilterExec: ID@0 = Some(1),38,0
   CooperativeExec
-    RemoteTableExec: source=SYS.simple_table
+    RemoteTableScanExec: source=SYS.simple_table
 "#,
         ],
         r#"+----+------+
@@ -145,20 +145,16 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0
-              CooperativeExec
-                RemoteTableExec: source=query, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[]
+            RemoteTableScanExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0
-              CooperativeExec
-                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[]
+            RemoteTableScanExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
@@ -179,20 +175,16 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0, fetch=1
-              CooperativeExec
-                RemoteTableExec: source=query, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
+            RemoteTableScanExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0, fetch=1
-              CooperativeExec
-                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
+            RemoteTableScanExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
@@ -227,8 +219,8 @@ async fn empty_projection(#[case] source: RemoteSource) {
     println!("{plan_display}");
     assert!(
         [
-            "CooperativeExec\n  RemoteTableExec: source=query, projection=[]\n",
-            "CooperativeExec\n  RemoteTableExec: source=SYS.simple_table, projection=[]\n"
+            "CooperativeExec\n  RemoteTableScanExec: source=query, projection=[]\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=SYS.simple_table, projection=[]\n"
         ]
         .contains(&plan_display.as_str())
     );
