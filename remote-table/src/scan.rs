@@ -10,6 +10,9 @@ use datafusion_execution::{SendableRecordBatchStream, TaskContext};
 use datafusion_physical_expr::{EquivalenceProperties, Partitioning};
 use datafusion_physical_plan::display::ProjectSchemaDisplay;
 use datafusion_physical_plan::execution_plan::{Boundedness, EmissionType};
+use datafusion_physical_plan::limit::LimitStream;
+use datafusion_physical_plan::metrics::BaselineMetrics;
+use datafusion_physical_plan::metrics::ExecutionPlanMetricsSet;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion_physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, project_schema,
@@ -78,7 +81,7 @@ impl RemoteTableScanExec {
 
 impl ExecutionPlan for RemoteTableScanExec {
     fn name(&self) -> &str {
-        "RemoteTableExec"
+        "RemoteTableScanExec"
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -187,24 +190,21 @@ async fn build_and_transform_stream(
     transform: Arc<dyn Transform>,
 ) -> DFResult<SendableRecordBatchStream> {
     let db_type = conn_options.db_type();
-    let limit = if db_type.support_rewrite_with_filters_limit(&source) {
-        limit
-    } else {
-        None
-    };
+    let support_limit_pushdown = db_type.support_rewrite_with_filters_limit(&source);
+    let pushdown_limit = if support_limit_pushdown { limit } else { None };
 
     let conn = pool.get().await?;
 
-    if transform.is::<DefaultTransform>() {
+    let mut stream = if transform.is::<DefaultTransform>() {
         conn.query(
             &conn_options,
             &source,
             table_schema.clone(),
             projection.as_ref(),
             unparsed_filters.as_slice(),
-            limit,
+            pushdown_limit,
         )
-        .await
+        .await?
     } else {
         let Some(remote_schema) = remote_schema else {
             return Err(DataFusionError::Execution(
@@ -218,25 +218,37 @@ async fn build_and_transform_stream(
                 table_schema.clone(),
                 None,
                 unparsed_filters.as_slice(),
-                limit,
+                pushdown_limit,
             )
             .await?;
-        Ok(Box::pin(TransformStream::try_new(
+        Box::pin(TransformStream::try_new(
             stream,
             transform.clone(),
             table_schema,
             projection,
             remote_schema,
             db_type,
-        )?))
+        )?)
+    };
+
+    if !support_limit_pushdown && limit.is_some() {
+        let metrics_set = ExecutionPlanMetricsSet::new();
+        stream = Box::pin(LimitStream::new(
+            stream,
+            0,
+            limit,
+            BaselineMetrics::new(&metrics_set, 0),
+        ));
     }
+
+    Ok(stream)
 }
 
 impl DisplayAs for RemoteTableScanExec {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "RemoteTableExec: source={}",
+            "RemoteTableScanExec: source={}",
             match &self.source {
                 RemoteSource::Query(_query) => "query".to_string(),
                 RemoteSource::Table(table) => table.join("."),
