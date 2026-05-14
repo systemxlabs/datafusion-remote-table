@@ -136,7 +136,9 @@ select
 	end as column_type,
 	numeric_precision,
 	numeric_scale,
-	is_nullable
+	is_nullable,
+	column_default,
+	is_identity
 from information_schema.columns
 where {}
 order by ordinal_position",
@@ -223,12 +225,6 @@ order by ordinal_position",
     ) -> DFResult<usize> {
         let mut columns = Vec::with_capacity(remote_schema.fields.len());
         for i in 0..batch.num_columns() {
-            let input_field = batch.schema_ref().field(i);
-            let remote_field = &remote_schema.fields[i];
-            if remote_field.auto_increment && input_field.is_nullable() {
-                continue;
-            }
-
             let remote_type = remote_schema.fields[i].remote_type.clone();
             let array = batch.column(i);
             let column = literalize_array(literalizer.as_ref(), array, remote_type)?;
@@ -248,14 +244,7 @@ order by ordinal_position",
         }
 
         let mut col_names = Vec::with_capacity(remote_schema.fields.len());
-        for (remote_field, input_field) in remote_schema
-            .fields
-            .iter()
-            .zip(batch.schema_ref().fields.iter())
-        {
-            if remote_field.auto_increment && input_field.is_nullable() {
-                continue;
-            }
+        for remote_field in remote_schema.fields.iter() {
             col_names.push(RemoteDbType::Postgres.sql_identifier(&remote_field.name));
         }
 
@@ -378,11 +367,29 @@ fn build_remote_schema_for_table(
                 )));
             }
         };
-        remote_fields.push(RemoteField::new(
-            columa_name,
-            RemoteType::Postgres(pg_type),
-            nullable,
-        ));
+        // Detect auto-increment columns:
+        // - SERIAL columns have column_default like 'nextval('table_name_col_name_seq'::regclass)'
+        // - IDENTITY columns have is_identity = 'YES'
+        let column_default: Option<String> = row.try_get::<_, Option<String>>(5).map_err(|e| {
+            DataFusionError::Plan(format!(
+                "Failed to get column_default from postgres row: {e:?}"
+            ))
+        })?;
+        let is_identity: String = row.try_get::<_, String>(6).map_err(|e| {
+            DataFusionError::Plan(format!(
+                "Failed to get is_identity from postgres row: {e:?}"
+            ))
+        })?;
+        let auto_increment = is_identity == "YES"
+            || column_default
+                .as_deref()
+                .is_some_and(|d| d.starts_with("nextval("));
+
+        let mut field = RemoteField::new(columa_name, RemoteType::Postgres(pg_type), nullable);
+        if auto_increment {
+            field = field.with_auto_increment(true);
+        }
+        remote_fields.push(field);
     }
     Ok(RemoteSchema::new(remote_fields))
 }
