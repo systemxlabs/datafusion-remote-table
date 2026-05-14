@@ -145,20 +145,16 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0
-              CooperativeExec
-                RemoteTableExec: source=query, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[]
+            RemoteTableExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0
-              CooperativeExec
-                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[]
+            RemoteTableExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
@@ -179,20 +175,16 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0, fetch=1
-              CooperativeExec
-                RemoteTableExec: source=query, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
+            RemoteTableExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
   AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          ProjectionExec: expr=[]
-            FilterExec: ID@0 > Some(1),38,0, fetch=1
-              CooperativeExec
-                RemoteTableExec: source=SYS.simple_table, projection=[ID]
+          FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
+            RemoteTableExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
         r#"+----------+
