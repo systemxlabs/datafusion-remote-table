@@ -52,7 +52,7 @@ pub(crate) fn build_buffer_desc(
             })
         }
         DataType::FixedSizeBinary(size) => Ok(BufferDesc::Binary {
-            length: *size as usize,
+            max_bytes: *size as usize,
         }),
         DataType::Binary | DataType::BinaryView => {
             let column_size = cursor
@@ -64,7 +64,7 @@ pub(crate) fn build_buffer_desc(
                 })?
                 .get();
             Ok(BufferDesc::Binary {
-                length: column_size,
+                max_bytes: column_size,
             })
         }
         DataType::Timestamp(_, _) => Ok(BufferDesc::Timestamp { nullable }),
