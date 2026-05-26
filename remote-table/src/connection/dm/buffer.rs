@@ -14,7 +14,7 @@ use arrow::array::{
 use arrow::datatypes::{DataType, Date32Type, Field, SchemaRef, TimeUnit};
 use chrono::{NaiveDate, NaiveTime, Timelike};
 use datafusion_common::{DataFusionError, project_schema};
-use odbc_api::buffers::{BufferDesc, ColumnarAnyBuffer};
+use odbc_api::buffers::{BufferDesc, ColumnarDynBuffer};
 use odbc_api::handles::StatementImpl;
 use odbc_api::{Bit, CursorImpl, ResultSetMetadata, decimal_text_to_i128};
 
@@ -134,7 +134,7 @@ macro_rules! handle_text_view {
                     $field,
                 )
             });
-        let values = $col_slice.as_text_view().ok_or_else(|| {
+        let values = $col_slice.as_text().ok_or_else(|| {
             DataFusionError::Execution(format!("Failed to get view for {:?}", $field))
         })?;
         for value in values.iter() {
@@ -154,7 +154,7 @@ macro_rules! handle_text_view {
 }
 
 pub(crate) fn buffer_to_batch(
-    buffer: &ColumnarAnyBuffer,
+    buffer: &ColumnarDynBuffer,
     table_schema: &SchemaRef,
     projection: Option<&Vec<usize>>,
     chunk_size: usize,
@@ -274,7 +274,7 @@ pub(crate) fn buffer_to_batch(
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to FixedSizeBinaryBuilder for {field:?}")
                     });
-                let values = col_slice.as_bin_view().ok_or_else(|| {
+                let values = col_slice.as_binary().ok_or_else(|| {
                     DataFusionError::Execution(format!("Failed to get bin view for {field:?}"))
                 })?;
                 for value in values.iter() {
@@ -295,7 +295,7 @@ pub(crate) fn buffer_to_batch(
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to BinaryBuilder for {field:?}")
                     });
-                let values = col_slice.as_bin_view().ok_or_else(|| {
+                let values = col_slice.as_binary().ok_or_else(|| {
                     DataFusionError::Execution(format!("Failed to get bin view for {field:?}"))
                 })?;
                 for value in values.iter() {
@@ -316,7 +316,7 @@ pub(crate) fn buffer_to_batch(
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to BinaryViewBuilder for {field:?}")
                     });
-                let values = col_slice.as_bin_view().ok_or_else(|| {
+                let values = col_slice.as_binary().ok_or_else(|| {
                     DataFusionError::Execution(format!("Failed to get bin view for {field:?}"))
                 })?;
                 for value in values.iter() {
