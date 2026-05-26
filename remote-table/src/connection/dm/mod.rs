@@ -14,7 +14,7 @@ use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
-use odbc_api::buffers::ColumnarAnyBuffer;
+use odbc_api::buffers::ColumnarDynBuffer;
 use odbc_api::handles::StatementImpl;
 use odbc_api::{Cursor, CursorImpl, Environment, ResultSetMetadata};
 use std::sync::Arc;
@@ -152,7 +152,7 @@ impl Connection for DmConnection {
                             .map(|(idx, field)| build_buffer_desc(field, &mut cursor, idx))
                             .collect::<DFResult<Vec<_>>>()?;
 
-                        let row_set_buffer = ColumnarAnyBuffer::try_from_descs(
+                        let row_set_buffer = ColumnarDynBuffer::try_from_descs(
                             chunk_size,
                             buffer_descs,
                         )
