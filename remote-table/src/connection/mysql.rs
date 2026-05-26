@@ -255,7 +255,7 @@ fn mysql_type_to_remote_type(mysql_col: &Column) -> DFResult<MysqlType> {
 
 fn build_remote_schema(stmt: &mysql_async::Statement) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
-    for col in stmt.columns() {
+    for col in stmt.columns().iter() {
         remote_fields.push(RemoteField::new(
             col.name_str().to_string(),
             RemoteType::Mysql(mysql_type_to_remote_type(col)?),
