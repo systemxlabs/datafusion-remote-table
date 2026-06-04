@@ -1,7 +1,8 @@
 use crate::RemoteDbType;
 use derive_getters::Getters;
 use derive_with::With;
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub enum ConnectionOptions {
@@ -10,6 +11,7 @@ pub enum ConnectionOptions {
     Mysql(MysqlConnectionOptions),
     Sqlite(SqliteConnectionOptions),
     Dm(DmConnectionOptions),
+    Mdb(MdbConnectionOptions),
 }
 
 impl ConnectionOptions {
@@ -20,6 +22,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mysql(options) => options.stream_chunk_size,
             ConnectionOptions::Sqlite(options) => options.stream_chunk_size,
             ConnectionOptions::Dm(options) => options.stream_chunk_size,
+            ConnectionOptions::Mdb(options) => options.stream_chunk_size,
         }
     }
 
@@ -30,6 +33,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mysql(_) => RemoteDbType::Mysql,
             ConnectionOptions::Sqlite(_) => RemoteDbType::Sqlite,
             ConnectionOptions::Dm(_) => RemoteDbType::Dm,
+            ConnectionOptions::Mdb(_) => RemoteDbType::Mdb,
         }
     }
 
@@ -46,6 +50,7 @@ impl ConnectionOptions {
             }
             ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
             ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
+            ConnectionOptions::Mdb(options) => ConnectionOptions::Mdb(options),
         }
     }
 }
@@ -233,5 +238,66 @@ impl DmConnectionOptions {
 impl From<DmConnectionOptions> for ConnectionOptions {
     fn from(options: DmConnectionOptions) -> Self {
         ConnectionOptions::Dm(options)
+    }
+}
+
+#[derive(Debug, Clone, With, Getters)]
+pub struct MdbConnectionOptions {
+    pub path: PathBuf,
+    pub driver: String,
+    pub stream_chunk_size: usize,
+    pub uid: Option<String>,
+    pub pwd: Option<String>,
+    /// Extra `key=value;` fragments appended verbatim. Use this for driver-specific
+    /// parameters not covered by the typed fields (e.g. `SystemDB`, `Exclusive=1`,
+    /// `IMEX=1` for the Microsoft Access ODBC driver on Windows).
+    pub extra_params: Vec<(String, String)>,
+}
+
+impl MdbConnectionOptions {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            driver: "MDBTools".to_string(),
+            stream_chunk_size: 2048,
+            uid: None,
+            pwd: None,
+            extra_params: Vec::new(),
+        }
+    }
+
+    pub fn new_with_driver(path: PathBuf, driver: impl Into<String>) -> Self {
+        Self {
+            path,
+            driver: driver.into(),
+            stream_chunk_size: 2048,
+            uid: None,
+            pwd: None,
+            extra_params: Vec::new(),
+        }
+    }
+
+    /// Build the ODBC connection string. The default `Driver={...};DBQ=...` form
+    /// works for the mdbtools (Linux) driver. For the Microsoft Access ODBC driver
+    /// on Windows, set `uid`/`pwd` or add entries to `extra_params` (e.g.
+    /// `SystemDB`, `Exclusive`, `IMEX`).
+    pub fn connection_string(&self) -> String {
+        let mut s = format!("Driver={{{}}};DBQ={}", self.driver, self.path.display());
+        if let Some(uid) = &self.uid {
+            s.push_str(&format!(";UID={uid}"));
+        }
+        if let Some(pwd) = &self.pwd {
+            s.push_str(&format!(";PWD={pwd}"));
+        }
+        for (k, v) in &self.extra_params {
+            s.push_str(&format!(";{k}={v}"));
+        }
+        s
+    }
+}
+
+impl From<MdbConnectionOptions> for ConnectionOptions {
+    fn from(options: MdbConnectionOptions) -> Self {
+        ConnectionOptions::Mdb(options)
     }
 }

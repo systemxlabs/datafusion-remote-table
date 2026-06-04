@@ -1,12 +1,13 @@
 use crate::DmConnectionOptions;
 use crate::LazyPool;
+use crate::MdbConnectionOptions;
 use crate::MysqlConnectionOptions;
 use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
-    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize,
+    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize, MdbType,
     MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
     RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
 };
@@ -355,6 +356,9 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                 },
             )),
         },
+        ConnectionOptions::Mdb(_) => protobuf::ConnectionOptions {
+            connection_options: None,
+        },
     }
 }
 
@@ -420,7 +424,17 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 driver: options.driver,
             })
         }
-        _ => panic!("Failed to parse connection options: {options:?}"),
+        // Mdb has no proto representation yet (see remote_table.proto's
+        // ConnectionOptions.oneof). Roundtrip therefore degrades to a default
+        // MdbConnectionOptions with an empty path; we log so the user can spot it.
+        None => {
+            log::warn!(
+                "parse_connection_options: missing oneof for Mdb, returning default MdbConnectionOptions"
+            );
+            ConnectionOptions::Mdb(MdbConnectionOptions::new(std::path::PathBuf::new()))
+        } // The five Some(...) variants above exhaust the proto oneof. If a
+          // future variant is added, the compiler will flag this match as
+          // non-exhaustive and force an update.
     }
 }
 
@@ -931,6 +945,7 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         RemoteType::Dm(DmType::Date) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::DmDate(protobuf::Empty {})),
         },
+        RemoteType::Mdb(_) => protobuf::RemoteType { r#type: None },
     }
 }
 
@@ -954,7 +969,14 @@ fn parse_remote_field(field: &protobuf::RemoteField) -> RemoteField {
 }
 
 fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
-    match remote_type.r#type.as_ref().unwrap() {
+    // Mdb has no proto representation yet (see remote_table.proto's RemoteType.oneof).
+    // Roundtrip therefore degrades to a Bit sentinel; the arrow type Boolean is the
+    // most likely incorrect mapping, so we log to make the loss visible.
+    let Some(type_oneof) = remote_type.r#type.as_ref() else {
+        log::warn!("parse_remote_type: missing oneof for Mdb, returning MdbType::Bit as sentinel");
+        return RemoteType::Mdb(MdbType::Bit);
+    };
+    match type_oneof {
         protobuf::remote_type::Type::PostgresInt2(_) => RemoteType::Postgres(PostgresType::Int2),
         protobuf::remote_type::Type::PostgresInt4(_) => RemoteType::Postgres(PostgresType::Int4),
         protobuf::remote_type::Type::PostgresInt8(_) => RemoteType::Postgres(PostgresType::Int8),

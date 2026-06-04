@@ -4,8 +4,9 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, DmConnectionOptions, MysqlConnectionOptions, OracleConnectionOptions,
-    PostgresConnectionOptions, RemoteDbType, RemoteSource, RemoteTable, SqliteConnectionOptions,
+    ConnectionOptions, DmConnectionOptions, MdbConnectionOptions, MysqlConnectionOptions,
+    OracleConnectionOptions, PostgresConnectionOptions, RemoteDbType, RemoteSource, RemoteTable,
+    SqliteConnectionOptions,
 };
 use std::sync::Arc;
 
@@ -138,5 +139,8 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
             "SYSDBA",
             "Password123",
         )),
+        RemoteDbType::Mdb => {
+            ConnectionOptions::Mdb(MdbConnectionOptions::new(crate::setup_mdb().to_path_buf()))
+        }
     }
 }
