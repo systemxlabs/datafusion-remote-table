@@ -356,8 +356,24 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                 },
             )),
         },
-        ConnectionOptions::Mdb(_) => protobuf::ConnectionOptions {
-            connection_options: None,
+        ConnectionOptions::Mdb(options) => protobuf::ConnectionOptions {
+            connection_options: Some(protobuf::connection_options::ConnectionOptions::Mdb(
+                protobuf::MdbConnectionOptions {
+                    path: options.path.to_str().unwrap_or("").to_string(),
+                    driver: options.driver.clone(),
+                    stream_chunk_size: options.stream_chunk_size as u32,
+                    uid: options.uid.clone(),
+                    pwd: options.pwd.clone(),
+                    extra_params: options
+                        .extra_params
+                        .iter()
+                        .map(|(k, v)| protobuf::MdbExtraParam {
+                            key: k.clone(),
+                            value: v.clone(),
+                        })
+                        .collect(),
+                },
+            )),
         },
     }
 }
@@ -424,17 +440,33 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 driver: options.driver,
             })
         }
-        // Mdb has no proto representation yet (see remote_table.proto's
-        // ConnectionOptions.oneof). Roundtrip therefore degrades to a default
-        // MdbConnectionOptions with an empty path; we log so the user can spot it.
+        Some(protobuf::connection_options::ConnectionOptions::Mdb(options)) => {
+            ConnectionOptions::Mdb({
+                let mut mdb_opts =
+                    MdbConnectionOptions::new(std::path::Path::new(&options.path).to_path_buf());
+                if !options.driver.is_empty() {
+                    mdb_opts.driver = options.driver;
+                }
+                if options.stream_chunk_size > 0 {
+                    mdb_opts.stream_chunk_size = options.stream_chunk_size as usize;
+                }
+                if let Some(uid) = options.uid {
+                    mdb_opts.uid = Some(uid);
+                }
+                if let Some(pwd) = options.pwd {
+                    mdb_opts.pwd = Some(pwd);
+                }
+                mdb_opts.extra_params = options
+                    .extra_params
+                    .into_iter()
+                    .map(|p| (p.key, p.value))
+                    .collect();
+                mdb_opts
+            })
+        }
         None => {
-            log::warn!(
-                "parse_connection_options: missing oneof for Mdb, returning default MdbConnectionOptions"
-            );
-            ConnectionOptions::Mdb(MdbConnectionOptions::new(std::path::PathBuf::new()))
-        } // The five Some(...) variants above exhaust the proto oneof. If a
-          // future variant is added, the compiler will flag this match as
-          // non-exhaustive and force an update.
+            panic!("parse_connection_options: missing connection_options oneof — cannot decode");
+        }
     }
 }
 
@@ -945,7 +977,59 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         RemoteType::Dm(DmType::Date) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::DmDate(protobuf::Empty {})),
         },
-        RemoteType::Mdb(_) => protobuf::RemoteType { r#type: None },
+        RemoteType::Mdb(MdbType::Bit) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbBit(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::TinyInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbTinyInt(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::SmallInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbSmallInt(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Integer) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbInteger(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Real) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbReal(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Double) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbDouble(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Currency) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbCurrency(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Text(len)) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbText(protobuf::MdbText {
+                length: len.map(|l| l as u32),
+            })),
+        },
+        RemoteType::Mdb(MdbType::Memo) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbMemo(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Binary(len)) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbBinary(
+                protobuf::MdbBinary {
+                    length: len.map(|l| l as u32),
+                },
+            )),
+        },
+        RemoteType::Mdb(MdbType::OleObject) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbOleObject(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Mdb(MdbType::Guid) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbGuid(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::DateTime) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbDateTime(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Date) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbDate(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Time) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbTime(protobuf::Empty {})),
+        },
     }
 }
 
@@ -969,12 +1053,10 @@ fn parse_remote_field(field: &protobuf::RemoteField) -> RemoteField {
 }
 
 fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
-    // Mdb has no proto representation yet (see remote_table.proto's RemoteType.oneof).
-    // Roundtrip therefore degrades to a Bit sentinel; the arrow type Boolean is the
-    // most likely incorrect mapping, so we log to make the loss visible.
     let Some(type_oneof) = remote_type.r#type.as_ref() else {
-        log::warn!("parse_remote_type: missing oneof for Mdb, returning MdbType::Bit as sentinel");
-        return RemoteType::Mdb(MdbType::Bit);
+        // A missing oneof indicates data from a codec that predates the MDB proto
+        // representation. We cannot recover the original type, so this is an error.
+        panic!("parse_remote_type: missing RemoteType.oneof — cannot decode");
     };
     match type_oneof {
         protobuf::remote_type::Type::PostgresInt2(_) => RemoteType::Postgres(PostgresType::Int2),
@@ -1169,6 +1251,25 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
             RemoteType::Dm(DmType::Time(*precision as u8))
         }
         protobuf::remote_type::Type::DmDate(_) => RemoteType::Dm(DmType::Date),
+        protobuf::remote_type::Type::MdbBit(_) => RemoteType::Mdb(MdbType::Bit),
+        protobuf::remote_type::Type::MdbTinyInt(_) => RemoteType::Mdb(MdbType::TinyInt),
+        protobuf::remote_type::Type::MdbSmallInt(_) => RemoteType::Mdb(MdbType::SmallInt),
+        protobuf::remote_type::Type::MdbInteger(_) => RemoteType::Mdb(MdbType::Integer),
+        protobuf::remote_type::Type::MdbReal(_) => RemoteType::Mdb(MdbType::Real),
+        protobuf::remote_type::Type::MdbDouble(_) => RemoteType::Mdb(MdbType::Double),
+        protobuf::remote_type::Type::MdbCurrency(_) => RemoteType::Mdb(MdbType::Currency),
+        protobuf::remote_type::Type::MdbText(protobuf::MdbText { length }) => {
+            RemoteType::Mdb(MdbType::Text(length.map(|l| l as u16)))
+        }
+        protobuf::remote_type::Type::MdbMemo(_) => RemoteType::Mdb(MdbType::Memo),
+        protobuf::remote_type::Type::MdbBinary(protobuf::MdbBinary { length }) => {
+            RemoteType::Mdb(MdbType::Binary(length.map(|l| l as u16)))
+        }
+        protobuf::remote_type::Type::MdbOleObject(_) => RemoteType::Mdb(MdbType::OleObject),
+        protobuf::remote_type::Type::MdbGuid(_) => RemoteType::Mdb(MdbType::Guid),
+        protobuf::remote_type::Type::MdbDateTime(_) => RemoteType::Mdb(MdbType::DateTime),
+        protobuf::remote_type::Type::MdbDate(_) => RemoteType::Mdb(MdbType::Date),
+        protobuf::remote_type::Type::MdbTime(_) => RemoteType::Mdb(MdbType::Time),
     }
 }
 
