@@ -1,6 +1,9 @@
 use crate::connection::ODBC_ENV;
 use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
+pub(crate) use crate::connection::odbc_util::{
+    ms_since_epoch, ns_since_epoch, seconds_since_epoch, us_since_epoch,
+};
 use crate::{
     Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
     PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
@@ -14,7 +17,7 @@ use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
-use odbc_api::buffers::ColumnarAnyBuffer;
+use odbc_api::buffers::ColumnarDynBuffer;
 use odbc_api::handles::StatementImpl;
 use odbc_api::{Cursor, CursorImpl, Environment, ResultSetMetadata};
 use std::sync::Arc;
@@ -152,7 +155,7 @@ impl Connection for DmConnection {
                             .map(|(idx, field)| build_buffer_desc(field, &mut cursor, idx))
                             .collect::<DFResult<Vec<_>>>()?;
 
-                        let row_set_buffer = ColumnarAnyBuffer::try_from_descs(
+                        let row_set_buffer = ColumnarDynBuffer::try_from_descs(
                             chunk_size,
                             buffer_descs,
                         )
@@ -318,58 +321,5 @@ fn dm_type_to_remote_type(data_type: odbc_api::DataType) -> DFResult<DmType> {
     }
 }
 
-pub(crate) fn seconds_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-    let ndt =
-        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
-            .and_hms_opt(value.hour as u32, value.minute as u32, value.second as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?;
-    Ok::<_, DataFusionError>(ndt.and_utc().timestamp())
-}
-
-pub(crate) fn ms_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-    let ndt =
-        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
-            .and_hms_nano_opt(
-                value.hour as u32,
-                value.minute as u32,
-                value.second as u32,
-                value.fraction,
-            )
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?;
-    Ok::<_, DataFusionError>(ndt.and_utc().timestamp_millis())
-}
-
-pub(crate) fn us_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-    let ndt =
-        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
-            .and_hms_nano_opt(
-                value.hour as u32,
-                value.minute as u32,
-                value.second as u32,
-                value.fraction,
-            )
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?;
-    Ok::<_, DataFusionError>(ndt.and_utc().timestamp_micros())
-}
-
-pub(crate) fn ns_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-    let ndt =
-        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
-            .and_hms_nano_opt(
-                value.hour as u32,
-                value.minute as u32,
-                value.second as u32,
-                value.fraction,
-            )
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?;
-
-    // The dates that can be represented as nanoseconds are between 1677-09-21T00:12:44.0 and
-    // 2262-04-11T23:47:16.854775804
-    ndt.and_utc()
-        .timestamp_nanos_opt()
-        .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
-}
+// Epoch helpers (seconds_since_epoch, ms_since_epoch, us_since_epoch,
+// ns_since_epoch) are re-exported from `crate::connection::odbc_util` above.

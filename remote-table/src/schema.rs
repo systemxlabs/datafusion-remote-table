@@ -12,6 +12,7 @@ pub enum RemoteType {
     Oracle(OracleType),
     Sqlite(SqliteType),
     Dm(DmType),
+    Mdb(MdbType),
 }
 
 impl RemoteType {
@@ -22,6 +23,7 @@ impl RemoteType {
             RemoteType::Oracle(oracle_type) => oracle_type.to_arrow_type(),
             RemoteType::Sqlite(sqlite_type) => sqlite_type.to_arrow_type(),
             RemoteType::Dm(dm_type) => dm_type.to_arrow_type(),
+            RemoteType::Mdb(mdb_type) => mdb_type.to_arrow_type(),
         }
     }
 
@@ -32,6 +34,7 @@ impl RemoteType {
             RemoteType::Oracle(_) => RemoteDbType::Oracle,
             RemoteType::Sqlite(_) => RemoteDbType::Sqlite,
             RemoteType::Dm(_) => RemoteDbType::Dm,
+            RemoteType::Mdb(_) => RemoteDbType::Mdb,
         }
     }
 }
@@ -412,6 +415,79 @@ impl DmType {
                 }
             }
             DmType::Date => DataType::Date32,
+        }
+    }
+}
+
+/// https://github.com/nic-nicholas/mdbtools — ODBC types reported by libmdbodbc.so
+#[derive(Debug, Clone)]
+pub enum MdbType {
+    Bit,
+    TinyInt,
+    SmallInt,
+    Integer,
+    Real,
+    Double,
+    Currency,
+    Text(Option<u16>),
+    Memo,
+    Binary(Option<u16>),
+    OleObject,
+    Guid,
+    DateTime,
+    Date,
+    Time,
+}
+
+impl MdbType {
+    pub fn to_arrow_type(&self) -> DataType {
+        match self {
+            MdbType::Bit => DataType::Boolean,
+            MdbType::TinyInt => DataType::Int8,
+            MdbType::SmallInt => DataType::Int16,
+            MdbType::Integer => DataType::Int32,
+            MdbType::Real => DataType::Float32,
+            MdbType::Double => DataType::Float64,
+            MdbType::Currency => DataType::Decimal128(19, 4),
+            MdbType::Text(_) => DataType::Utf8,
+            MdbType::Memo => DataType::Utf8,
+            MdbType::Binary(_) => DataType::Binary,
+            MdbType::OleObject => DataType::Binary,
+            MdbType::Guid => DataType::FixedSizeBinary(16),
+            MdbType::DateTime => DataType::Timestamp(TimeUnit::Microsecond, None),
+            MdbType::Date => DataType::Date32,
+            MdbType::Time => DataType::Time64(TimeUnit::Microsecond),
+        }
+    }
+
+    /// Human-readable MDB type name (e.g. "Long Integer", "Text (100)", "OLE")
+    pub fn type_name(&self) -> String {
+        match self {
+            MdbType::Bit => "Bit".to_string(),
+            MdbType::TinyInt => "Byte".to_string(),
+            MdbType::SmallInt => "Small Integer".to_string(),
+            MdbType::Integer => "Long Integer".to_string(),
+            MdbType::Real => "Real".to_string(),
+            MdbType::Double => "Double".to_string(),
+            MdbType::Currency => "Currency".to_string(),
+            MdbType::Text(Some(len)) => format!("Text ({})", len),
+            MdbType::Text(None) => "Text".to_string(),
+            MdbType::Memo => "Memo".to_string(),
+            MdbType::Binary(Some(len)) => format!("Binary ({})", len),
+            MdbType::Binary(None) => "Binary".to_string(),
+            MdbType::OleObject => "OLE".to_string(),
+            MdbType::Guid => "GUID".to_string(),
+            MdbType::DateTime => "DateTime".to_string(),
+            MdbType::Date => "Date".to_string(),
+            MdbType::Time => "Time".to_string(),
+        }
+    }
+
+    /// For MDB column_size: return length for Text/Binary types, None otherwise
+    pub fn column_size(&self) -> Option<i32> {
+        match self {
+            MdbType::Text(len) | MdbType::Binary(len) => len.map(|l| l as i32),
+            _ => None,
         }
     }
 }
