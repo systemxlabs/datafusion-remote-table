@@ -143,13 +143,15 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 let table_schema: SchemaRef = Arc::new(convert_required!(&proto.table_schema)?);
                 let remote_schema = proto
                     .remote_schema
-                    .map(|schema| Arc::new(parse_remote_schema(&schema)));
+                    .map(|schema| parse_remote_schema(&schema))
+                    .transpose()?
+                    .map(Arc::new);
 
                 let projection = parse_projection(proto.projection.as_ref());
 
                 let limit = proto.limit.map(|l| l as usize);
 
-                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
+                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap())?);
                 let pool = LazyPool::new(conn_options.clone());
 
                 let row_count = proto.row_count.map(|c| c as usize);
@@ -178,9 +180,9 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
                 let input = inputs[0].clone();
 
-                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
+                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap())?);
                 let pool = LazyPool::new(conn_options.clone());
-                let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap()));
+                let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap())?);
                 let table = proto.table.unwrap().idents;
 
                 let literalizer = if proto.literalizer == DEFAULT_LITERALIZE_ID.as_bytes() {
@@ -378,8 +380,8 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
     }
 }
 
-fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionOptions {
-    match options.connection_options {
+fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<ConnectionOptions> {
+    Ok(match options.connection_options {
         Some(protobuf::connection_options::ConnectionOptions::Postgres(options)) => {
             ConnectionOptions::Postgres(PostgresConnectionOptions {
                 host: options.host,
@@ -465,9 +467,12 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
             })
         }
         None => {
-            panic!("parse_connection_options: missing connection_options oneof — cannot decode");
+            return Err(DataFusionError::Internal(
+                "parse_connection_options: missing connection_options oneof — cannot decode"
+                    .to_string(),
+            ));
         }
-    }
+    })
 }
 
 fn serialize_duration(duration: &Duration) -> protobuf::Duration {
@@ -1033,32 +1038,37 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
     }
 }
 
-fn parse_remote_schema(remote_schema: &protobuf::RemoteSchema) -> RemoteSchema {
+fn parse_remote_schema(remote_schema: &protobuf::RemoteSchema) -> DFResult<RemoteSchema> {
     let fields = remote_schema
         .fields
         .iter()
         .map(parse_remote_field)
-        .collect::<Vec<_>>();
+        .collect::<DFResult<Vec<_>>>()?;
 
-    RemoteSchema { fields }
+    Ok(RemoteSchema { fields })
 }
 
-fn parse_remote_field(field: &protobuf::RemoteField) -> RemoteField {
-    RemoteField {
+fn parse_remote_field(field: &protobuf::RemoteField) -> DFResult<RemoteField> {
+    let remote_type = field.remote_type.as_ref().ok_or_else(|| {
+        DataFusionError::Internal(
+            "parse_remote_field: missing RemoteType — cannot decode".to_string(),
+        )
+    })?;
+    Ok(RemoteField {
         name: field.name.clone(),
-        remote_type: parse_remote_type(field.remote_type.as_ref().unwrap()),
+        remote_type: parse_remote_type(remote_type)?,
         nullable: field.nullable,
         auto_increment: field.auto_increment,
-    }
+    })
 }
 
-fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
+fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType> {
     let Some(type_oneof) = remote_type.r#type.as_ref() else {
-        // A missing oneof indicates data from a codec that predates the MDB proto
-        // representation. We cannot recover the original type, so this is an error.
-        panic!("parse_remote_type: missing RemoteType.oneof — cannot decode");
+        return Err(DataFusionError::Internal(
+            "parse_remote_type: missing RemoteType.oneof — cannot decode".to_string(),
+        ));
     };
-    match type_oneof {
+    Ok(match type_oneof {
         protobuf::remote_type::Type::PostgresInt2(_) => RemoteType::Postgres(PostgresType::Int2),
         protobuf::remote_type::Type::PostgresInt4(_) => RemoteType::Postgres(PostgresType::Int4),
         protobuf::remote_type::Type::PostgresInt8(_) => RemoteType::Postgres(PostgresType::Int8),
@@ -1270,7 +1280,7 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
         protobuf::remote_type::Type::MdbDateTime(_) => RemoteType::Mdb(MdbType::DateTime),
         protobuf::remote_type::Type::MdbDate(_) => RemoteType::Mdb(MdbType::Date),
         protobuf::remote_type::Type::MdbTime(_) => RemoteType::Mdb(MdbType::Time),
-    }
+    })
 }
 
 fn serialize_remote_source(source: &RemoteSource) -> protobuf::RemoteSource {
