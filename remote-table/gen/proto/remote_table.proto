@@ -38,7 +38,22 @@ message ConnectionOptions {
     OracleConnectionOptions oracle = 3;
     SqliteConnectionOptions sqlite = 4;
     DmConnectionOptions dm = 5;
+    MdbConnectionOptions mdb = 6;
   }
+}
+
+message MdbConnectionOptions {
+  string path = 1;
+  string driver = 2;
+  uint32 stream_chunk_size = 3;
+  optional string uid = 4;
+  optional string pwd = 5;
+  repeated MdbExtraParam extra_params = 6;
+}
+
+message MdbExtraParam {
+  string key = 1;
+  string value = 2;
 }
 
 message RemoteSource {
@@ -229,7 +244,30 @@ message RemoteType {
     DmTimestamp dm_timestamp = 416;
     DmTime dm_time = 417;
     Empty dm_date = 418;
+    Empty mdb_bit = 501;
+    Empty mdb_tiny_int = 502;
+    Empty mdb_small_int = 503;
+    Empty mdb_integer = 504;
+    Empty mdb_real = 505;
+    Empty mdb_double = 506;
+    Empty mdb_currency = 507;
+    MdbText mdb_text = 508;
+    Empty mdb_memo = 509;
+    MdbBinary mdb_binary = 510;
+    Empty mdb_ole_object = 511;
+    Empty mdb_guid = 512;
+    Empty mdb_date_time = 513;
+    Empty mdb_date = 514;
+    Empty mdb_time = 515;
   }
+}
+
+message MdbText {
+  optional uint32 length = 1;
+}
+
+message MdbBinary {
+  optional uint32 length = 1;
 }
 
 // Place holder type for primitive types
