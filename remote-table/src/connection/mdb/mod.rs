@@ -29,31 +29,61 @@ use row::append_row_to_builders;
 use row::finish_batch;
 use schema::build_remote_schema;
 
+/// Cache key that captures the full ODBC connection identity, not just the
+/// `.mdb` file path. Two pools that target the same path but use different
+/// drivers, credentials, or extra connection parameters must NOT share a
+/// connection.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct MdbConnectionCacheKey {
+    path: PathBuf,
+    driver: String,
+    uid: Option<String>,
+    pwd: Option<String>,
+    // Sorted so that semantically identical parameter sets (differing only in
+    // insertion order) produce the same key.
+    extra_params_sorted: Vec<(String, String)>,
+}
+
+impl MdbConnectionCacheKey {
+    fn from_options(options: &MdbConnectionOptions) -> Self {
+        let mut extra_params_sorted = options.extra_params.clone();
+        extra_params_sorted.sort();
+        Self {
+            path: options.path.clone(),
+            driver: options.driver.clone(),
+            uid: options.uid.clone(),
+            pwd: options.pwd.clone(),
+            extra_params_sorted,
+        }
+    }
+}
+
 /// Per-path global ODBC connection cache.
 ///
 /// mdbtools' `libmdbodbc.so` keeps process-global state and corrupts it after
 /// a handful of successive `SQLDriverConnect` calls to the same `.mdb` file
 /// (observed symptom: `SQLDriverConnect: NoDiagnostics`, stderr says
 /// "File not found" while the file is plainly on disk). To work around this,
-/// every `MdbPool` that targets the same file path shares a single underlying
-/// `odbc_api::Connection`. Concurrent access on that shared connection is
-/// still serialised by `MdbConnection`'s own mutex.
+/// every `MdbPool` that targets the same connection identity (path + driver +
+/// uid + pwd + extra_params) shares a single underlying `odbc_api::Connection`.
+/// Concurrent access on that shared connection is still serialised by
+/// `MdbConnection`'s own mutex.
 ///
 /// Cached connections live until process exit. Bounded by the number of
-/// distinct `.mdb` paths the process touches.
+/// distinct connection identities the process touches.
 static MDB_CONN_CACHE: OnceLock<
-    std::sync::Mutex<HashMap<PathBuf, Arc<Mutex<odbc_api::Connection<'static>>>>>,
+    std::sync::Mutex<HashMap<MdbConnectionCacheKey, Arc<Mutex<odbc_api::Connection<'static>>>>>,
 > = OnceLock::new();
 
-fn mdb_conn_cache()
--> &'static std::sync::Mutex<HashMap<PathBuf, Arc<Mutex<odbc_api::Connection<'static>>>>> {
+fn mdb_conn_cache() -> &'static std::sync::Mutex<
+    HashMap<MdbConnectionCacheKey, Arc<Mutex<odbc_api::Connection<'static>>>>,
+> {
     MDB_CONN_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
 }
 
 pub struct MdbPool {
     options: MdbConnectionOptions,
     connections: Arc<AtomicUsize>,
-    cached_conn: std::sync::Mutex<Option<Arc<Mutex<odbc_api::Connection<'static>>>>>,
 }
 
 impl std::fmt::Debug for MdbPool {
@@ -61,14 +91,6 @@ impl std::fmt::Debug for MdbPool {
         f.debug_struct("MdbPool")
             .field("options", &self.options)
             .field("connections", &self.connections)
-            .field(
-                "cached_conn",
-                &if self.cached_conn.lock().unwrap().is_some() {
-                    "Some(Connection)"
-                } else {
-                    "None"
-                },
-            )
             .finish()
     }
 }
@@ -77,28 +99,20 @@ pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
     Ok(MdbPool {
         options: options.clone(),
         connections: Arc::new(AtomicUsize::new(0)),
-        cached_conn: std::sync::Mutex::new(None),
     })
 }
 
 #[async_trait::async_trait]
 impl Pool for MdbPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
-        // Fast path: this pool has already handed out a connection.
-        if let Some(cached) = self.cached_conn.lock().unwrap().as_ref() {
-            self.connections.fetch_add(1, Ordering::SeqCst);
-            return Ok(Arc::new(MdbConnection {
-                conn: cached.clone(),
-                pool_connections: self.connections.clone(),
-            }));
-        }
+        let cache_key = MdbConnectionCacheKey::from_options(&self.options);
 
-        // Slow path: consult the per-path global cache (see MDB_CONN_CACHE).
-        // The cache lock is held across the SQLDriverConnect call so two
-        // pools racing on the same path don't both open a connection.
+        // Consult the global cache (see MDB_CONN_CACHE). The cache lock is
+        // held across the SQLDriverConnect call so two pools racing on the
+        // same connection identity don't both open a connection.
         let conn = {
             let mut cache = mdb_conn_cache().lock().unwrap();
-            if let Some(existing) = cache.get(&self.options.path) {
+            if let Some(existing) = cache.get(&cache_key) {
                 existing.clone()
             } else {
                 let env =
@@ -116,13 +130,10 @@ impl Pool for MdbPool {
                         ))
                     })?;
                 let conn = Arc::new(Mutex::new(connection));
-                cache.insert(self.options.path.clone(), conn.clone());
+                cache.insert(cache_key, conn.clone());
                 conn
             }
         };
-
-        // Mirror into the per-pool cache so the fast path hits next time.
-        *self.cached_conn.lock().unwrap() = Some(conn.clone());
 
         self.connections.fetch_add(1, Ordering::SeqCst);
         Ok(Arc::new(MdbConnection {
@@ -133,10 +144,9 @@ impl Pool for MdbPool {
 
     async fn state(&self) -> DFResult<PoolState> {
         let active = self.connections.load(Ordering::SeqCst);
-        let has_cached = self.cached_conn.lock().unwrap().is_some();
         Ok(PoolState {
             connections: active,
-            idle_connections: if has_cached && active == 0 { 1 } else { 0 },
+            idle_connections: 0,
         })
     }
 }
