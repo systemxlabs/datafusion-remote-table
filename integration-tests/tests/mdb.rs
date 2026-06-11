@@ -68,7 +68,7 @@ async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
          RemoteTableScanExec: source={source_label}, projection=[]\n"
     );
     let expected_plans: Vec<&str> = match source {
-        RemoteSource::Table(_) => vec!["ProjectionExec: expr=[0 as count(*)]"],
+        RemoteSource::Table(_) => vec!["ProjectionExec: expr=[0 as count(*)]\n"],
         RemoteSource::Query(_) => vec![&query_plan],
     };
     assert_plan_and_result(
