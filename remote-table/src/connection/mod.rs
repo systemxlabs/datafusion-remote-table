@@ -184,6 +184,10 @@ pub enum RemoteDbType {
 
 impl RemoteDbType {
     pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
+        // MDB Query sources don't support LIMIT in subqueries (Access SQL limitation)
+        if matches!(self, RemoteDbType::Mdb) {
+            return matches!(source, RemoteSource::Table(_));
+        }
         match source {
             RemoteSource::Table(_) => true,
             RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
@@ -273,19 +277,6 @@ impl RemoteDbType {
                         format!("SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}")
                     }
                 }
-                RemoteDbType::Mdb => {
-                    // Access SQL: append LIMIT directly (no subquery wrapper needed for simple cases)
-                    let limit_clause = if let Some(limit) = limit {
-                        format!(" LIMIT {limit}")
-                    } else {
-                        "".to_string()
-                    };
-                    if limit_clause.is_empty() {
-                        query.clone()
-                    } else {
-                        format!("{query}{limit_clause}")
-                    }
-                }
                 RemoteDbType::Oracle => {
                     let mut all_filters: Vec<String> = vec![];
                     all_filters.extend_from_slice(unparsed_filters);
@@ -304,6 +295,7 @@ impl RemoteDbType {
                         format!("SELECT * FROM ({query}){where_clause}")
                     }
                 }
+                RemoteDbType::Mdb => unreachable!(),
             },
         }
     }
