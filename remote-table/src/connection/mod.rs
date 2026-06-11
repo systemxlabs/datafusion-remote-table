@@ -184,9 +184,12 @@ pub enum RemoteDbType {
 
 impl RemoteDbType {
     pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
-        match source {
-            RemoteSource::Table(_) => true,
-            RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+        match self {
+            RemoteDbType::Mdb => matches!(source, RemoteSource::Table(_)),
+            _ => match source {
+                RemoteSource::Table(_) => true,
+                RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+            },
         }
     }
 
@@ -363,18 +366,23 @@ impl RemoteDbType {
         if !self.support_rewrite_with_filters_limit(source) {
             return None;
         }
-        match source {
-            RemoteSource::Table(table) => Some(format!(
-                "SELECT COUNT(1) FROM {}",
-                self.sql_table_name(table)
-            )),
-            RemoteSource::Query(query) => match self {
-                RemoteDbType::Postgres
-                | RemoteDbType::Mysql
-                | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery")),
-                RemoteDbType::Mdb => None,
-                RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
+        match self {
+            RemoteDbType::Mdb => None,
+            _ => match source {
+                RemoteSource::Table(table) => Some(format!(
+                    "SELECT COUNT(1) FROM {}",
+                    self.sql_table_name(table)
+                )),
+                RemoteSource::Query(query) => match self {
+                    RemoteDbType::Postgres
+                    | RemoteDbType::Mysql
+                    | RemoteDbType::Sqlite
+                    | RemoteDbType::Dm => {
+                        Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery"))
+                    }
+                    RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
+                    RemoteDbType::Mdb => unreachable!(),
+                },
             },
         }
     }
