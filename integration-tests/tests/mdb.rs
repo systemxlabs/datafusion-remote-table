@@ -57,19 +57,27 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 #[case(vec!["Shippers"].into(), "Shippers")]
 #[tokio::test(flavor = "multi_thread")]
 async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
-    let expected_plan = format!(
+    // Table source: COUNT pushdown via ODBC SELECT COUNT(*)
+    // Query source: COUNT via DataFusion aggregate (no pushdown)
+    let query_plan = format!(
         "ProjectionExec: expr=[count(Int64(1))@0 as count(*)]\n  \
          AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]\n    \
          CoalescePartitionsExec\n      \
          AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]\n        \
          RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n          \
-         RemoteTableScanExec: source={source_label}, projection=[]\n"
+         RemoteTableScanExec: source=query, projection=[]\n"
     );
+    let expected_plans: Vec<&str> = match &source {
+        RemoteSource::Table(_) => {
+            vec!["ProjectionExec: expr=[0 as count(*)]\n  PlaceholderRowExec\n"]
+        }
+        RemoteSource::Query(_) => vec![&query_plan],
+    };
     assert_plan_and_result(
         RemoteDbType::Mdb,
-        source.clone(),
+        source,
         "select count(*) from remote_table",
-        vec![&expected_plan],
+        expected_plans,
         r#"+----------+
 | count(*) |
 +----------+
