@@ -483,8 +483,8 @@ pub(crate) async fn fetch_row_count(
     pool: &LazyPool,
     conn_options: &ConnectionOptions,
     source: &RemoteSource,
-    filters: &[String],
+    unparsed_filters: &[String],
 ) -> DFResult<Option<usize>> {
     let conn = pool.get().await?;
-    conn.count(conn_options, source, filters).await
+    conn.count(conn_options, source, unparsed_filters).await
 }
