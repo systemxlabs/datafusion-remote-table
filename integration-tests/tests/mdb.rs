@@ -41,8 +41,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
         source,
         "select * from remote_table limit 2",
         vec![
-            "GlobalLimitExec: skip=0, fetch=2\n  CooperativeExec\n    RemoteTableExec: source=query, limit=2\n",
-            "CooperativeExec\n  RemoteTableExec: source=Shippers, limit=2\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=query, limit=2\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=Shippers, limit=2\n",
         ],
         r#"+-----------+----------------+----------------+
 | ShipperID | CompanyName    | Phone          |
@@ -65,8 +65,7 @@ async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
          CoalescePartitionsExec\n      \
          AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]\n        \
          RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n          \
-         CooperativeExec\n            \
-         RemoteTableExec: source={source_label}, projection=[]\n"
+         RemoteTableScanExec: source={source_label}, projection=[]\n"
     );
     assert_plan_and_result(
         RemoteDbType::Mdb,
@@ -103,8 +102,8 @@ async fn empty_projection(#[case] source: RemoteSource) {
     println!("{plan_display}");
     assert!(
         [
-            "CooperativeExec\n  RemoteTableExec: source=query, projection=[]\n",
-            "CooperativeExec\n  RemoteTableExec: source=Shippers, projection=[]\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=query, projection=[]\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=Shippers, projection=[]\n",
         ]
         .contains(&plan_display.as_str())
     );
