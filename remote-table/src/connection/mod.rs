@@ -480,4 +480,5 @@ mod odbc_utils {
             .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
     }
 }
+#[cfg(any(feature = "dm", feature = "mdb"))]
 pub(crate) use odbc_utils::*;
