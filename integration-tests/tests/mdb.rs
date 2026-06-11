@@ -6,7 +6,9 @@ use datafusion_remote_table::{
     ConnectionOptions, MdbConnectionOptions, RemoteDbType, RemoteSource, RemoteTable,
 };
 use integration_tests::setup_mdb;
-use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
+use integration_tests::utils::{
+    assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
+};
 use std::sync::Arc;
 
 #[rstest::rstest]

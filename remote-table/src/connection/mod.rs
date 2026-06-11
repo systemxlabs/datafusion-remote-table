@@ -184,13 +184,12 @@ pub enum RemoteDbType {
 
 impl RemoteDbType {
     pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
-        // MDB Query sources don't support LIMIT in subqueries (Access SQL limitation)
-        if matches!(self, RemoteDbType::Mdb) {
-            return matches!(source, RemoteSource::Table(_));
-        }
-        match source {
-            RemoteSource::Table(_) => true,
-            RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+        match self {
+            RemoteDbType::Mdb => matches!(source, RemoteSource::Table(_)),
+            _ => match source {
+                RemoteSource::Table(_) => true,
+                RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+            },
         }
     }
 
@@ -259,7 +258,8 @@ impl RemoteDbType {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => {
+                | RemoteDbType::Dm
+                | RemoteDbType::Mdb => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
@@ -295,7 +295,6 @@ impl RemoteDbType {
                         format!("SELECT * FROM ({query}){where_clause}")
                     }
                 }
-                RemoteDbType::Mdb => unreachable!(),
             },
         }
     }
@@ -367,21 +366,23 @@ impl RemoteDbType {
         if !self.support_rewrite_with_filters_limit(source) {
             return None;
         }
-        if matches!(self, RemoteDbType::Mdb) {
-            return None;
-        }
-        match source {
-            RemoteSource::Table(table) => Some(format!(
-                "SELECT COUNT(1) FROM {}",
-                self.sql_table_name(table)
-            )),
-            RemoteSource::Query(query) => match self {
-                RemoteDbType::Postgres
-                | RemoteDbType::Mysql
-                | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery")),
-                RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
-                RemoteDbType::Mdb => unreachable!(),
+        match self {
+            RemoteDbType::Mdb => None,
+            _ => match source {
+                RemoteSource::Table(table) => Some(format!(
+                    "SELECT COUNT(1) FROM {}",
+                    self.sql_table_name(table)
+                )),
+                RemoteSource::Query(query) => match self {
+                    RemoteDbType::Postgres
+                    | RemoteDbType::Mysql
+                    | RemoteDbType::Sqlite
+                    | RemoteDbType::Dm => {
+                        Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery"))
+                    }
+                    RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
+                    RemoteDbType::Mdb => unreachable!(),
+                },
             },
         }
     }
