@@ -16,6 +16,7 @@ mysql = ["dep:mysql_async"]
 oracle = ["dep:bb8", "dep:oracle", "dep:bb8-oracle"]
 sqlite = ["dep:rusqlite"]
 dm = ["dep:odbc-api"]
+mdb = ["dep:odbc-api"]
 
 [dependencies]
 arrow = { workspace = true }

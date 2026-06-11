@@ -27,7 +27,8 @@ pub(crate) type DFResult<T> = datafusion_common::Result<T>;
     feature = "oracle",
     feature = "sqlite",
     feature = "dm",
+    feature = "mdb",
 )))]
 compile_error!(
-    "At least one of the following features must be enabled: postgres, mysql, oracle, sqlite, dm"
+    "At least one of the following features must be enabled: postgres, mysql, oracle, sqlite, dm, mdb"
 );
