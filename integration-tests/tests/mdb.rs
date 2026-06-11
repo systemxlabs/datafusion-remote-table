@@ -185,7 +185,7 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         source,
         "select * from remote_table where \"ShipperID\" = 1",
         vec![
-            "CooperativeExec\n  RemoteTableScanExec: source=query\n",
+            "FilterExec: ShipperID@0 = 1\n  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n    RemoteTableScanExec: source=query\n",
             "CooperativeExec\n  RemoteTableScanExec: source=Shippers, filters=[(`ShipperID` = 1)]\n",
         ],
         r#"+-----------+----------------+----------------+
