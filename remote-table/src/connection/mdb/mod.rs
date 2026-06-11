@@ -186,7 +186,7 @@ impl Connection for MdbConnection {
                 "Failed to prepare query for schema inference on mdb: {sql}"
             )));
         }
-        if unsafe { stmt.execute() }.is_err() {
+        if odbc_execute(&mut stmt).is_err() {
             return Err(DataFusionError::Plan(format!(
                 "Failed to execute query for schema inference on mdb: {sql}"
             )));
@@ -194,7 +194,7 @@ impl Connection for MdbConnection {
         // SAFETY: `stmt` is in cursor state after a successful execute that
         // produced a result set; we verify with num_result_cols() in
         // build_remote_schema.
-        let cursor = unsafe { CursorImpl::new(stmt) };
+        let cursor = odbc_cursor(stmt);
         let remote_schema = Arc::new(build_remote_schema(cursor)?);
         Ok(remote_schema)
     }
@@ -235,7 +235,7 @@ impl Connection for MdbConnection {
             let sql_text = SqlText::new(&sql);
             // SAFETY: `sql` is owned by this closure and outlives `stmt`.
             // `exec_direct` is unsafe (may dereference bound parameters; we have none).
-            if unsafe { stmt.exec_direct(&sql_text) }.is_err() {
+            if odbc_exec_direct(&mut stmt, &sql_text).is_err() {
                 return Err(DataFusionError::Execution(format!(
                     "Failed to execute query on mdb: {sql}"
                 )));
@@ -271,7 +271,7 @@ impl Connection for MdbConnection {
             }
 
             // SAFETY: stmt is in cursor state after exec_direct.
-            let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
+            let mut cursor: CursorImpl<StatementImpl> = odbc_cursor(stmt);
             let mut exhausted = false;
 
             loop {
@@ -383,7 +383,7 @@ impl MdbConnection {
             let mut stmt = pre.into_handle();
             let sql_text = SqlText::new(&count_query);
             // SAFETY: `count_query` is owned by this closure and outlives `stmt`.
-            if unsafe { stmt.exec_direct(&sql_text) }.is_err() {
+            if odbc_exec_direct(&mut stmt, &sql_text).is_err() {
                 return Err(DataFusionError::Execution(format!(
                     "Failed to execute MDB row count query: {count_query}"
                 )));
@@ -410,7 +410,7 @@ impl MdbConnection {
 
             let mut row_count = 0usize;
             loop {
-                match unsafe { stmt.fetch() } {
+                match odbc_fetch(&mut stmt) {
                     SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {
                         row_count += 1;
                     }
@@ -484,7 +484,7 @@ pub fn mdb_list_tables(options: &MdbConnectionOptions) -> DFResult<Vec<(String, 
     }
 
     // SAFETY: stmt is in cursor state after a successful tables() call.
-    let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
+    let mut cursor: CursorImpl<StatementImpl> = odbc_cursor(stmt);
     let mut tables = Vec::new();
     let mut text_buf: Vec<u8> = Vec::new();
 
@@ -527,4 +527,36 @@ pub fn mdb_list_tables(options: &MdbConnectionOptions) -> DFResult<Vec<(String, 
         tables.len()
     );
     Ok(tables)
+}
+
+// ---------------------------------------------------------------------------
+// Safe ODBC wrappers — centralise unsafe blocks required by odbc_api.
+//
+// NOTE: bind_col is intentionally NOT wrapped because the bound column buffer
+// MUST outlive the statement/cursor, which cannot be guaranteed inside a
+// helper function that returns. Those `unsafe` blocks remain inline with
+// local `dummy` variables.
+// ---------------------------------------------------------------------------
+
+fn odbc_execute(stmt: &mut StatementImpl) -> SqlResult<()> {
+    // SAFETY: no parameters bound; stmt is in prepared state.
+    unsafe { stmt.execute() }
+}
+
+fn odbc_exec_direct(stmt: &mut StatementImpl, sql: &SqlText<'_>) -> SqlResult<()> {
+    // SAFETY: no parameters bound; caller ensures `sql` outlives `stmt`.
+    unsafe { stmt.exec_direct(sql) }
+}
+
+fn odbc_cursor(stmt: StatementImpl) -> CursorImpl<StatementImpl> {
+    // SAFETY: caller ensures stmt is in cursor state after successful execute/exec_direct.
+    unsafe { CursorImpl::new(stmt) }
+}
+
+fn odbc_fetch(stmt: &mut StatementImpl) -> SqlResult<()> {
+    match unsafe { stmt.fetch() } {
+        SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => SqlResult::Success(()),
+        SqlResult::NoData => SqlResult::NoData,
+        other => other,
+    }
 }
