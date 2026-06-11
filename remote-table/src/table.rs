@@ -487,7 +487,12 @@ pub(crate) async fn fetch_row_count(
     unparsed_filters: &[String],
     limit: Option<usize>,
 ) -> DFResult<Option<usize>> {
+    let db_type = conn_options.db_type();
+    let source = if unparsed_filters.is_empty() && limit.is_none() {
+        source.clone()
+    } else {
+        RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, limit))
+    };
     let conn = pool.get().await?;
-    conn.count(conn_options, source, unparsed_filters, limit)
-        .await
+    conn.count(conn_options, &source).await
 }

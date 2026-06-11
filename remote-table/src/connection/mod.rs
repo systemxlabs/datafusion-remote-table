@@ -84,8 +84,6 @@ pub trait Connection: Debug + Send + Sync + Any {
         &self,
         conn_options: &ConnectionOptions,
         source: &RemoteSource,
-        unparsed_filters: &[String],
-        limit: Option<usize>,
     ) -> DFResult<Option<usize>>;
 }
 
@@ -95,18 +93,9 @@ pub(crate) async fn connection_count(
     conn: &dyn Connection,
     conn_options: &ConnectionOptions,
     source: &RemoteSource,
-    unparsed_filters: &[String],
-    limit: Option<usize>,
 ) -> DFResult<Option<usize>> {
     let db_type = conn_options.db_type();
-    let count1_query = if unparsed_filters.is_empty() && limit.is_none() {
-        db_type.try_count1_query(source)
-    } else {
-        let real_sql = db_type.rewrite_query(source, unparsed_filters, limit);
-        db_type.try_count1_query(&RemoteSource::Query(real_sql))
-    };
-
-    if let Some(count1_query) = count1_query {
+    if let Some(count1_query) = db_type.try_count1_query(source) {
         debug!("[remote-table] fetching row count with query: {count1_query}");
         let row_count = db_type
             .fetch_count(conn, conn_options, &count1_query)

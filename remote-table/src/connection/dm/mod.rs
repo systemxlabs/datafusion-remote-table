@@ -228,11 +228,8 @@ impl Connection for DmConnection {
         &self,
         conn_options: &ConnectionOptions,
         source: &RemoteSource,
-        unparsed_filters: &[String],
-        limit: Option<usize>,
     ) -> DFResult<Option<usize>> {
-        crate::connection::connection_count(self, conn_options, source, unparsed_filters, limit)
-            .await
+        crate::connection::connection_count(self, conn_options, source).await
     }
 }
 
