@@ -1,7 +1,11 @@
 #[cfg(feature = "dm")]
 mod dm;
+#[cfg(feature = "mdb")]
+mod mdb;
 #[cfg(feature = "mysql")]
 mod mysql;
+#[cfg(any(feature = "dm", feature = "mdb"))]
+mod odbc_util;
 mod options;
 #[cfg(feature = "oracle")]
 mod oracle;
@@ -12,6 +16,8 @@ mod sqlite;
 
 #[cfg(feature = "dm")]
 pub use dm::*;
+#[cfg(feature = "mdb")]
+pub use mdb::*;
 #[cfg(feature = "mysql")]
 pub use mysql::*;
 pub use options::*;
@@ -35,7 +41,7 @@ use datafusion_sql::unparser::dialect::{MySqlDialect, PostgreSqlDialect, SqliteD
 use std::fmt::Debug;
 use std::sync::Arc;
 
-#[cfg(feature = "dm")]
+#[cfg(any(feature = "dm", feature = "mdb"))]
 pub static ODBC_ENV: std::sync::OnceLock<odbc_api::Environment> = std::sync::OnceLock::new();
 
 #[async_trait::async_trait]
@@ -152,6 +158,19 @@ pub async fn connect(options: &ConnectionOptions) -> DFResult<Arc<dyn Pool>> {
                 ))
             }
         }
+        ConnectionOptions::Mdb(options) => {
+            #[cfg(feature = "mdb")]
+            {
+                let pool = connect_mdb(options)?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "mdb"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the mdb feature".to_string(),
+                ))
+            }
+        }
     }
 }
 
@@ -162,13 +181,17 @@ pub enum RemoteDbType {
     Oracle,
     Sqlite,
     Dm,
+    Mdb,
 }
 
 impl RemoteDbType {
     pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
-        match source {
-            RemoteSource::Table(_) => true,
-            RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+        match self {
+            RemoteDbType::Mdb => matches!(source, RemoteSource::Table(_)),
+            _ => match source {
+                RemoteSource::Table(_) => true,
+                RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+            },
         }
     }
 
@@ -182,6 +205,9 @@ impl RemoteDbType {
             )),
             RemoteDbType::Dm => Err(DataFusionError::NotImplemented(
                 "Dm unparser not implemented".to_string(),
+            )),
+            RemoteDbType::Mdb => Err(DataFusionError::NotImplemented(
+                "Mdb unparser not implemented".to_string(),
             )),
         }
     }
@@ -197,7 +223,8 @@ impl RemoteDbType {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => {
+                | RemoteDbType::Dm
+                | RemoteDbType::Mdb => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
@@ -233,7 +260,8 @@ impl RemoteDbType {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => {
+                | RemoteDbType::Dm
+                | RemoteDbType::Mdb => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
@@ -284,6 +312,9 @@ impl RemoteDbType {
             RemoteDbType::Mysql => {
                 format!("`{identifier}`")
             }
+            RemoteDbType::Mdb => {
+                format!("[{identifier}]")
+            }
         }
     }
 
@@ -303,8 +334,10 @@ impl RemoteDbType {
     pub(crate) fn sql_binary_literal(&self, value: &[u8]) -> String {
         match self {
             RemoteDbType::Postgres => format!("E'\\\\x{}'", hex::encode(value)),
-            RemoteDbType::Mysql | RemoteDbType::Sqlite => format!("X'{}'", hex::encode(value)),
-            RemoteDbType::Oracle | RemoteDbType::Dm => todo!(),
+            RemoteDbType::Mysql | RemoteDbType::Sqlite => {
+                format!("X'{}'", hex::encode(value))
+            }
+            RemoteDbType::Oracle | RemoteDbType::Dm | RemoteDbType::Mdb => todo!(),
         }
     }
 
@@ -314,7 +347,8 @@ impl RemoteDbType {
             | RemoteDbType::Mysql
             | RemoteDbType::Oracle
             | RemoteDbType::Sqlite
-            | RemoteDbType::Dm => {
+            | RemoteDbType::Dm
+            | RemoteDbType::Mdb => {
                 format!("SELECT * FROM {}", self.sql_table_name(table_identifiers))
             }
         }
@@ -331,17 +365,23 @@ impl RemoteDbType {
         if !self.support_rewrite_with_filters_limit(source) {
             return None;
         }
-        match source {
-            RemoteSource::Table(table) => Some(format!(
-                "SELECT COUNT(1) FROM {}",
-                self.sql_table_name(table)
-            )),
-            RemoteSource::Query(query) => match self {
-                RemoteDbType::Postgres
-                | RemoteDbType::Mysql
-                | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery")),
-                RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
+        match self {
+            RemoteDbType::Mdb => None,
+            _ => match source {
+                RemoteSource::Table(table) => Some(format!(
+                    "SELECT COUNT(1) FROM {}",
+                    self.sql_table_name(table)
+                )),
+                RemoteSource::Query(query) => match self {
+                    RemoteDbType::Postgres
+                    | RemoteDbType::Mysql
+                    | RemoteDbType::Sqlite
+                    | RemoteDbType::Dm => {
+                        Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery"))
+                    }
+                    RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
+                    RemoteDbType::Mdb => unreachable!(),
+                },
             },
         }
     }

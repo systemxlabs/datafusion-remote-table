@@ -1,12 +1,13 @@
 use crate::DmConnectionOptions;
 use crate::LazyPool;
+use crate::MdbConnectionOptions;
 use crate::MysqlConnectionOptions;
 use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
-    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize,
+    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize, MdbType,
     MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
     RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
 };
@@ -142,13 +143,15 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 let table_schema: SchemaRef = Arc::new(convert_required!(&proto.table_schema)?);
                 let remote_schema = proto
                     .remote_schema
-                    .map(|schema| Arc::new(parse_remote_schema(&schema)));
+                    .map(|schema| parse_remote_schema(&schema))
+                    .transpose()?
+                    .map(Arc::new);
 
                 let projection = parse_projection(proto.projection.as_ref());
 
                 let limit = proto.limit.map(|l| l as usize);
 
-                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
+                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap())?);
                 let pool = LazyPool::new(conn_options.clone());
 
                 let row_count = proto.row_count.map(|c| c as usize);
@@ -177,9 +180,9 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
 
                 let input = inputs[0].clone();
 
-                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap()));
+                let conn_options = Arc::new(parse_connection_options(proto.conn_options.unwrap())?);
                 let pool = LazyPool::new(conn_options.clone());
-                let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap()));
+                let remote_schema = Arc::new(parse_remote_schema(&proto.remote_schema.unwrap())?);
                 let table = proto.table.unwrap().idents;
 
                 let literalizer = if proto.literalizer == DEFAULT_LITERALIZE_ID.as_bytes() {
@@ -355,11 +358,30 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                 },
             )),
         },
+        ConnectionOptions::Mdb(options) => protobuf::ConnectionOptions {
+            connection_options: Some(protobuf::connection_options::ConnectionOptions::Mdb(
+                protobuf::MdbConnectionOptions {
+                    path: options.path.to_str().unwrap_or("").to_string(),
+                    driver: options.driver.clone(),
+                    stream_chunk_size: options.stream_chunk_size as u32,
+                    uid: options.uid.clone(),
+                    pwd: options.pwd.clone(),
+                    extra_params: options
+                        .extra_params
+                        .iter()
+                        .map(|(k, v)| protobuf::MdbExtraParam {
+                            key: k.clone(),
+                            value: v.clone(),
+                        })
+                        .collect(),
+                },
+            )),
+        },
     }
 }
 
-fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionOptions {
-    match options.connection_options {
+fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<ConnectionOptions> {
+    Ok(match options.connection_options {
         Some(protobuf::connection_options::ConnectionOptions::Postgres(options)) => {
             ConnectionOptions::Postgres(PostgresConnectionOptions {
                 host: options.host,
@@ -420,8 +442,37 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> ConnectionO
                 driver: options.driver,
             })
         }
-        _ => panic!("Failed to parse connection options: {options:?}"),
-    }
+        Some(protobuf::connection_options::ConnectionOptions::Mdb(options)) => {
+            ConnectionOptions::Mdb({
+                let mut mdb_opts =
+                    MdbConnectionOptions::new(std::path::Path::new(&options.path).to_path_buf());
+                if !options.driver.is_empty() {
+                    mdb_opts.driver = options.driver;
+                }
+                if options.stream_chunk_size > 0 {
+                    mdb_opts.stream_chunk_size = options.stream_chunk_size as usize;
+                }
+                if let Some(uid) = options.uid {
+                    mdb_opts.uid = Some(uid);
+                }
+                if let Some(pwd) = options.pwd {
+                    mdb_opts.pwd = Some(pwd);
+                }
+                mdb_opts.extra_params = options
+                    .extra_params
+                    .into_iter()
+                    .map(|p| (p.key, p.value))
+                    .collect();
+                mdb_opts
+            })
+        }
+        None => {
+            return Err(DataFusionError::Internal(
+                "parse_connection_options: missing connection_options oneof — cannot decode"
+                    .to_string(),
+            ));
+        }
+    })
 }
 
 fn serialize_duration(duration: &Duration) -> protobuf::Duration {
@@ -931,30 +982,93 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         RemoteType::Dm(DmType::Date) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::DmDate(protobuf::Empty {})),
         },
+        RemoteType::Mdb(MdbType::Bit) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbBit(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::TinyInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbTinyInt(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::SmallInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbSmallInt(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Integer) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbInteger(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Real) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbReal(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Double) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbDouble(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Currency) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbCurrency(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Text(len)) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbText(protobuf::MdbText {
+                length: len.map(|l| l as u32),
+            })),
+        },
+        RemoteType::Mdb(MdbType::Memo) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbMemo(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Binary(len)) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbBinary(
+                protobuf::MdbBinary {
+                    length: len.map(|l| l as u32),
+                },
+            )),
+        },
+        RemoteType::Mdb(MdbType::OleObject) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbOleObject(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Mdb(MdbType::Guid) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbGuid(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::DateTime) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbDateTime(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Date) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbDate(protobuf::Empty {})),
+        },
+        RemoteType::Mdb(MdbType::Time) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MdbTime(protobuf::Empty {})),
+        },
     }
 }
 
-fn parse_remote_schema(remote_schema: &protobuf::RemoteSchema) -> RemoteSchema {
+fn parse_remote_schema(remote_schema: &protobuf::RemoteSchema) -> DFResult<RemoteSchema> {
     let fields = remote_schema
         .fields
         .iter()
         .map(parse_remote_field)
-        .collect::<Vec<_>>();
+        .collect::<DFResult<Vec<_>>>()?;
 
-    RemoteSchema { fields }
+    Ok(RemoteSchema { fields })
 }
 
-fn parse_remote_field(field: &protobuf::RemoteField) -> RemoteField {
-    RemoteField {
+fn parse_remote_field(field: &protobuf::RemoteField) -> DFResult<RemoteField> {
+    let remote_type = field.remote_type.as_ref().ok_or_else(|| {
+        DataFusionError::Internal(
+            "parse_remote_field: missing RemoteType — cannot decode".to_string(),
+        )
+    })?;
+    Ok(RemoteField {
         name: field.name.clone(),
-        remote_type: parse_remote_type(field.remote_type.as_ref().unwrap()),
+        remote_type: parse_remote_type(remote_type)?,
         nullable: field.nullable,
         auto_increment: field.auto_increment,
-    }
+    })
 }
 
-fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
-    match remote_type.r#type.as_ref().unwrap() {
+fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType> {
+    let Some(type_oneof) = remote_type.r#type.as_ref() else {
+        return Err(DataFusionError::Internal(
+            "parse_remote_type: missing RemoteType.oneof — cannot decode".to_string(),
+        ));
+    };
+    Ok(match type_oneof {
         protobuf::remote_type::Type::PostgresInt2(_) => RemoteType::Postgres(PostgresType::Int2),
         protobuf::remote_type::Type::PostgresInt4(_) => RemoteType::Postgres(PostgresType::Int4),
         protobuf::remote_type::Type::PostgresInt8(_) => RemoteType::Postgres(PostgresType::Int8),
@@ -1147,7 +1261,26 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> RemoteType {
             RemoteType::Dm(DmType::Time(*precision as u8))
         }
         protobuf::remote_type::Type::DmDate(_) => RemoteType::Dm(DmType::Date),
-    }
+        protobuf::remote_type::Type::MdbBit(_) => RemoteType::Mdb(MdbType::Bit),
+        protobuf::remote_type::Type::MdbTinyInt(_) => RemoteType::Mdb(MdbType::TinyInt),
+        protobuf::remote_type::Type::MdbSmallInt(_) => RemoteType::Mdb(MdbType::SmallInt),
+        protobuf::remote_type::Type::MdbInteger(_) => RemoteType::Mdb(MdbType::Integer),
+        protobuf::remote_type::Type::MdbReal(_) => RemoteType::Mdb(MdbType::Real),
+        protobuf::remote_type::Type::MdbDouble(_) => RemoteType::Mdb(MdbType::Double),
+        protobuf::remote_type::Type::MdbCurrency(_) => RemoteType::Mdb(MdbType::Currency),
+        protobuf::remote_type::Type::MdbText(protobuf::MdbText { length }) => {
+            RemoteType::Mdb(MdbType::Text(length.map(|l| l as u16)))
+        }
+        protobuf::remote_type::Type::MdbMemo(_) => RemoteType::Mdb(MdbType::Memo),
+        protobuf::remote_type::Type::MdbBinary(protobuf::MdbBinary { length }) => {
+            RemoteType::Mdb(MdbType::Binary(length.map(|l| l as u16)))
+        }
+        protobuf::remote_type::Type::MdbOleObject(_) => RemoteType::Mdb(MdbType::OleObject),
+        protobuf::remote_type::Type::MdbGuid(_) => RemoteType::Mdb(MdbType::Guid),
+        protobuf::remote_type::Type::MdbDateTime(_) => RemoteType::Mdb(MdbType::DateTime),
+        protobuf::remote_type::Type::MdbDate(_) => RemoteType::Mdb(MdbType::Date),
+        protobuf::remote_type::Type::MdbTime(_) => RemoteType::Mdb(MdbType::Time),
+    })
 }
 
 fn serialize_remote_source(source: &RemoteSource) -> protobuf::RemoteSource {

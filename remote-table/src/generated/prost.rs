@@ -50,17 +50,17 @@ pub struct RemoteTableInsertExec {
     #[prost(bytes = "vec", tag = "4")]
     pub literalizer: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectionOptions {
     #[prost(
         oneof = "connection_options::ConnectionOptions",
-        tags = "1, 2, 3, 4, 5"
+        tags = "1, 2, 3, 4, 5, 6"
     )]
     pub connection_options: ::core::option::Option<connection_options::ConnectionOptions>,
 }
 /// Nested message and enum types in `ConnectionOptions`.
 pub mod connection_options {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum ConnectionOptions {
         #[prost(message, tag = "1")]
         Postgres(super::PostgresConnectionOptions),
@@ -72,7 +72,31 @@ pub mod connection_options {
         Sqlite(super::SqliteConnectionOptions),
         #[prost(message, tag = "5")]
         Dm(super::DmConnectionOptions),
+        #[prost(message, tag = "6")]
+        Mdb(super::MdbConnectionOptions),
     }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MdbConnectionOptions {
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub driver: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "3")]
+    pub stream_chunk_size: u32,
+    #[prost(string, optional, tag = "4")]
+    pub uid: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub pwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "6")]
+    pub extra_params: ::prost::alloc::vec::Vec<MdbExtraParam>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MdbExtraParam {
+    #[prost(string, tag = "1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub value: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteSource {
@@ -221,7 +245,7 @@ pub struct RemoteField {
 pub struct RemoteType {
     #[prost(
         oneof = "remote_type::Type",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515"
     )]
     pub r#type: ::core::option::Option<remote_type::Type>,
 }
@@ -429,7 +453,47 @@ pub mod remote_type {
         DmTime(super::DmTime),
         #[prost(message, tag = "418")]
         DmDate(super::Empty),
+        #[prost(message, tag = "501")]
+        MdbBit(super::Empty),
+        #[prost(message, tag = "502")]
+        MdbTinyInt(super::Empty),
+        #[prost(message, tag = "503")]
+        MdbSmallInt(super::Empty),
+        #[prost(message, tag = "504")]
+        MdbInteger(super::Empty),
+        #[prost(message, tag = "505")]
+        MdbReal(super::Empty),
+        #[prost(message, tag = "506")]
+        MdbDouble(super::Empty),
+        #[prost(message, tag = "507")]
+        MdbCurrency(super::Empty),
+        #[prost(message, tag = "508")]
+        MdbText(super::MdbText),
+        #[prost(message, tag = "509")]
+        MdbMemo(super::Empty),
+        #[prost(message, tag = "510")]
+        MdbBinary(super::MdbBinary),
+        #[prost(message, tag = "511")]
+        MdbOleObject(super::Empty),
+        #[prost(message, tag = "512")]
+        MdbGuid(super::Empty),
+        #[prost(message, tag = "513")]
+        MdbDateTime(super::Empty),
+        #[prost(message, tag = "514")]
+        MdbDate(super::Empty),
+        #[prost(message, tag = "515")]
+        MdbTime(super::Empty),
     }
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MdbText {
+    #[prost(uint32, optional, tag = "1")]
+    pub length: ::core::option::Option<u32>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MdbBinary {
+    #[prost(uint32, optional, tag = "1")]
+    pub length: ::core::option::Option<u32>,
 }
 /// Place holder type for primitive types
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
