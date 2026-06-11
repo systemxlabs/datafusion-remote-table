@@ -372,10 +372,8 @@ impl RemoteDbType {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
-                | RemoteDbType::Dm
-                | RemoteDbType::Mdb => {
-                    Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery"))
-                }
+                | RemoteDbType::Dm => Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery")),
+                RemoteDbType::Mdb => None,
                 RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
             },
         }
