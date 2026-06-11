@@ -57,9 +57,7 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 #[case(vec!["Shippers"].into(), "Shippers")]
 #[tokio::test(flavor = "multi_thread")]
 async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
-    // Table source: COUNT pushdown via ODBC SELECT COUNT(*) works
-    // Query source: COUNT pushdown disabled (subquery syntax not supported)
-    let query_plan = format!(
+    let expected_plan = format!(
         "ProjectionExec: expr=[count(Int64(1))@0 as count(*)]\n  \
          AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]\n    \
          CoalescePartitionsExec\n      \
@@ -67,15 +65,11 @@ async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
          RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n          \
          RemoteTableScanExec: source={source_label}, projection=[]\n"
     );
-    let expected_plans: Vec<&str> = match source {
-        RemoteSource::Table(_) => vec!["ProjectionExec: expr=[0 as count(*)]\n  PlaceholderRowExec\n"],
-        RemoteSource::Query(_) => vec![&query_plan],
-    };
     assert_plan_and_result(
         RemoteDbType::Mdb,
-        source,
+        source.clone(),
         "select count(*) from remote_table",
-        expected_plans,
+        vec![&expected_plan],
         r#"+----------+
 | count(*) |
 +----------+

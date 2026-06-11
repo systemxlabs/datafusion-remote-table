@@ -350,23 +350,7 @@ impl Connection for MdbConnection {
         source: &RemoteSource,
         unparsed_filters: &[String],
     ) -> DFResult<Option<usize>> {
-        let db_type = conn_options.db_type();
-        let source = if unparsed_filters.is_empty() {
-            source.clone()
-        } else {
-            RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None))
-        };
-        // MDB only supports COUNT(*) on table sources via ODBC
-        if let RemoteSource::Table(table) = &source {
-            let count_query = format!("SELECT COUNT(*) FROM {}", db_type.sql_table_name(table));
-            debug!("[remote-table] fetching MDB row count: {count_query}");
-            let row_count = db_type
-                .fetch_count(self, conn_options, &count_query)
-                .await?;
-            Ok(Some(row_count))
-        } else {
-            Ok(None)
-        }
+        crate::connection::connection_count(self, conn_options, source, unparsed_filters).await
     }
 }
 
