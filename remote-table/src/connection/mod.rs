@@ -4,52 +4,6 @@ mod dm;
 mod mdb;
 #[cfg(feature = "mysql")]
 mod mysql;
-#[cfg(any(feature = "dm", feature = "mdb"))]
-mod odbc_util_inline {
-    //! Shared ODBC helpers used by both the dm and mdb backends.
-
-    use crate::DFResult;
-    use datafusion_common::DataFusionError;
-
-    fn build_naive_datetime(value: &odbc_api::sys::Timestamp) -> DFResult<chrono::NaiveDateTime> {
-        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
-            .and_hms_nano_opt(
-                value.hour as u32,
-                value.minute as u32,
-                value.second as u32,
-                value.fraction,
-            )
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn seconds_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
-            .and_hms_opt(value.hour as u32, value.minute as u32, value.second as u32)
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
-            .map(|ndt| ndt.and_utc().timestamp())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn ms_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-        Ok(build_naive_datetime(value)?.and_utc().timestamp_millis())
-    }
-
-    pub(crate) fn us_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-        Ok(build_naive_datetime(value)?.and_utc().timestamp_micros())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn ns_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
-        build_naive_datetime(value)?
-            .and_utc()
-            .timestamp_nanos_opt()
-            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
-    }
-}
-pub(crate) use odbc_util_inline::*;
 mod options;
 #[cfg(feature = "oracle")]
 mod oracle;
@@ -480,3 +434,50 @@ fn just_return<T>(v: T) -> DFResult<T> {
 fn just_deref<T: Copy>(t: &T) -> DFResult<T> {
     Ok(*t)
 }
+
+#[cfg(any(feature = "dm", feature = "mdb"))]
+mod odbc_utils {
+    //! Shared ODBC helpers used by both the dm and mdb backends.
+
+    use crate::DFResult;
+    use datafusion_common::DataFusionError;
+
+    fn build_naive_datetime(value: &odbc_api::sys::Timestamp) -> DFResult<chrono::NaiveDateTime> {
+        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
+            .and_hms_nano_opt(
+                value.hour as u32,
+                value.minute as u32,
+                value.second as u32,
+                value.fraction,
+            )
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn seconds_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
+        chrono::NaiveDate::from_ymd_opt(value.year as i32, value.month as u32, value.day as u32)
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))?
+            .and_hms_opt(value.hour as u32, value.minute as u32, value.second as u32)
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
+            .map(|ndt| ndt.and_utc().timestamp())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn ms_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
+        Ok(build_naive_datetime(value)?.and_utc().timestamp_millis())
+    }
+
+    pub(crate) fn us_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
+        Ok(build_naive_datetime(value)?.and_utc().timestamp_micros())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn ns_since_epoch(value: &odbc_api::sys::Timestamp) -> DFResult<i64> {
+        build_naive_datetime(value)?
+            .and_utc()
+            .timestamp_nanos_opt()
+            .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
+    }
+}
+pub(crate) use odbc_utils::*;

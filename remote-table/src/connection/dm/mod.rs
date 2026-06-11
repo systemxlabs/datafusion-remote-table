@@ -320,6 +320,3 @@ fn dm_type_to_remote_type(data_type: odbc_api::DataType) -> DFResult<DmType> {
         ))),
     }
 }
-
-// Epoch helpers (seconds_since_epoch, ms_since_epoch, us_since_epoch,
-// ns_since_epoch) are re-exported from `crate::connection` above.
