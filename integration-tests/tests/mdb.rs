@@ -56,8 +56,8 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 #[case("SELECT * FROM Shippers".into(), "query")]
 #[case(vec!["Shippers"].into(), "Shippers")]
 #[tokio::test(flavor = "multi_thread")]
-async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
-    // Table source: COUNT pushdown via ODBC SELECT COUNT(*)
+async fn count1_agg(#[case] source: RemoteSource, #[case] _source_label: &str) {
+    // Table source: COUNT pushdown via MDB row-count fast path
     // Query source: COUNT via DataFusion aggregate (no pushdown)
     let query_plan = format!(
         "ProjectionExec: expr=[count(Int64(1))@0 as count(*)]\n  \
@@ -69,7 +69,7 @@ async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
     );
     let expected_plans: Vec<&str> = match &source {
         RemoteSource::Table(_) => {
-            vec!["ProjectionExec: expr=[0 as count(*)]\n  PlaceholderRowExec\n"]
+            vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"]
         }
         RemoteSource::Query(_) => vec![&query_plan],
     };
