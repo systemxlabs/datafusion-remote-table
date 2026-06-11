@@ -239,7 +239,7 @@ impl RemoteDbType {
             RemoteDbType::Dm => Err(DataFusionError::NotImplemented(
                 "Dm unparser not implemented".to_string(),
             )),
-            RemoteDbType::Mdb => Ok(Unparser::new(&SqliteDialect {})),
+            RemoteDbType::Mdb => Ok(Unparser::new(&PostgreSqlDialect {})),
         }
     }
 
@@ -254,12 +254,36 @@ impl RemoteDbType {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
-                | RemoteDbType::Dm
-                | RemoteDbType::Mdb => {
+                | RemoteDbType::Dm => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
                         format!(" WHERE {}", unparsed_filters.join(" AND "))
+                    };
+                    let limit_clause = if let Some(limit) = limit {
+                        format!(" LIMIT {limit}")
+                    } else {
+                        "".to_string()
+                    };
+
+                    format!(
+                        "{}{where_clause}{limit_clause}",
+                        self.select_all_query(table)
+                    )
+                }
+                RemoteDbType::Mdb => {
+                    let where_clause = if unparsed_filters.is_empty() {
+                        "".to_string()
+                    } else {
+                        // mdb sql not support WHERE ("a" > 1)
+                        format!(
+                            " WHERE {}",
+                            unparsed_filters
+                                .iter()
+                                .map(|f| f.trim_matches(|c| c == '(' || c == ')'))
+                                .collect::<Vec<&str>>()
+                                .join(" AND ")
+                        )
                     };
                     let limit_clause = if let Some(limit) = limit {
                         format!(" LIMIT {limit}")
