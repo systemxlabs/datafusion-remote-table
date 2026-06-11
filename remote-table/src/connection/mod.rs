@@ -239,9 +239,7 @@ impl RemoteDbType {
             RemoteDbType::Dm => Err(DataFusionError::NotImplemented(
                 "Dm unparser not implemented".to_string(),
             )),
-            RemoteDbType::Mdb => Err(DataFusionError::NotImplemented(
-                "Mdb unparser not implemented".to_string(),
-            )),
+            RemoteDbType::Mdb => Ok(Unparser::new(&SqliteDialect {})),
         }
     }
 
