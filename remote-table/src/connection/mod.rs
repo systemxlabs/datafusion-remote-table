@@ -335,7 +335,10 @@ impl RemoteDbType {
             RemoteDbType::Mysql | RemoteDbType::Sqlite => {
                 format!("X'{}'", hex::encode(value))
             }
-            RemoteDbType::Oracle | RemoteDbType::Dm | RemoteDbType::Mdb => todo!(),
+            RemoteDbType::Oracle | RemoteDbType::Dm => {
+                format!("HEXTORAW('{}')", hex::encode(value))
+            }
+            RemoteDbType::Mdb => format!("X'{}'", hex::encode(value)),
         }
     }
 
