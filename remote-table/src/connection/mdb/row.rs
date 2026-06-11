@@ -261,7 +261,7 @@ pub(super) fn append_row_to_builders(
                     row,
                     odbc_col_idx,
                     odbc_api::sys::Timestamp,
-                    |v| { crate::connection::odbc_util::us_since_epoch(&v) }
+                    |v| { crate::connection::us_since_epoch(&v) }
                 );
             }
             DataType::Time64(TimeUnit::Microsecond) => {
