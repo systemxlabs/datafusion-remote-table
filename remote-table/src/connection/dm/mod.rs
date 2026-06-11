@@ -1,9 +1,6 @@
 use crate::connection::ODBC_ENV;
 use crate::connection::dm::buffer::{buffer_to_batch, build_buffer_desc};
 use crate::connection::dm::row::row_to_batch;
-pub(crate) use crate::connection::odbc_util::{
-    ms_since_epoch, ns_since_epoch, seconds_since_epoch, us_since_epoch,
-};
 use crate::{
     Connection, ConnectionOptions, DFResult, DmConnectionOptions, DmType, Literalize, Pool,
     PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
@@ -320,6 +317,3 @@ fn dm_type_to_remote_type(data_type: odbc_api::DataType) -> DFResult<DmType> {
         ))),
     }
 }
-
-// Epoch helpers (seconds_since_epoch, ms_since_epoch, us_since_epoch,
-// ns_since_epoch) are re-exported from `crate::connection::odbc_util` above.
