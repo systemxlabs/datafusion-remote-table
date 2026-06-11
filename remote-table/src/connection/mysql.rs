@@ -163,6 +163,15 @@ impl Connection for MysqlConnection {
             "Insert operation is not supported for mysql".to_string(),
         ))
     }
+
+    async fn count(
+        &self,
+        conn_options: &ConnectionOptions,
+        source: &RemoteSource,
+        unparsed_filters: &[String],
+    ) -> DFResult<Option<usize>> {
+        crate::connection::connection_count(self, conn_options, source, unparsed_filters).await
+    }
 }
 
 fn mysql_type_to_remote_type(mysql_col: &Column) -> DFResult<MysqlType> {

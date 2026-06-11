@@ -263,6 +263,15 @@ order by ordinal_position",
 
         Ok(count as usize)
     }
+
+    async fn count(
+        &self,
+        conn_options: &ConnectionOptions,
+        source: &RemoteSource,
+        unparsed_filters: &[String],
+    ) -> DFResult<Option<usize>> {
+        crate::connection::connection_count(self, conn_options, source, unparsed_filters).await
+    }
 }
 
 async fn build_remote_schema_for_query(

@@ -276,7 +276,7 @@ impl RemoteTable {
         )?;
 
         let row_count = if enable_table_statistics {
-            fetch_row_count(&pool, &conn_options, &source, &[], None).await?
+            fetch_row_count(&pool, &conn_options, &source, &[]).await?
         } else {
             None
         };
@@ -349,7 +349,6 @@ impl TableProvider for RemoteTable {
             &self.conn_options,
             &self.source,
             &unparsed_filters,
-            None,
         )
         .await?;
 
@@ -485,24 +484,7 @@ pub(crate) async fn fetch_row_count(
     conn_options: &ConnectionOptions,
     source: &RemoteSource,
     unparsed_filters: &[String],
-    limit: Option<usize>,
 ) -> DFResult<Option<usize>> {
-    let db_type = conn_options.db_type();
-    let count1_query = if unparsed_filters.is_empty() && limit.is_none() {
-        db_type.try_count1_query(source)
-    } else {
-        let real_sql = db_type.rewrite_query(source, unparsed_filters, limit);
-        db_type.try_count1_query(&RemoteSource::Query(real_sql))
-    };
-
-    if let Some(count1_query) = count1_query {
-        debug!("[remote-table] fetching row count with query: {count1_query}");
-        let conn = pool.get().await?;
-        let row_count = db_type
-            .fetch_count(conn, conn_options, &count1_query)
-            .await?;
-        Ok(Some(row_count))
-    } else {
-        Ok(None)
-    }
+    let conn = pool.get().await?;
+    conn.count(conn_options, source, unparsed_filters).await
 }

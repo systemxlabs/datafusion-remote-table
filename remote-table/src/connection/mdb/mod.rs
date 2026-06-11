@@ -343,6 +343,15 @@ impl Connection for MdbConnection {
             "Insert operation is not supported for mdb".to_string(),
         ))
     }
+
+    async fn count(
+        &self,
+        conn_options: &ConnectionOptions,
+        source: &RemoteSource,
+        unparsed_filters: &[String],
+    ) -> DFResult<Option<usize>> {
+        crate::connection::connection_count(self, conn_options, source, unparsed_filters).await
+    }
 }
 
 /// List user tables in an MDB file using the ODBC `SQLTables` function.

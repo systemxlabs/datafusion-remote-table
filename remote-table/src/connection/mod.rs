@@ -36,6 +36,7 @@ use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::common::collect;
 use datafusion_sql::unparser::Unparser;
 use datafusion_sql::unparser::dialect::{MySqlDialect, PostgreSqlDialect, SqliteDialect};
+use log::debug;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -76,6 +77,40 @@ pub trait Connection: Debug + Send + Sync + Any {
         remote_schema: RemoteSchemaRef,
         batch: RecordBatch,
     ) -> DFResult<usize>;
+
+    /// Fast row count using COUNT query pushdown.
+    /// Returns Some(count) if the backend supports COUNT optimization, None otherwise.
+    async fn count(
+        &self,
+        conn_options: &ConnectionOptions,
+        source: &RemoteSource,
+        unparsed_filters: &[String],
+    ) -> DFResult<Option<usize>>;
+}
+
+/// Helper for implementing Connection::count().
+/// Generates COUNT SQL and executes it via the connection's query method.
+pub(crate) async fn connection_count(
+    conn: &dyn Connection,
+    conn_options: &ConnectionOptions,
+    source: &RemoteSource,
+    unparsed_filters: &[String],
+) -> DFResult<Option<usize>> {
+    let db_type = conn_options.db_type();
+    let source = if unparsed_filters.is_empty() {
+        source.clone()
+    } else {
+        RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None))
+    };
+    if let Some(count1_query) = db_type.try_count1_query(&source) {
+        debug!("[remote-table] fetching row count with query: {count1_query}");
+        let row_count = db_type
+            .fetch_count(conn, conn_options, &count1_query)
+            .await?;
+        Ok(Some(row_count))
+    } else {
+        Ok(None)
+    }
 }
 
 impl dyn Connection {
@@ -389,7 +424,7 @@ impl RemoteDbType {
 
     pub(crate) async fn fetch_count(
         &self,
-        conn: Arc<dyn Connection>,
+        conn: &dyn Connection,
         conn_options: &ConnectionOptions,
         count1_query: &str,
     ) -> DFResult<usize> {

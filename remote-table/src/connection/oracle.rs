@@ -136,6 +136,15 @@ impl Connection for OracleConnection {
             "Insert operation is not supported for oracle".to_string(),
         ))
     }
+
+    async fn count(
+        &self,
+        conn_options: &ConnectionOptions,
+        source: &RemoteSource,
+        unparsed_filters: &[String],
+    ) -> DFResult<Option<usize>> {
+        crate::connection::connection_count(self, conn_options, source, unparsed_filters).await
+    }
 }
 
 fn oracle_type_to_remote_type(oracle_type: &ColumnType) -> DFResult<OracleType> {
