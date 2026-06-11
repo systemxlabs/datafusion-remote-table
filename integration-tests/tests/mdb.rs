@@ -53,10 +53,10 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case("SELECT * FROM Shippers".into(), "query")]
-#[case(vec!["Shippers"].into(), "Shippers")]
+#[case("SELECT * FROM Shippers".into())]
+#[case(vec!["Shippers"].into())]
 #[tokio::test(flavor = "multi_thread")]
-async fn count1_agg(#[case] source: RemoteSource, #[case] _source_label: &str) {
+async fn count1_agg(#[case] source: RemoteSource) {
     // Table source: COUNT pushdown via MDB row-count fast path
     // Query source: COUNT via DataFusion aggregate (no pushdown)
     let query_plan = format!(
