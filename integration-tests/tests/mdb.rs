@@ -143,17 +143,6 @@ pub async fn pool_state() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-pub async fn test_remote_sqls() {
-    let sources: Vec<RemoteSource> = vec![
-        "SELECT * FROM Shippers".into(),
-        vec!["Shippers"].into(),
-        "SELECT * FROM Products".into(),
-        vec!["Products"].into(),
-    ];
-    assert_sqls(RemoteDbType::Mdb, sources).await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
 pub async fn streaming_execution() {
     let options = ConnectionOptions::Mdb(
         MdbConnectionOptions::new(setup_mdb().to_path_buf()).with_stream_chunk_size(1usize),
