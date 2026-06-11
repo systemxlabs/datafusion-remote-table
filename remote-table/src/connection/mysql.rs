@@ -168,8 +168,9 @@ impl Connection for MysqlConnection {
         &self,
         conn_options: &ConnectionOptions,
         source: &RemoteSource,
+        filters: &[String],
     ) -> DFResult<Option<usize>> {
-        crate::connection::connection_count(self, conn_options, source).await
+        crate::connection::connection_count(self, conn_options, source, filters).await
     }
 }
 

@@ -276,7 +276,7 @@ impl RemoteTable {
         )?;
 
         let row_count = if enable_table_statistics {
-            fetch_row_count(&pool, &conn_options, &source).await?
+            fetch_row_count(&pool, &conn_options, &source, &[]).await?
         } else {
             None
         };
@@ -344,16 +344,13 @@ impl TableProvider for RemoteTable {
             unparsed_filters.push(self.transform.unparse_filter(filter, args)?);
         }
 
-        let source = if unparsed_filters.is_empty() {
-            self.source.clone()
-        } else {
-            RemoteSource::Query(self.conn_options.db_type().rewrite_query(
-                &self.source,
-                &unparsed_filters,
-                None,
-            ))
-        };
-        let row_count = fetch_row_count(&self.pool, &self.conn_options, &source).await?;
+        let row_count = fetch_row_count(
+            &self.pool,
+            &self.conn_options,
+            &self.source,
+            &unparsed_filters,
+        )
+        .await?;
 
         Ok(Arc::new(RemoteTableScanExec::try_new(
             self.conn_options.clone(),
@@ -486,7 +483,8 @@ pub(crate) async fn fetch_row_count(
     pool: &LazyPool,
     conn_options: &ConnectionOptions,
     source: &RemoteSource,
+    filters: &[String],
 ) -> DFResult<Option<usize>> {
     let conn = pool.get().await?;
-    conn.count(conn_options, source).await
+    conn.count(conn_options, source, filters).await
 }
