@@ -6,9 +6,7 @@ use datafusion_remote_table::{
     ConnectionOptions, MdbConnectionOptions, RemoteDbType, RemoteSource, RemoteTable,
 };
 use integration_tests::setup_mdb;
-use integration_tests::utils::{
-    assert_plan_and_result, assert_result, assert_sqls, build_conn_options,
-};
+use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
 use std::sync::Arc;
 
 #[rstest::rstest]
@@ -175,4 +173,26 @@ pub async fn streaming_execution() {
 | 3         | Federal Shipping | (503) 555-9931 |
 +-----------+------------------+----------------+"#,
     );
+}
+
+#[rstest::rstest]
+#[case("SELECT * FROM Shippers WHERE ShipperID = 1".into())]
+#[case(vec!["Shippers"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn pushdown_filters(#[case] source: RemoteSource) {
+    assert_plan_and_result(
+        RemoteDbType::Mdb,
+        source,
+        "select * from remote_table where \"ShipperID\" = 1",
+        vec![
+            "FilterExec: ShipperID@0 = 1\n  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n    RemoteTableScanExec: source=query\n",
+            "CooperativeExec\n  RemoteTableScanExec: source=Shippers, filters=[(\"ShipperID\" = 1)]\n",
+        ],
+        r#"+-----------+----------------+----------------+
+| ShipperID | CompanyName    | Phone          |
++-----------+----------------+----------------+
+| 1         | Speedy Express | (503) 555-9831 |
++-----------+----------------+----------------+"#,
+    )
+    .await;
 }
