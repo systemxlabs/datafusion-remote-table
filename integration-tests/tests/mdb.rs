@@ -53,31 +53,23 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 }
 
 #[rstest::rstest]
-#[case("SELECT * FROM Shippers".into())]
-#[case(vec!["Shippers"].into())]
+#[case("SELECT * FROM Shippers".into(), "query")]
+#[case(vec!["Shippers"].into(), "Shippers")]
 #[tokio::test(flavor = "multi_thread")]
-async fn count1_agg(#[case] source: RemoteSource) {
-    // Table source: COUNT pushdown via MDB row-count fast path
-    // Query source: COUNT via DataFusion aggregate (no pushdown)
-    let query_plan = format!(
+async fn count1_agg(#[case] source: RemoteSource, #[case] source_label: &str) {
+    let expected_plan = format!(
         "ProjectionExec: expr=[count(Int64(1))@0 as count(*)]\n  \
          AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]\n    \
          CoalescePartitionsExec\n      \
          AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]\n        \
          RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n          \
-         RemoteTableScanExec: source=query, projection=[]\n"
+         RemoteTableScanExec: source={source_label}, projection=[]\n"
     );
-    let expected_plans: Vec<&str> = match &source {
-        RemoteSource::Table(_) => {
-            vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"]
-        }
-        RemoteSource::Query(_) => vec![&query_plan],
-    };
     assert_plan_and_result(
         RemoteDbType::Mdb,
-        source,
+        source.clone(),
         "select count(*) from remote_table",
-        expected_plans,
+        vec![&expected_plan],
         r#"+----------+
 | count(*) |
 +----------+
@@ -188,15 +180,16 @@ pub async fn streaming_execution() {
 #[case(vec!["Shippers"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_filters(#[case] source: RemoteSource) {
-    // Table sources: filters pushed via rewrite_query (no unparser needed)
-    // Query sources: filters applied via DataFusion FilterExec (unparser unsupported)
+    // MDB does not have an unparser (create_unparser returns NotImplemented),
+    // so filters are not pushed down to the remote SQL. They are applied via
+    // DataFusion FilterExec on top of a full table scan.
     assert_plan_and_result(
         RemoteDbType::Mdb,
         source,
         "select * from remote_table where \"ShipperID\" = 1",
         vec![
             "FilterExec: ShipperID@0 = 1\n  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n    RemoteTableScanExec: source=query\n",
-            "CooperativeExec\n  RemoteTableScanExec: source=Shippers, filters=[(\"ShipperID\" = 1)]\n",
+            "FilterExec: ShipperID@0 = 1\n  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n    RemoteTableScanExec: source=Shippers\n",
         ],
         r#"+-----------+----------------+----------------+
 | ShipperID | CompanyName    | Phone          |
