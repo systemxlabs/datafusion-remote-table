@@ -105,7 +105,7 @@ pub(crate) async fn connection_count(
     if let Some(count1_query) = db_type.try_count1_query(&source) {
         debug!("[remote-table] fetching row count with query: {count1_query}");
         let row_count = db_type
-            .fetch_count(conn, conn_options, &count1_query)
+            .exec_count1_query(conn, conn_options, &count1_query)
             .await?;
         Ok(Some(row_count))
     } else {
@@ -444,7 +444,7 @@ impl RemoteDbType {
         }
     }
 
-    pub(crate) async fn fetch_count(
+    pub(crate) async fn exec_count1_query(
         &self,
         conn: &dyn Connection,
         conn_options: &ConnectionOptions,
