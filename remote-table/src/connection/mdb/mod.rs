@@ -30,16 +30,12 @@ use schema::build_remote_schema;
 pub struct MdbPool {
     connection_string: String,
     connections: Arc<AtomicUsize>,
-    /// mdbtools' libmdbodbc.so corrupts after repeated SQLDriverConnect.
-    /// Cache a single connection per pool to avoid this.
-    cached_conn: Mutex<Option<Arc<Mutex<odbc_api::Connection<'static>>>>>,
 }
 
 pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
     Ok(MdbPool {
         connection_string: options.connection_string(),
         connections: Arc::new(AtomicUsize::new(0)),
-        cached_conn: Mutex::new(None),
     })
 }
 
@@ -47,32 +43,22 @@ pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
 impl Pool for MdbPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
         self.connections.fetch_add(1, Ordering::SeqCst);
-        let conn = {
-            let mut cache = self.cached_conn.lock().await;
-            if let Some(existing) = cache.as_ref() {
-                existing.clone()
-            } else {
-                let env =
-                    ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
-                debug!(
-                    "[remote-table] mdb connection string: {}",
-                    self.connection_string
-                );
-                let connection = env
-                    .connect_with_connection_string(
-                        &self.connection_string,
-                        odbc_api::ConnectionOptions::default(),
-                    )
-                    .map_err(|e| {
-                        DataFusionError::Execution(format!(
-                            "Failed to create odbc connection to mdb: {e:?}"
-                        ))
-                    })?;
-                let conn = Arc::new(Mutex::new(connection));
-                *cache = Some(conn.clone());
-                conn
-            }
-        };
+        let env = ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
+        debug!(
+            "[remote-table] mdb connection string: {}",
+            self.connection_string
+        );
+        let connection = env
+            .connect_with_connection_string(
+                &self.connection_string,
+                odbc_api::ConnectionOptions::default(),
+            )
+            .map_err(|e| {
+                DataFusionError::Execution(format!(
+                    "Failed to create odbc connection to mdb: {e:?}"
+                ))
+            })?;
+        let conn = Arc::new(Mutex::new(connection));
         Ok(Arc::new(MdbConnection {
             conn,
             pool_connections: self.connections.clone(),
