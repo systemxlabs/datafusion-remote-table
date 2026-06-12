@@ -18,7 +18,6 @@ use log::debug;
 use odbc_api::Environment;
 use odbc_api::handles::{SqlResult, SqlText, Statement, StatementImpl};
 use odbc_api::{Cursor, CursorImpl};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -29,75 +28,36 @@ use row::append_row_to_builders;
 use row::finish_batch;
 use schema::build_remote_schema;
 
-/// Cache key that captures the full ODBC connection identity, not just the
-/// `.mdb` file path. Two pools that target the same path but use different
-/// drivers, credentials, or extra connection parameters must NOT share a
-/// connection.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct MdbConnectionCacheKey {
-    path: PathBuf,
-    driver: String,
-    uid: Option<String>,
-    pwd: Option<String>,
-    // Sorted so that semantically identical parameter sets (differing only in
-    // insertion order) produce the same key.
-    extra_params_sorted: Vec<(String, String)>,
-}
-
-impl MdbConnectionCacheKey {
-    fn from_options(options: &MdbConnectionOptions) -> Self {
-        let mut extra_params_sorted = options.extra_params.clone();
-        extra_params_sorted.sort();
-        Self {
-            path: options.path.clone(),
-            driver: options.driver.clone(),
-            uid: options.uid.clone(),
-            pwd: options.pwd.clone(),
-            extra_params_sorted,
-        }
-    }
-}
-
-/// Per-path global ODBC connection cache.
-///
-/// mdbtools' `libmdbodbc.so` keeps process-global state and corrupts it after
-/// a handful of successive `SQLDriverConnect` calls to the same `.mdb` file
-/// (observed symptom: `SQLDriverConnect: NoDiagnostics`, stderr says
-/// "File not found" while the file is plainly on disk). To work around this,
-/// every `MdbPool` that targets the same connection identity (path + driver +
-/// uid + pwd + extra_params) shares a single underlying `odbc_api::Connection`.
-/// Concurrent access on that shared connection is still serialised by
-/// `MdbConnection`'s own mutex.
-///
-/// Cached connections live until process exit. Bounded by the number of
-/// distinct connection identities the process touches.
-static MDB_CONN_CACHE: OnceLock<
-    std::sync::Mutex<HashMap<MdbConnectionCacheKey, Arc<Mutex<odbc_api::Connection<'static>>>>>,
-> = OnceLock::new();
-
-fn mdb_conn_cache() -> &'static std::sync::Mutex<
-    HashMap<MdbConnectionCacheKey, Arc<Mutex<odbc_api::Connection<'static>>>>,
-> {
-    MDB_CONN_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
+#[derive(Debug)]
 pub struct MdbPool {
-    options: MdbConnectionOptions,
+    connection_string: String,
     connections: Arc<AtomicUsize>,
 }
 
-impl std::fmt::Debug for MdbPool {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MdbPool")
-            .field("options", &self.options)
-            .field("connections", &self.connections)
-            .finish()
+impl MdbPool {
+    fn open_connection(&self) -> DFResult<Arc<Mutex<odbc_api::Connection<'static>>>> {
+        let env = ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
+        debug!(
+            "[remote-table] mdb connection string: {}",
+            self.connection_string
+        );
+        let connection = env
+            .connect_with_connection_string(
+                &self.connection_string,
+                odbc_api::ConnectionOptions::default(),
+            )
+            .map_err(|e| {
+                DataFusionError::Execution(format!(
+                    "Failed to create odbc connection to mdb: {e:?}"
+                ))
+            })?;
+        Ok(Arc::new(Mutex::new(connection)))
     }
 }
 
 pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
     Ok(MdbPool {
-        options: options.clone(),
+        connection_string: options.connection_string(),
         connections: Arc::new(AtomicUsize::new(0)),
     })
 }
@@ -105,37 +65,8 @@ pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
 #[async_trait::async_trait]
 impl Pool for MdbPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
-        let cache_key = MdbConnectionCacheKey::from_options(&self.options);
-
-        // Consult the global cache (see MDB_CONN_CACHE). The cache lock is
-        // held across the SQLDriverConnect call so two pools racing on the
-        // same connection identity don't both open a connection.
-        let conn = {
-            let mut cache = mdb_conn_cache().lock().unwrap();
-            if let Some(existing) = cache.get(&cache_key) {
-                existing.clone()
-            } else {
-                let env =
-                    ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
-                let connection_str = self.options.connection_string();
-                debug!("[remote-table] mdb connection string: {connection_str}");
-                let connection = env
-                    .connect_with_connection_string(
-                        &connection_str,
-                        odbc_api::ConnectionOptions::default(),
-                    )
-                    .map_err(|e| {
-                        DataFusionError::Execution(format!(
-                            "Failed to create odbc connection to mdb: {e:?}"
-                        ))
-                    })?;
-                let conn = Arc::new(Mutex::new(connection));
-                cache.insert(cache_key, conn.clone());
-                conn
-            }
-        };
-
         self.connections.fetch_add(1, Ordering::SeqCst);
+        let conn = self.open_connection()?;
         Ok(Arc::new(MdbConnection {
             conn,
             pool_connections: self.connections.clone(),
