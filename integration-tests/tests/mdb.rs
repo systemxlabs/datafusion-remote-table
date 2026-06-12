@@ -151,7 +151,7 @@ pub async fn pool_state() {
 #[tokio::test(flavor = "multi_thread")]
 pub async fn streaming_execution() {
     let options = ConnectionOptions::Mdb(
-        MdbConnectionOptions::new(setup_mdb().to_path_buf()).with_stream_chunk_size(1usize),
+        MdbConnectionOptions::new(setup_mdb()).with_stream_chunk_size(1usize),
     );
     let table = RemoteTable::try_new(options, RemoteSource::from(vec!["Shippers"]))
         .await

@@ -139,8 +139,6 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
             "SYSDBA",
             "Password123",
         )),
-        RemoteDbType::Mdb => {
-            ConnectionOptions::Mdb(MdbConnectionOptions::new(crate::setup_mdb().to_path_buf()))
-        }
+        RemoteDbType::Mdb => ConnectionOptions::Mdb(MdbConnectionOptions::new(crate::setup_mdb())),
     }
 }
