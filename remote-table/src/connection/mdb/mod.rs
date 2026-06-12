@@ -18,9 +18,7 @@ use log::debug;
 use odbc_api::Environment;
 use odbc_api::handles::{SqlResult, SqlText, Statement, StatementImpl};
 use odbc_api::{Cursor, CursorImpl};
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::runtime::Handle;
 
