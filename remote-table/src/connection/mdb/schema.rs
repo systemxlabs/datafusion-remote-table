@@ -6,7 +6,8 @@ use crate::RemoteType;
 use datafusion_common::DataFusionError;
 use odbc_api::CursorImpl;
 use odbc_api::ResultSetMetadata;
-use odbc_api::handles::{AsStatementRef, StatementImpl};
+use odbc_api::handles::AsStatementRef;
+use odbc_api::handles::StatementRef;
 use odbc_api::handles::{ColumnDescription, Statement};
 
 /// Lossy decode of an ODBC column name. `ColumnDescription.name` is
@@ -27,7 +28,7 @@ fn sql_chars_to_string_lossy(name: &[u16]) -> String {
     String::from_utf16_lossy(name)
 }
 
-pub(super) fn build_remote_schema(mut cursor: CursorImpl<StatementImpl>) -> DFResult<RemoteSchema> {
+pub(super) fn build_remote_schema(mut cursor: CursorImpl<StatementRef>) -> DFResult<RemoteSchema> {
     let col_count = cursor
         .num_result_cols()
         .map_err(|e| DataFusionError::External(Box::new(e)))? as u16;
