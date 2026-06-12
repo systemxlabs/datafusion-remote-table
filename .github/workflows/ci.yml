@@ -62,11 +62,13 @@ jobs:
 
       - name: Install MDBTools ODBC driver
         run: |
+          sudo apt-get update
           sudo apt-get install -y odbc-mdbtools
           sudo tee /etc/odbcinst.ini > /dev/null <<'EOF'
           [MDBTools]
-          Description = MDB Tools ODBC driver
-          Driver      = /usr/lib/x86_64-linux-gnu/odbc/libmdbodbc.so
+          Description = MDBTools Driver
+          Driver      = libmdbodbc.so
+          Setup       = libmdbodbc.so
           FileUsage   = 1
           UsageCount  = 1
           EOF
