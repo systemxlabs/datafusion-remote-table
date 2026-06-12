@@ -32,8 +32,17 @@ pub struct MdbPool {
     connections: Arc<AtomicUsize>,
 }
 
-impl MdbPool {
-    fn open_connection(&self) -> DFResult<Arc<Mutex<odbc_api::Connection<'static>>>> {
+pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
+    Ok(MdbPool {
+        connection_string: options.connection_string(),
+        connections: Arc::new(AtomicUsize::new(0)),
+    })
+}
+
+#[async_trait::async_trait]
+impl Pool for MdbPool {
+    async fn get(&self) -> DFResult<Arc<dyn Connection>> {
+        self.connections.fetch_add(1, Ordering::SeqCst);
         let env = ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
         debug!(
             "[remote-table] mdb connection string: {}",
@@ -49,22 +58,7 @@ impl MdbPool {
                     "Failed to create odbc connection to mdb: {e:?}"
                 ))
             })?;
-        Ok(Arc::new(Mutex::new(connection)))
-    }
-}
-
-pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
-    Ok(MdbPool {
-        connection_string: options.connection_string(),
-        connections: Arc::new(AtomicUsize::new(0)),
-    })
-}
-
-#[async_trait::async_trait]
-impl Pool for MdbPool {
-    async fn get(&self) -> DFResult<Arc<dyn Connection>> {
-        self.connections.fetch_add(1, Ordering::SeqCst);
-        let conn = self.open_connection()?;
+        let conn = Arc::new(Mutex::new(connection));
         Ok(Arc::new(MdbConnection {
             conn,
             pool_connections: self.connections.clone(),
