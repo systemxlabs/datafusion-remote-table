@@ -18,22 +18,28 @@ use log::debug;
 use odbc_api::Environment;
 use odbc_api::handles::{SqlResult, SqlText, Statement, StatementImpl};
 use odbc_api::{Cursor, CursorImpl};
-use std::sync::Arc;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock};
 use tokio::runtime::Handle;
 
 use row::append_row_to_builders;
 use row::finish_batch;
 use schema::build_remote_schema;
 
+static PATH_LOCKS: LazyLock<std::sync::Mutex<HashMap<String, Arc<std::sync::Mutex<()>>>>> =
+    LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
 #[derive(Debug)]
 pub struct MdbPool {
+    options: MdbConnectionOptions,
     connection_string: String,
     connections: Arc<AtomicUsize>,
 }
 
 pub(crate) fn connect_mdb(options: &MdbConnectionOptions) -> DFResult<MdbPool> {
     Ok(MdbPool {
+        options: options.clone(),
         connection_string: options.connection_string(),
         connections: Arc::new(AtomicUsize::new(0)),
     })
@@ -48,6 +54,15 @@ impl Pool for MdbPool {
             "[remote-table] mdb connection string: {}",
             self.connection_string
         );
+
+        let path_lock = PATH_LOCKS
+            .lock()
+            .unwrap()
+            .entry(self.options.path.to_string_lossy().to_string())
+            .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
+            .clone();
+
+        let guard = path_lock.lock().unwrap();
         let connection = env
             .connect_with_connection_string(
                 &self.connection_string,
@@ -58,6 +73,8 @@ impl Pool for MdbPool {
                     "Failed to create odbc connection to mdb: {e:?}"
                 ))
             })?;
+        drop(guard);
+
         let conn = Arc::new(Mutex::new(connection));
         Ok(Arc::new(MdbConnection {
             conn,
