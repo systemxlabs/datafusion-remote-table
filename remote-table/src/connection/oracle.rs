@@ -82,7 +82,7 @@ impl Connection for OracleConnection {
                 "Command is not supported for Oracle".to_string(),
             ));
         }
-        let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source)?;
         let result_set = self.conn.query(&sql, &[]).map_err(|e| {
             DataFusionError::Plan(format!("Failed to execute query {sql} on oracle: {e:?}"))
         })?;

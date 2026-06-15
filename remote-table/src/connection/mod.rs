@@ -354,9 +354,7 @@ impl RemoteDbType {
                     }
                 }
             },
-            RemoteSource::Command(_) => unreachable!(
-                "rewrite_query called on Command: support_rewrite_with_filters_limit should return false"
-            ),
+            RemoteSource::Command(_) => String::new(),
         }
     }
 
@@ -416,11 +414,11 @@ impl RemoteDbType {
         }
     }
 
-    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> String {
+    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> DFResult<String> {
         if !self.support_rewrite_with_filters_limit(source) {
             return source.query(*self);
         }
-        self.rewrite_query(source, &[], Some(1))
+        Ok(self.rewrite_query(source, &[], Some(1)))
     }
 
     pub(crate) fn try_count1_query(&self, source: &RemoteSource) -> Option<String> {

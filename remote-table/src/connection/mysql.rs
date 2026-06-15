@@ -86,7 +86,7 @@ impl Connection for MysqlConnection {
                 "Command is not supported for MySQL".to_string(),
             ));
         }
-        let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source)?;
         let mut conn = self.conn.lock().await;
         let conn = &mut *conn;
         let stmt = conn.prep(&sql).await.map_err(|e| {

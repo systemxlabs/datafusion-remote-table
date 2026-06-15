@@ -94,7 +94,7 @@ impl Connection for DmConnection {
                 "Command is not supported for DM".to_string(),
             ));
         }
-        let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Dm.limit_1_query_if_possible(source)?;
         let conn = self.conn.lock().await;
         let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
             DataFusionError::Plan(format!("Failed to execute query {sql} on dm: {e:?}"))

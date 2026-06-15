@@ -91,7 +91,7 @@ impl Connection for SqliteConnection {
                 Ok(remote_schema)
             }
             RemoteSource::Query(_query) => {
-                let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source);
+                let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source)?;
                 let mut stmt = conn.prepare(&sql).map_err(|e| {
                     DataFusionError::Plan(format!("Failed to prepare sqlite statement: {e:?}"))
                 })?;

@@ -194,7 +194,7 @@ impl Connection for MdbConnection {
             return Ok(Arc::new(list_tables_remote_schema()));
         }
 
-        let sql = RemoteDbType::Mdb.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Mdb.limit_1_query_if_possible(source)?;
         debug!("[remote-table] inferring mdb schema with: {sql}");
         let conn = self.conn.lock().await;
         // mdbtools 1.0.0 does not support SQL_ATTR_PARAMSET_SIZE, and

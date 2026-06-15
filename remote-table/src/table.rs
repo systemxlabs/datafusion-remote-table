@@ -31,13 +31,15 @@ pub enum RemoteSource {
 }
 
 impl RemoteSource {
-    pub fn query(&self, db_type: RemoteDbType) -> String {
+    pub fn query(&self, db_type: RemoteDbType) -> DFResult<String> {
         match self {
-            RemoteSource::Query(query) => query.clone(),
-            RemoteSource::Table(table_identifiers) => db_type.select_all_query(table_identifiers),
-            RemoteSource::Command(_) => {
-                unreachable!("Commands should be handled before query() is called")
+            RemoteSource::Query(query) => Ok(query.clone()),
+            RemoteSource::Table(table_identifiers) => {
+                Ok(db_type.select_all_query(table_identifiers))
             }
+            RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
+                "Command {cmd:?} cannot be converted to a SQL query"
+            ))),
         }
     }
 }
