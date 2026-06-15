@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
-pub enum RemoteCommand {
+pub enum SourceCommand {
     /// List all user tables/views in an MDB file.
     ListMdbTables,
 }
@@ -27,7 +27,7 @@ pub enum RemoteCommand {
 pub enum RemoteSource {
     Query(String),
     Table(Vec<String>),
-    Command(RemoteCommand),
+    Command(SourceCommand),
 }
 
 impl RemoteSource {

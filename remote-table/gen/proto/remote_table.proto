@@ -60,11 +60,11 @@ message RemoteSource {
   oneof source {
     string query = 1;
     Identifiers table = 2;
-    RemoteCommand command = 3;
+    SourceCommand command = 3;
   }
 }
 
-message RemoteCommand {
+message SourceCommand {
   oneof command {
     Empty list_mdb_tables = 1;
   }

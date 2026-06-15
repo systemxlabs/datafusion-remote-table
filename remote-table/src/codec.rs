@@ -8,8 +8,8 @@ use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
     ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize, MdbType,
-    MysqlType, OracleType, PostgresType, RemoteCommand, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteSource, RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
+    MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
+    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SourceCommand, SqliteType, Transform,
 };
 use arrow::datatypes::SchemaRef;
 use datafusion_common::DataFusionError;
@@ -1283,9 +1283,9 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
     })
 }
 
-fn serialize_remote_command(cmd: &RemoteCommand) -> protobuf::RemoteCommand {
+fn serialize_remote_command(cmd: &SourceCommand) -> protobuf::SourceCommand {
     match cmd {
-        RemoteCommand::ListMdbTables => protobuf::RemoteCommand {
+        SourceCommand::ListMdbTables => protobuf::SourceCommand {
             command: Some(protobuf::remote_command::Command::ListMdbTables(
                 protobuf::Empty {},
             )),
@@ -1293,12 +1293,12 @@ fn serialize_remote_command(cmd: &RemoteCommand) -> protobuf::RemoteCommand {
     }
 }
 
-fn parse_remote_command(cmd: &protobuf::RemoteCommand) -> DFResult<RemoteCommand> {
+fn parse_remote_command(cmd: &protobuf::SourceCommand) -> DFResult<SourceCommand> {
     let command = cmd.command.as_ref().ok_or(DataFusionError::Internal(
         "remote command is not set".to_string(),
     ))?;
     match command {
-        protobuf::remote_command::Command::ListMdbTables(_) => Ok(RemoteCommand::ListMdbTables),
+        protobuf::remote_command::Command::ListMdbTables(_) => Ok(SourceCommand::ListMdbTables),
     }
 }
 

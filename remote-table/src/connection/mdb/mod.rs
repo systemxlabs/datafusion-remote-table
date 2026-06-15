@@ -4,8 +4,8 @@ mod schema;
 use crate::connection::ODBC_ENV;
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, MdbConnectionOptions, MdbType, Pool,
-    PoolState, RemoteCommand, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef,
-    RemoteSource, RemoteType,
+    PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    SourceCommand,
 };
 use arrow::array::ArrayRef;
 use arrow::array::RecordBatch;
@@ -190,7 +190,7 @@ impl Drop for MdbConnection {
 #[async_trait::async_trait]
 impl Connection for MdbConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        if matches!(source, RemoteSource::Command(RemoteCommand::ListMdbTables)) {
+        if matches!(source, RemoteSource::Command(SourceCommand::ListMdbTables)) {
             return Ok(Arc::new(list_tables_remote_schema()));
         }
 
@@ -237,7 +237,7 @@ impl Connection for MdbConnection {
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream> {
-        if matches!(source, RemoteSource::Command(RemoteCommand::ListMdbTables)) {
+        if matches!(source, RemoteSource::Command(SourceCommand::ListMdbTables)) {
             return self
                 .query_list_tables_impl(table_schema, projection, limit)
                 .await;
@@ -385,7 +385,7 @@ impl Connection for MdbConnection {
         source: &RemoteSource,
         unparsed_filters: &[String],
     ) -> DFResult<Option<usize>> {
-        if matches!(source, RemoteSource::Command(RemoteCommand::ListMdbTables)) {
+        if matches!(source, RemoteSource::Command(SourceCommand::ListMdbTables)) {
             let tables = self.list_tables().await?;
             return Ok(Some(tables.len()));
         }

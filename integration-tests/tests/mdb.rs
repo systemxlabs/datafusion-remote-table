@@ -3,7 +3,7 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, MdbConnectionOptions, RemoteCommand, RemoteDbType, RemoteSource, RemoteTable,
+    ConnectionOptions, MdbConnectionOptions, RemoteDbType, RemoteSource, RemoteTable, SourceCommand,
 };
 use integration_tests::setup_mdb;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
@@ -211,7 +211,7 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 #[tokio::test(flavor = "multi_thread")]
 async fn list_tables() {
     let options = build_conn_options(RemoteDbType::Mdb);
-    let table = RemoteTable::try_new(options, RemoteSource::Command(RemoteCommand::ListMdbTables))
+    let table = RemoteTable::try_new(options, RemoteSource::Command(SourceCommand::ListMdbTables))
         .await
         .unwrap();
 
