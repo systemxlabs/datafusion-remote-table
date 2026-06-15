@@ -9,7 +9,7 @@ use crate::generated::prost as protobuf;
 use crate::{
     ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize, MdbType,
     MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
-    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SqliteType, Transform,
+    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SourceCommand, SqliteType, Transform,
 };
 use arrow::datatypes::SchemaRef;
 use datafusion_common::DataFusionError;
@@ -1283,6 +1283,25 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
     })
 }
 
+fn serialize_remote_command(cmd: &SourceCommand) -> protobuf::SourceCommand {
+    match cmd {
+        SourceCommand::ListMdbTables => protobuf::SourceCommand {
+            command: Some(protobuf::remote_command::Command::ListMdbTables(
+                protobuf::Empty {},
+            )),
+        },
+    }
+}
+
+fn parse_remote_command(cmd: &protobuf::SourceCommand) -> DFResult<SourceCommand> {
+    let command = cmd.command.as_ref().ok_or(DataFusionError::Internal(
+        "remote command is not set".to_string(),
+    ))?;
+    match command {
+        protobuf::remote_command::Command::ListMdbTables(_) => Ok(SourceCommand::ListMdbTables),
+    }
+}
+
 fn serialize_remote_source(source: &RemoteSource) -> protobuf::RemoteSource {
     match source {
         RemoteSource::Query(query) => protobuf::RemoteSource {
@@ -1293,6 +1312,11 @@ fn serialize_remote_source(source: &RemoteSource) -> protobuf::RemoteSource {
                 protobuf::Identifiers {
                     idents: table_identifiers.clone(),
                 },
+            )),
+        },
+        RemoteSource::Command(cmd) => protobuf::RemoteSource {
+            source: Some(protobuf::remote_source::Source::Command(
+                serialize_remote_command(cmd),
             )),
         },
     }
@@ -1306,6 +1330,9 @@ fn parse_remote_source(source: &protobuf::RemoteSource) -> DFResult<RemoteSource
         protobuf::remote_source::Source::Query(query) => Ok(RemoteSource::Query(query.clone())),
         protobuf::remote_source::Source::Table(table_identifiers) => {
             Ok(RemoteSource::Table(table_identifiers.idents.clone()))
+        }
+        protobuf::remote_source::Source::Command(cmd) => {
+            Ok(RemoteSource::Command(parse_remote_command(cmd)?))
         }
     }
 }

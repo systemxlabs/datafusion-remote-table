@@ -3,7 +3,7 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, MdbConnectionOptions, RemoteDbType, RemoteSource, RemoteTable,
+    ConnectionOptions, MdbConnectionOptions, RemoteDbType, RemoteSource, RemoteTable, SourceCommand,
 };
 use integration_tests::setup_mdb;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
@@ -72,6 +72,7 @@ async fn count1_agg(#[case] source: RemoteSource) {
             vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"]
         }
         RemoteSource::Query(_) => vec![&query_plan],
+        RemoteSource::Command(_) => unreachable!("Command not used in this test"),
     };
     assert_plan_and_result(
         RemoteDbType::Mdb,
@@ -205,4 +206,51 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 +-----------+----------------+----------------+"#,
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn list_tables_basic() {
+    assert_result(
+        RemoteDbType::Mdb,
+        RemoteSource::Command(SourceCommand::ListMdbTables),
+        "select * from remote_table order by table_name limit 3",
+        r#"+-------------------------------+------------+
+| table_name                    | table_type |
++-------------------------------+------------+
+| Alphabetical List of Products | View       |
+| Catalog                       | View       |
+| Categories                    | Table      |
++-------------------------------+------------+"#,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn list_tables_projection_and_limit() {
+    let options = build_conn_options(RemoteDbType::Mdb);
+    let table = RemoteTable::try_new(options, RemoteSource::Command(SourceCommand::ListMdbTables))
+        .await
+        .unwrap();
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    // Projection: select only table_name column with a limit
+    let df = ctx
+        .sql("select table_name from remote_table order by table_name limit 2")
+        .await
+        .unwrap();
+    let result = collect(df.create_physical_plan().await.unwrap(), ctx.task_ctx())
+        .await
+        .unwrap();
+    let formatted = pretty_format_batches(&result).unwrap().to_string();
+    assert_eq!(
+        formatted,
+        r#"+-------------------------------+
+| table_name                    |
++-------------------------------+
+| Alphabetical List of Products |
+| Catalog                       |
++-------------------------------+"#
+    );
 }

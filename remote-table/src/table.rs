@@ -18,16 +18,28 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
+pub enum SourceCommand {
+    /// List all user tables/views in an MDB file.
+    ListMdbTables,
+}
+
+#[derive(Debug, Clone)]
 pub enum RemoteSource {
     Query(String),
     Table(Vec<String>),
+    Command(SourceCommand),
 }
 
 impl RemoteSource {
-    pub fn query(&self, db_type: RemoteDbType) -> String {
+    pub fn query(&self, db_type: RemoteDbType) -> DFResult<String> {
         match self {
-            RemoteSource::Query(query) => query.clone(),
-            RemoteSource::Table(table_identifiers) => db_type.select_all_query(table_identifiers),
+            RemoteSource::Query(query) => Ok(query.clone()),
+            RemoteSource::Table(table_identifiers) => {
+                Ok(db_type.select_all_query(table_identifiers))
+            }
+            RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
+                "Command {cmd:?} cannot be converted to a SQL query"
+            ))),
         }
     }
 }
@@ -37,6 +49,7 @@ impl std::fmt::Display for RemoteSource {
         match self {
             RemoteSource::Query(query) => write!(f, "{query}"),
             RemoteSource::Table(table) => write!(f, "{}", table.join(".")),
+            RemoteSource::Command(cmd) => write!(f, "{cmd:?}"),
         }
     }
 }

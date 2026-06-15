@@ -252,6 +252,7 @@ impl DisplayAs for RemoteTableScanExec {
             match &self.source {
                 RemoteSource::Query(_query) => "query".to_string(),
                 RemoteSource::Table(table) => table.join("."),
+                RemoteSource::Command(cmd) => format!("command:{cmd:?}"),
             }
         )?;
         let projected_schema = self.schema();

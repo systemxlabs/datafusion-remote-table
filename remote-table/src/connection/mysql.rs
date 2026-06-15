@@ -81,7 +81,7 @@ pub struct MysqlConnection {
 #[async_trait::async_trait]
 impl Connection for MysqlConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Mysql.limit_1_query_if_possible(source)?;
         let mut conn = self.conn.lock().await;
         let conn = &mut *conn;
         let stmt = conn.prep(&sql).await.map_err(|e| {

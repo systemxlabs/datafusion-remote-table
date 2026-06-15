@@ -224,6 +224,7 @@ impl RemoteDbType {
             _ => match source {
                 RemoteSource::Table(_) => true,
                 RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+                RemoteSource::Command(_) => false,
             },
         }
     }
@@ -353,6 +354,7 @@ impl RemoteDbType {
                     }
                 }
             },
+            RemoteSource::Command(_) => String::new(),
         }
     }
 
@@ -412,11 +414,11 @@ impl RemoteDbType {
         }
     }
 
-    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> String {
+    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> DFResult<String> {
         if !self.support_rewrite_with_filters_limit(source) {
             return source.query(*self);
         }
-        self.rewrite_query(source, &[], Some(1))
+        Ok(self.rewrite_query(source, &[], Some(1)))
     }
 
     pub(crate) fn try_count1_query(&self, source: &RemoteSource) -> Option<String> {
@@ -440,6 +442,7 @@ impl RemoteDbType {
                     RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
                     RemoteDbType::Mdb => unreachable!(),
                 },
+                RemoteSource::Command(_) => None,
             },
         }
     }
