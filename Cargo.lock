@@ -216,7 +216,7 @@ dependencies = [
  "arrow-ord",
  "arrow-schema",
  "arrow-select",
- "atoi",
+ "atoi 2.0.0",
  "base64",
  "chrono",
  "comfy-table",
@@ -412,6 +412,15 @@ name = "atoi"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28d99ec8bfea296261ca1af174f24225171fea9664ba9003cbebee704810528"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "atoi"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4652e33138d8d9c774c9697a351b019deb33737812be629603434407f288a323"
 dependencies = [
  "num-traits",
 ]
@@ -2460,9 +2469,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
+checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "lru"
@@ -2719,11 +2728,11 @@ dependencies = [
 
 [[package]]
 name = "odbc-api"
-version = "28.0.0"
+version = "28.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24d536fcaf240c7d6c47bd5be3701bc2effd779e25ae23ce95b2193137d90313"
+checksum = "ba284ecd9bef303e78075e048d5ac5eba60e0169a991736ebd25a8f4f3980630"
 dependencies = [
- "atoi",
+ "atoi 3.0.0",
  "log",
  "odbc-sys",
  "thiserror",
