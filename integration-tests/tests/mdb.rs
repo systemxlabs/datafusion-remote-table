@@ -209,7 +209,24 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn list_tables() {
+async fn list_tables_basic() {
+    assert_result(
+        RemoteDbType::Mdb,
+        RemoteSource::Command(SourceCommand::ListMdbTables),
+        "select * from remote_table order by table_name limit 3",
+        r#"+-------------------------------+------------+
+| table_name                    | table_type |
++-------------------------------+------------+
+| Alphabetical List of Products | View       |
+| Catalog                       | View       |
+| Categories                    | Table      |
++-------------------------------+------------+"#,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn list_tables_projection_and_limit() {
     let options = build_conn_options(RemoteDbType::Mdb);
     let table = RemoteTable::try_new(options, RemoteSource::Command(SourceCommand::ListMdbTables))
         .await
@@ -218,21 +235,22 @@ async fn list_tables() {
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
 
-    // Verify the magic table returns table_name and table_type columns
-    // containing expected Northwind tables
+    // Projection: select only table_name column with a limit
     let df = ctx
-        .sql("select * from remote_table order by table_name")
+        .sql("select table_name from remote_table order by table_name limit 2")
         .await
         .unwrap();
     let result = collect(df.create_physical_plan().await.unwrap(), ctx.task_ctx())
         .await
         .unwrap();
     let formatted = pretty_format_batches(&result).unwrap().to_string();
-
-    // Northwind sample database should contain these well-known tables
-    assert!(formatted.contains("Shippers"));
-    assert!(formatted.contains("Products"));
-    assert!(formatted.contains("Table"));
-
-    println!("Tables in nwind.mdb:\n{formatted}");
+    assert_eq!(
+        formatted,
+        r#"+-------------------------------+
+| table_name                    |
++-------------------------------+
+| Alphabetical List of Products |
+| Catalog                       |
++-------------------------------+"#
+    );
 }

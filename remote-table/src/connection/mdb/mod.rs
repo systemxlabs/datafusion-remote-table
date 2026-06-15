@@ -11,7 +11,7 @@ use arrow::array::ArrayRef;
 use arrow::array::RecordBatch;
 use arrow::array::StringBuilder;
 use arrow::array::make_builder;
-use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use arrow::datatypes::SchemaRef;
 use datafusion_common::DataFusionError;
 use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
@@ -31,13 +31,6 @@ use tokio::runtime::Handle;
 use row::append_row_to_builders;
 use row::finish_batch;
 use schema::build_remote_schema;
-
-fn list_tables_arrow_schema() -> SchemaRef {
-    Arc::new(Schema::new(vec![
-        Field::new("table_name", DataType::Utf8, false),
-        Field::new("table_type", DataType::Utf8, false),
-    ]))
-}
 
 fn list_tables_remote_schema() -> RemoteSchema {
     RemoteSchema::new(vec![
@@ -582,7 +575,7 @@ impl MdbConnection {
             type_builder.append_value(typ);
         }
 
-        let full_schema = list_tables_arrow_schema();
+        let full_schema = Arc::new(list_tables_remote_schema().to_arrow_schema());
         let batch = RecordBatch::try_new(
             full_schema.clone(),
             vec![
