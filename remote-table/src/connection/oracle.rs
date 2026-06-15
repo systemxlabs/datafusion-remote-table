@@ -77,7 +77,7 @@ pub struct OracleConnection {
 #[async_trait::async_trait]
 impl Connection for OracleConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Oracle.limit_1_query_if_possible(source)?;
         let result_set = self.conn.query(&sql, &[]).map_err(|e| {
             DataFusionError::Plan(format!("Failed to execute query {sql} on oracle: {e:?}"))
         })?;
@@ -96,7 +96,7 @@ impl Connection for OracleConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Oracle.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Oracle.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing oracle query: {sql}");
 
         let projection = projection.cloned();

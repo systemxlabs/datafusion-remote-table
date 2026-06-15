@@ -188,15 +188,15 @@ pub async fn streaming_execution() {
 #[case(vec!["Shippers"].into())]
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_filters(#[case] source: RemoteSource) {
-    // Table sources: filters pushed via rewrite_query (no unparser needed)
-    // Query sources: filters applied via DataFusion FilterExec (unparser unsupported)
+    // MDB filter pushdown not supported (no unparser, rewrite returns error).
+    // Filters applied via DataFusion FilterExec for both Table and Query sources.
     assert_plan_and_result(
         RemoteDbType::Mdb,
         source,
         "select * from remote_table where \"ShipperID\" = 1",
         vec![
             "FilterExec: ShipperID@0 = 1\n  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n    RemoteTableScanExec: source=query\n",
-            "CooperativeExec\n  RemoteTableScanExec: source=Shippers, filters=[(\"ShipperID\" = 1)]\n",
+            "FilterExec: ShipperID@0 = 1\n  RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n    RemoteTableScanExec: source=Shippers\n",
         ],
         r#"+-----------+----------------+----------------+
 | ShipperID | CompanyName    | Phone          |

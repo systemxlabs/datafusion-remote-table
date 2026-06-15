@@ -89,7 +89,7 @@ impl Drop for DmConnection {
 #[async_trait::async_trait]
 impl Connection for DmConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
+        let sql = RemoteDbType::Dm.limit_1_query_if_possible(source)?;
         let conn = self.conn.lock().await;
         let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {
             DataFusionError::Plan(format!("Failed to execute query {sql} on dm: {e:?}"))
@@ -116,7 +116,7 @@ impl Connection for DmConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Dm.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Dm.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing dm query: {sql}");
 
         let chunk_size = conn_options.stream_chunk_size();

@@ -100,7 +100,7 @@ pub(crate) async fn connection_count(
     let source = if unparsed_filters.is_empty() {
         source.clone()
     } else {
-        RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None))
+        RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None)?)
     };
     if let Some(count1_query) = db_type.try_count1_query(&source) {
         debug!("[remote-table] fetching row count with query: {count1_query}");
@@ -248,7 +248,7 @@ impl RemoteDbType {
         source: &RemoteSource,
         unparsed_filters: &[String],
         limit: Option<usize>,
-    ) -> String {
+    ) -> DFResult<String> {
         match source {
             RemoteSource::Table(table) => match self {
                 RemoteDbType::Postgres
@@ -266,35 +266,24 @@ impl RemoteDbType {
                         "".to_string()
                     };
 
-                    format!(
+                    Ok(format!(
                         "{}{where_clause}{limit_clause}",
                         self.select_all_query(table)
-                    )
+                    ))
                 }
                 RemoteDbType::Mdb => {
-                    let where_clause = if unparsed_filters.is_empty() {
-                        "".to_string()
-                    } else {
-                        // mdb sql not support WHERE ("a" > 1)
-                        format!(
-                            " WHERE {}",
-                            unparsed_filters
-                                .iter()
-                                .map(|f| f.trim_matches(|c| c == '(' || c == ')'))
-                                .collect::<Vec<&str>>()
-                                .join(" AND ")
-                        )
-                    };
+                    if !unparsed_filters.is_empty() {
+                        return Err(DataFusionError::NotImplemented(
+                            "MDB filter pushdown not supported".to_string(),
+                        ));
+                    }
                     let limit_clause = if let Some(limit) = limit {
                         format!(" LIMIT {limit}")
                     } else {
                         "".to_string()
                     };
 
-                    format!(
-                        "{}{where_clause}{limit_clause}",
-                        self.select_all_query(table)
-                    )
+                    Ok(format!("{}{limit_clause}", self.select_all_query(table)))
                 }
                 RemoteDbType::Oracle => {
                     let mut all_filters: Vec<String> = vec![];
@@ -308,51 +297,60 @@ impl RemoteDbType {
                     } else {
                         format!(" WHERE {}", all_filters.join(" AND "))
                     };
-                    format!("{}{where_clause}", self.select_all_query(table))
+                    Ok(format!("{}{where_clause}", self.select_all_query(table)))
                 }
             },
-            RemoteSource::Query(query) => match self {
-                RemoteDbType::Postgres
-                | RemoteDbType::Mysql
-                | RemoteDbType::Sqlite
-                | RemoteDbType::Dm
-                | RemoteDbType::Mdb => {
-                    let where_clause = if unparsed_filters.is_empty() {
-                        "".to_string()
-                    } else {
-                        format!(" WHERE {}", unparsed_filters.join(" AND "))
-                    };
-                    let limit_clause = if let Some(limit) = limit {
-                        format!(" LIMIT {limit}")
-                    } else {
-                        "".to_string()
-                    };
+            RemoteSource::Query(query) => {
+                if !query.trim()[0..6].eq_ignore_ascii_case("select") {
+                    return Err(DataFusionError::NotImplemented(
+                        "Non-SELECT query rewrite not supported".to_string(),
+                    ));
+                }
+                match self {
+                    RemoteDbType::Postgres
+                    | RemoteDbType::Mysql
+                    | RemoteDbType::Sqlite
+                    | RemoteDbType::Dm
+                    | RemoteDbType::Mdb => {
+                        let where_clause = if unparsed_filters.is_empty() {
+                            "".to_string()
+                        } else {
+                            format!(" WHERE {}", unparsed_filters.join(" AND "))
+                        };
+                        let limit_clause = if let Some(limit) = limit {
+                            format!(" LIMIT {limit}")
+                        } else {
+                            "".to_string()
+                        };
 
-                    if where_clause.is_empty() && limit_clause.is_empty() {
-                        query.clone()
-                    } else {
-                        format!("SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}")
+                        if where_clause.is_empty() && limit_clause.is_empty() {
+                            Ok(query.clone())
+                        } else {
+                            Ok(format!(
+                                "SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}"
+                            ))
+                        }
+                    }
+                    RemoteDbType::Oracle => {
+                        let mut all_filters: Vec<String> = vec![];
+                        all_filters.extend_from_slice(unparsed_filters);
+                        if let Some(limit) = limit {
+                            all_filters.push(format!("ROWNUM <= {limit}"))
+                        }
+
+                        let where_clause = if all_filters.is_empty() {
+                            "".to_string()
+                        } else {
+                            format!(" WHERE {}", all_filters.join(" AND "))
+                        };
+                        if where_clause.is_empty() {
+                            Ok(query.clone())
+                        } else {
+                            Ok(format!("SELECT * FROM ({query}){where_clause}"))
+                        }
                     }
                 }
-                RemoteDbType::Oracle => {
-                    let mut all_filters: Vec<String> = vec![];
-                    all_filters.extend_from_slice(unparsed_filters);
-                    if let Some(limit) = limit {
-                        all_filters.push(format!("ROWNUM <= {limit}"))
-                    }
-
-                    let where_clause = if all_filters.is_empty() {
-                        "".to_string()
-                    } else {
-                        format!(" WHERE {}", all_filters.join(" AND "))
-                    };
-                    if where_clause.is_empty() {
-                        query.clone()
-                    } else {
-                        format!("SELECT * FROM ({query}){where_clause}")
-                    }
-                }
-            },
+            }
         }
     }
 
@@ -412,9 +410,9 @@ impl RemoteDbType {
         }
     }
 
-    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> String {
+    pub(crate) fn limit_1_query_if_possible(&self, source: &RemoteSource) -> DFResult<String> {
         if !self.support_rewrite_with_filters_limit(source) {
-            return source.query(*self);
+            return Ok(source.query(*self));
         }
         self.rewrite_query(source, &[], Some(1))
     }

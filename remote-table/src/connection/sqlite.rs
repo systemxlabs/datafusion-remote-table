@@ -91,7 +91,7 @@ impl Connection for SqliteConnection {
                 Ok(remote_schema)
             }
             RemoteSource::Query(_query) => {
-                let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source);
+                let sql = RemoteDbType::Sqlite.limit_1_query_if_possible(source)?;
                 let mut stmt = conn.prepare(&sql).map_err(|e| {
                     DataFusionError::Plan(format!("Failed to prepare sqlite statement: {e:?}"))
                 })?;
@@ -118,7 +118,7 @@ impl Connection for SqliteConnection {
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
-        let sql = RemoteDbType::Sqlite.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Sqlite.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing sqlite query: {sql}");
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<DFResult<RecordBatch>>(1);
