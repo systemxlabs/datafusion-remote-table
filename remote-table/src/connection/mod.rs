@@ -332,7 +332,9 @@ impl RemoteDbType {
                     if where_clause.is_empty() && limit_clause.is_empty() {
                         Ok(query.clone())
                     } else {
-                        Ok(format!("SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}"))
+                        Ok(format!(
+                            "SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}"
+                        ))
                     }
                 }
                 RemoteDbType::Oracle => {
