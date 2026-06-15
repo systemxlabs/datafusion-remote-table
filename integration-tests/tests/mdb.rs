@@ -3,7 +3,8 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, MdbConnectionOptions, RemoteDbType, RemoteSource, RemoteTable,
+    ConnectionOptions, MDB_LIST_TABLES_MAGIC, MdbConnectionOptions, RemoteDbType, RemoteSource,
+    RemoteTable,
 };
 use integration_tests::setup_mdb;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
@@ -205,4 +206,33 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 +-----------+----------------+----------------+"#,
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn list_tables() {
+    let options = build_conn_options(RemoteDbType::Mdb);
+    let table = RemoteTable::try_new(options, RemoteSource::from(vec![MDB_LIST_TABLES_MAGIC]))
+        .await
+        .unwrap();
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    // Verify the magic table returns table_name and table_type columns
+    // containing expected Northwind tables
+    let df = ctx
+        .sql("select * from remote_table order by table_name")
+        .await
+        .unwrap();
+    let result = collect(df.create_physical_plan().await.unwrap(), ctx.task_ctx())
+        .await
+        .unwrap();
+    let formatted = pretty_format_batches(&result).unwrap().to_string();
+
+    // Northwind sample database should contain these well-known tables
+    assert!(formatted.contains("Shippers"));
+    assert!(formatted.contains("Products"));
+    assert!(formatted.contains("Table"));
+
+    println!("Tables in nwind.mdb:\n{formatted}");
 }

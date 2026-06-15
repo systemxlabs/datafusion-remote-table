@@ -3,12 +3,14 @@ mod schema;
 
 use crate::connection::ODBC_ENV;
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, MdbConnectionOptions, Pool, PoolState,
-    RemoteDbType, RemoteSchemaRef, RemoteSource,
+    Connection, ConnectionOptions, DFResult, Literalize, MdbConnectionOptions, MdbType, Pool,
+    PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
+use arrow::array::ArrayRef;
 use arrow::array::RecordBatch;
+use arrow::array::StringBuilder;
 use arrow::array::make_builder;
-use arrow::datatypes::SchemaRef;
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion_common::DataFusionError;
 use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
@@ -28,6 +30,49 @@ use tokio::runtime::Handle;
 use row::append_row_to_builders;
 use row::finish_batch;
 use schema::build_remote_schema;
+
+/// Magic virtual table name for listing user tables in an MDB file.
+///
+/// Create a [`RemoteTable`](crate::RemoteTable) with this name to query the
+/// list of tables in the `.mdb` file as if it were a real table with columns
+/// `table_name` (Utf8) and `table_type` (Utf8, either `"Table"` or `"View"`).
+///
+/// # Example
+///
+/// ```ignore
+/// let table = RemoteTable::try_new(
+///     ConnectionOptions::Mdb(options),
+///     RemoteSource::from(vec![MDB_LIST_TABLES_MAGIC.to_string()]),
+/// ).await?;
+/// ```
+pub const MDB_LIST_TABLES_MAGIC: &str = "__mdb_list_tables__";
+
+/// Check whether the source targets the magic list-tables virtual table.
+fn is_list_tables_source(source: &RemoteSource) -> bool {
+    matches!(source, RemoteSource::Table(t) if t.len() == 1 && t[0] == MDB_LIST_TABLES_MAGIC)
+}
+
+fn list_tables_arrow_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        Field::new("table_name", DataType::Utf8, false),
+        Field::new("table_type", DataType::Utf8, false),
+    ]))
+}
+
+fn list_tables_remote_schema() -> RemoteSchema {
+    RemoteSchema::new(vec![
+        RemoteField::new(
+            "table_name",
+            RemoteType::Mdb(MdbType::Text(Some(255))),
+            false,
+        ),
+        RemoteField::new(
+            "table_type",
+            RemoteType::Mdb(MdbType::Text(Some(50))),
+            false,
+        ),
+    ])
+}
 
 /// Cache key that captures the full ODBC connection identity, not just the
 /// `.mdb` file path. Two pools that target the same path but use different
@@ -165,6 +210,10 @@ impl Drop for MdbConnection {
 #[async_trait::async_trait]
 impl Connection for MdbConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
+        if is_list_tables_source(source) {
+            return Ok(Arc::new(list_tables_remote_schema()));
+        }
+
         let sql = RemoteDbType::Mdb.limit_1_query_if_possible(source);
         debug!("[remote-table] inferring mdb schema with: {sql}");
         let conn = self.conn.lock().await;
@@ -208,6 +257,12 @@ impl Connection for MdbConnection {
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream> {
+        if is_list_tables_source(source) {
+            return self
+                .query_list_tables_impl(table_schema, projection, limit)
+                .await;
+        }
+
         let projected_schema = project_schema(&table_schema, projection)?;
 
         let sql = RemoteDbType::Mdb.rewrite_query(source, unparsed_filters, limit);
@@ -350,6 +405,11 @@ impl Connection for MdbConnection {
         source: &RemoteSource,
         unparsed_filters: &[String],
     ) -> DFResult<Option<usize>> {
+        if is_list_tables_source(source) {
+            let tables = self.list_tables().await?;
+            return Ok(Some(tables.len()));
+        }
+
         let db_type = conn_options.db_type();
         let source = if unparsed_filters.is_empty() {
             source.clone()
@@ -435,96 +495,139 @@ impl MdbConnection {
             DataFusionError::Execution(format!("Failed to join MDB row count task: {e}"))
         })?
     }
-}
 
-/// List user tables in an MDB file using the ODBC `SQLTables` function.
-///
-/// Returns `Vec<(table_name, table_type)>` where `table_type` is `"Table"` or `"View"`.
-/// System tables (prefixed with `MSys`) are filtered out.
-pub fn mdb_list_tables(options: &MdbConnectionOptions) -> DFResult<Vec<(String, String)>> {
-    let env = ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
-    let connection_str = options.connection_string();
-    debug!("[remote-table] mdb_list_tables connection string: {connection_str}");
-    let conn = env
-        .connect_with_connection_string(&connection_str, odbc_api::ConnectionOptions::default())
-        .map_err(|e| {
+    /// Core: call ODBC SQLTables on an already-locked connection.
+    /// Returns (table_name, table_type), system tables filtered out.
+    fn list_tables_sync(conn: &odbc_api::Connection<'_>) -> DFResult<Vec<(String, String)>> {
+        let pre = conn.preallocate().map_err(|e| {
             DataFusionError::Execution(format!(
-                "Failed to create odbc connection for mdb_list_tables: {e:?}"
+                "Failed to preallocate statement for list_tables: {e:?}"
             ))
         })?;
+        let mut stmt = pre.into_handle();
 
-    let pre = conn.preallocate().map_err(|e| {
-        DataFusionError::Execution(format!(
-            "Failed to preallocate statement for mdb_list_tables: {e:?}"
-        ))
-    })?;
-    let mut stmt = pre.into_handle();
+        let sql_cat = SqlText::new("");
+        let sql_sch = SqlText::new("");
+        let sql_tbl = SqlText::new("%");
+        let sql_typ = SqlText::new("TABLE,VIEW");
+        stmt.tables(&sql_cat, &sql_sch, &sql_tbl, &sql_typ)
+            .into_result(&stmt)
+            .map_err(|e| {
+                DataFusionError::Execution(format!("Failed to execute SQLTables on mdb: {e:?}"))
+            })?;
 
-    // Call SQLTables via the Statement trait
-    let sql_cat = SqlText::new("");
-    let sql_sch = SqlText::new("");
-    let sql_tbl = SqlText::new("%");
-    let sql_typ = SqlText::new("TABLE,VIEW");
-    stmt.tables(&sql_cat, &sql_sch, &sql_tbl, &sql_typ)
-        .into_result(&stmt)
-        .map_err(|e| {
-            DataFusionError::Execution(format!("Failed to execute SQLTables on mdb: {e:?}"))
-        })?;
-
-    // Bind dummy column (mdbtools workaround: SQLFetch hangs without at
-    // least one bound column, same as the query path).
-    let mut dummy = odbc_api::Nullable::<i32>::null();
-    match unsafe { Statement::bind_col(&mut stmt, 1, &mut dummy) } {
-        SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {}
-        other => {
-            return Err(DataFusionError::Execution(format!(
-                "Failed to bind dummy column for mdb_list_tables: {other:?}"
-            )));
+        // Bind dummy column (mdbtools workaround: SQLFetch hangs without at
+        // least one bound column, same as the query path).
+        let mut dummy = odbc_api::Nullable::<i32>::null();
+        match unsafe { Statement::bind_col(&mut stmt, 1, &mut dummy) } {
+            SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {}
+            other => {
+                return Err(DataFusionError::Execution(format!(
+                    "Failed to bind dummy column for list_tables: {other:?}"
+                )));
+            }
         }
-    }
 
-    // SAFETY: stmt is in cursor state after a successful tables() call.
-    let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
-    let mut tables = Vec::new();
-    let mut text_buf: Vec<u8> = Vec::new();
+        // SAFETY: stmt is in cursor state after a successful tables() call.
+        let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
+        let mut tables = Vec::new();
+        let mut text_buf: Vec<u8> = Vec::new();
 
-    loop {
-        match cursor.next_row() {
-            Ok(Some(mut row)) => {
-                // Column 3 = TABLE_NAME
-                text_buf.clear();
-                if row.get_text(3, &mut text_buf).unwrap_or(false) {
-                    let table_name = String::from_utf8_lossy(&text_buf).into_owned();
-
-                    // Column 4 = TABLE_TYPE
+        loop {
+            match cursor.next_row() {
+                Ok(Some(mut row)) => {
+                    // Column 3 = TABLE_NAME
                     text_buf.clear();
-                    let table_type = if row.get_text(4, &mut text_buf).unwrap_or(false) {
-                        String::from_utf8_lossy(&text_buf).into_owned()
-                    } else {
-                        "TABLE".to_string()
-                    };
+                    if row.get_text(3, &mut text_buf).unwrap_or(false) {
+                        let table_name = String::from_utf8_lossy(&text_buf).into_owned();
 
-                    // Filter system/internal tables
-                    if !table_name.starts_with("MSys") && !table_name.starts_with("~") {
-                        let display_type = if table_type.eq_ignore_ascii_case("VIEW") {
-                            "View"
+                        // Column 4 = TABLE_TYPE
+                        text_buf.clear();
+                        let table_type = if row.get_text(4, &mut text_buf).unwrap_or(false) {
+                            String::from_utf8_lossy(&text_buf).into_owned()
                         } else {
-                            "Table"
+                            "TABLE".to_string()
                         };
-                        tables.push((table_name, display_type.to_string()));
+
+                        // Filter system/internal tables
+                        if !table_name.starts_with("MSys") && !table_name.starts_with("~") {
+                            let display_type = if table_type.eq_ignore_ascii_case("VIEW") {
+                                "View"
+                            } else {
+                                "Table"
+                            };
+                            tables.push((table_name, display_type.to_string()));
+                        }
                     }
                 }
-            }
-            Ok(None) => break,
-            Err(e) => {
-                return Err(DataFusionError::External(Box::new(e)));
+                Ok(None) => break,
+                Err(e) => {
+                    return Err(DataFusionError::External(Box::new(e)));
+                }
             }
         }
+
+        debug!("[remote-table] list_tables found {} tables", tables.len());
+        Ok(tables)
     }
 
-    debug!(
-        "[remote-table] mdb_list_tables found {} tables",
-        tables.len()
-    );
-    Ok(tables)
+    /// List user tables in the MDB file using the cached ODBC connection.
+    pub async fn list_tables(&self) -> DFResult<Vec<(String, String)>> {
+        let conn = Arc::clone(&self.conn);
+        tokio::task::spawn_blocking(move || {
+            let handle = Handle::current();
+            let guard = handle.block_on(async { conn.lock().await });
+            Self::list_tables_sync(&guard)
+        })
+        .await
+        .map_err(|e| DataFusionError::Execution(format!("Failed to join list_tables task: {e}")))?
+    }
+
+    /// Build a RecordBatch stream from the in-memory table list.
+    async fn query_list_tables_impl(
+        &self,
+        table_schema: SchemaRef,
+        projection: Option<&Vec<usize>>,
+        limit: Option<usize>,
+    ) -> DFResult<SendableRecordBatchStream> {
+        let mut tables = self.list_tables().await?;
+        if let Some(lim) = limit {
+            tables.truncate(lim);
+        }
+
+        let mut name_builder = StringBuilder::new();
+        let mut type_builder = StringBuilder::new();
+        for (name, typ) in &tables {
+            name_builder.append_value(name);
+            type_builder.append_value(typ);
+        }
+
+        let full_schema = list_tables_arrow_schema();
+        let batch = RecordBatch::try_new(
+            full_schema.clone(),
+            vec![
+                Arc::new(name_builder.finish()),
+                Arc::new(type_builder.finish()),
+            ],
+        )?;
+
+        let projected_schema = project_schema(&table_schema, projection)?;
+        let output_batch = match projection {
+            Some(indices) => {
+                let columns: Vec<ArrayRef> =
+                    indices.iter().map(|&i| batch.column(i).clone()).collect();
+                RecordBatch::try_new(projected_schema.clone(), columns)?
+            }
+            None => batch,
+        };
+
+        let output_stream = async_stream::stream! {
+            yield Ok(output_batch);
+        };
+
+        Ok(Box::pin(RecordBatchStreamAdapter::new(
+            projected_schema,
+            output_stream,
+        )))
+    }
 }
