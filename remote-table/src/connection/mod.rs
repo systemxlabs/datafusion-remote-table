@@ -100,7 +100,7 @@ pub(crate) async fn connection_count(
     let source = if unparsed_filters.is_empty() {
         source.clone()
     } else {
-        RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None))
+        RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None)?)
     };
     if let Some(count1_query) = db_type.try_count1_query(&source) {
         debug!("[remote-table] fetching row count with query: {count1_query}");
@@ -249,7 +249,7 @@ impl RemoteDbType {
         source: &RemoteSource,
         unparsed_filters: &[String],
         limit: Option<usize>,
-    ) -> String {
+    ) -> DFResult<String> {
         match source {
             RemoteSource::Table(table) => match self {
                 RemoteDbType::Postgres
@@ -267,10 +267,10 @@ impl RemoteDbType {
                         "".to_string()
                     };
 
-                    format!(
+                    Ok(format!(
                         "{}{where_clause}{limit_clause}",
                         self.select_all_query(table)
-                    )
+                    ))
                 }
                 RemoteDbType::Mdb => {
                     let where_clause = if unparsed_filters.is_empty() {
@@ -292,10 +292,10 @@ impl RemoteDbType {
                         "".to_string()
                     };
 
-                    format!(
+                    Ok(format!(
                         "{}{where_clause}{limit_clause}",
                         self.select_all_query(table)
-                    )
+                    ))
                 }
                 RemoteDbType::Oracle => {
                     let mut all_filters: Vec<String> = vec![];
@@ -309,7 +309,7 @@ impl RemoteDbType {
                     } else {
                         format!(" WHERE {}", all_filters.join(" AND "))
                     };
-                    format!("{}{where_clause}", self.select_all_query(table))
+                    Ok(format!("{}{where_clause}", self.select_all_query(table)))
                 }
             },
             RemoteSource::Query(query) => match self {
@@ -330,9 +330,9 @@ impl RemoteDbType {
                     };
 
                     if where_clause.is_empty() && limit_clause.is_empty() {
-                        query.clone()
+                        Ok(query.clone())
                     } else {
-                        format!("SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}")
+                        Ok(format!("SELECT * FROM ({query}) as __subquery{where_clause}{limit_clause}"))
                     }
                 }
                 RemoteDbType::Oracle => {
@@ -348,13 +348,15 @@ impl RemoteDbType {
                         format!(" WHERE {}", all_filters.join(" AND "))
                     };
                     if where_clause.is_empty() {
-                        query.clone()
+                        Ok(query.clone())
                     } else {
-                        format!("SELECT * FROM ({query}){where_clause}")
+                        Ok(format!("SELECT * FROM ({query}){where_clause}"))
                     }
                 }
             },
-            RemoteSource::Command(_) => String::new(),
+            RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
+                "Command {cmd:?} cannot be rewritten to a SQL query"
+            ))),
         }
     }
 
@@ -418,7 +420,7 @@ impl RemoteDbType {
         if !self.support_rewrite_with_filters_limit(source) {
             return source.query(*self);
         }
-        Ok(self.rewrite_query(source, &[], Some(1)))
+        self.rewrite_query(source, &[], Some(1))
     }
 
     pub(crate) fn try_count1_query(&self, source: &RemoteSource) -> Option<String> {

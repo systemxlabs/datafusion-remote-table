@@ -238,7 +238,7 @@ impl Connection for MdbConnection {
 
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Mdb.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Mdb.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing mdb query: {sql}");
 
         let chunk_size = conn_options.stream_chunk_size();
@@ -387,7 +387,7 @@ impl Connection for MdbConnection {
         let source = if unparsed_filters.is_empty() {
             source.clone()
         } else {
-            RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None))
+            RemoteSource::Query(db_type.rewrite_query(source, unparsed_filters, None)?)
         };
         // MDB only supports COUNT on table sources
         if let RemoteSource::Table(table) = &source {

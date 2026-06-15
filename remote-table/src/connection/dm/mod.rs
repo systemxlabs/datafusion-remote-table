@@ -116,7 +116,7 @@ impl Connection for DmConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Dm.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Dm.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing dm query: {sql}");
 
         let chunk_size = conn_options.stream_chunk_size();
