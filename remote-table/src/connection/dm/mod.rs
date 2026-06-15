@@ -89,6 +89,11 @@ impl Drop for DmConnection {
 #[async_trait::async_trait]
 impl Connection for DmConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
+        if matches!(source, RemoteSource::Command(_)) {
+            return Err(DataFusionError::NotImplemented(
+                "Command is not supported for DM".to_string(),
+            ));
+        }
         let sql = RemoteDbType::Dm.limit_1_query_if_possible(source);
         let conn = self.conn.lock().await;
         let cursor_opt = conn.execute(&sql, (), None).map_err(|e| {

@@ -166,6 +166,9 @@ order by ordinal_position",
                 );
                 Ok(remote_schema)
             }
+            RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
+                "Command {cmd:?} is not supported for Postgres"
+            ))),
         }
     }
 

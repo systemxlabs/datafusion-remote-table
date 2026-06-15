@@ -18,9 +18,16 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
+pub enum RemoteCommand {
+    /// List all user tables/views in an MDB file.
+    ListMdbTables,
+}
+
+#[derive(Debug, Clone)]
 pub enum RemoteSource {
     Query(String),
     Table(Vec<String>),
+    Command(RemoteCommand),
 }
 
 impl RemoteSource {
@@ -28,6 +35,9 @@ impl RemoteSource {
         match self {
             RemoteSource::Query(query) => query.clone(),
             RemoteSource::Table(table_identifiers) => db_type.select_all_query(table_identifiers),
+            RemoteSource::Command(_) => {
+                unreachable!("Commands should be handled before query() is called")
+            }
         }
     }
 }
@@ -37,6 +47,7 @@ impl std::fmt::Display for RemoteSource {
         match self {
             RemoteSource::Query(query) => write!(f, "{query}"),
             RemoteSource::Table(table) => write!(f, "{}", table.join(".")),
+            RemoteSource::Command(cmd) => write!(f, "{cmd:?}"),
         }
     }
 }

@@ -4,7 +4,8 @@ mod schema;
 use crate::connection::ODBC_ENV;
 use crate::{
     Connection, ConnectionOptions, DFResult, Literalize, MdbConnectionOptions, MdbType, Pool,
-    PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    PoolState, RemoteCommand, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef,
+    RemoteSource, RemoteType,
 };
 use arrow::array::ArrayRef;
 use arrow::array::RecordBatch;
@@ -30,27 +31,6 @@ use tokio::runtime::Handle;
 use row::append_row_to_builders;
 use row::finish_batch;
 use schema::build_remote_schema;
-
-/// Magic virtual table name for listing user tables in an MDB file.
-///
-/// Create a [`RemoteTable`](crate::RemoteTable) with this name to query the
-/// list of tables in the `.mdb` file as if it were a real table with columns
-/// `table_name` (Utf8) and `table_type` (Utf8, either `"Table"` or `"View"`).
-///
-/// # Example
-///
-/// ```ignore
-/// let table = RemoteTable::try_new(
-///     ConnectionOptions::Mdb(options),
-///     RemoteSource::from(vec![MDB_LIST_TABLES_MAGIC.to_string()]),
-/// ).await?;
-/// ```
-pub const MDB_LIST_TABLES_MAGIC: &str = "__mdb_list_tables__";
-
-/// Check whether the source targets the magic list-tables virtual table.
-fn is_list_tables_source(source: &RemoteSource) -> bool {
-    matches!(source, RemoteSource::Table(t) if t.len() == 1 && t[0] == MDB_LIST_TABLES_MAGIC)
-}
 
 fn list_tables_arrow_schema() -> SchemaRef {
     Arc::new(Schema::new(vec![
@@ -210,7 +190,7 @@ impl Drop for MdbConnection {
 #[async_trait::async_trait]
 impl Connection for MdbConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        if is_list_tables_source(source) {
+        if matches!(source, RemoteSource::Command(RemoteCommand::ListMdbTables)) {
             return Ok(Arc::new(list_tables_remote_schema()));
         }
 
@@ -257,7 +237,7 @@ impl Connection for MdbConnection {
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream> {
-        if is_list_tables_source(source) {
+        if matches!(source, RemoteSource::Command(RemoteCommand::ListMdbTables)) {
             return self
                 .query_list_tables_impl(table_schema, projection, limit)
                 .await;
@@ -405,7 +385,7 @@ impl Connection for MdbConnection {
         source: &RemoteSource,
         unparsed_filters: &[String],
     ) -> DFResult<Option<usize>> {
-        if is_list_tables_source(source) {
+        if matches!(source, RemoteSource::Command(RemoteCommand::ListMdbTables)) {
             let tables = self.list_tables().await?;
             return Ok(Some(tables.len()));
         }

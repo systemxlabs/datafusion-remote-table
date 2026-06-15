@@ -3,8 +3,7 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, MDB_LIST_TABLES_MAGIC, MdbConnectionOptions, RemoteDbType, RemoteSource,
-    RemoteTable,
+    ConnectionOptions, MdbConnectionOptions, RemoteCommand, RemoteDbType, RemoteSource, RemoteTable,
 };
 use integration_tests::setup_mdb;
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
@@ -73,6 +72,7 @@ async fn count1_agg(#[case] source: RemoteSource) {
             vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"]
         }
         RemoteSource::Query(_) => vec![&query_plan],
+        RemoteSource::Command(_) => unreachable!("Command not used in this test"),
     };
     assert_plan_and_result(
         RemoteDbType::Mdb,
@@ -211,7 +211,7 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
 #[tokio::test(flavor = "multi_thread")]
 async fn list_tables() {
     let options = build_conn_options(RemoteDbType::Mdb);
-    let table = RemoteTable::try_new(options, RemoteSource::from(vec![MDB_LIST_TABLES_MAGIC]))
+    let table = RemoteTable::try_new(options, RemoteSource::Command(RemoteCommand::ListMdbTables))
         .await
         .unwrap();
 

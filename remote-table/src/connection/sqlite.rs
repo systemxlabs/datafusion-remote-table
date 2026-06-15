@@ -105,6 +105,9 @@ impl Connection for SqliteConnection {
                     Arc::new(build_remote_schema_for_query(columns.as_slice(), rows)?);
                 Ok(remote_schema)
             }
+            RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
+                "Command {cmd:?} is not supported for SQLite"
+            ))),
         }
     }
 

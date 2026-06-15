@@ -99,8 +99,21 @@ pub struct MdbExtraParam {
     pub value: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RemoteCommand {
+    #[prost(oneof = "remote_command::Command", tags = "1")]
+    pub command: ::core::option::Option<remote_command::Command>,
+}
+/// Nested message and enum types in `RemoteCommand`.
+pub mod remote_command {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Command {
+        #[prost(message, tag = "1")]
+        ListMdbTables(super::Empty),
+    }
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteSource {
-    #[prost(oneof = "remote_source::Source", tags = "1, 2")]
+    #[prost(oneof = "remote_source::Source", tags = "1, 2, 3")]
     pub source: ::core::option::Option<remote_source::Source>,
 }
 /// Nested message and enum types in `RemoteSource`.
@@ -111,6 +124,8 @@ pub mod remote_source {
         Query(::prost::alloc::string::String),
         #[prost(message, tag = "2")]
         Table(super::Identifiers),
+        #[prost(message, tag = "3")]
+        Command(super::RemoteCommand),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

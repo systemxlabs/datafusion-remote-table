@@ -224,6 +224,7 @@ impl RemoteDbType {
             _ => match source {
                 RemoteSource::Table(_) => true,
                 RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
+                RemoteSource::Command(_) => false,
             },
         }
     }
@@ -353,6 +354,9 @@ impl RemoteDbType {
                     }
                 }
             },
+            RemoteSource::Command(_) => unreachable!(
+                "rewrite_query called on Command: support_rewrite_with_filters_limit should return false"
+            ),
         }
     }
 
@@ -440,6 +444,7 @@ impl RemoteDbType {
                     RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
                     RemoteDbType::Mdb => unreachable!(),
                 },
+                RemoteSource::Command(_) => None,
             },
         }
     }
