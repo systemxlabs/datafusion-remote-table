@@ -59,14 +59,13 @@ async fn pushdown_limit(#[case] source: RemoteSource) {
 async fn count1_agg(#[case] source: RemoteSource) {
     // Table source: COUNT pushdown via MDB row-count fast path
     // Query source: COUNT via DataFusion aggregate (no pushdown)
-    let query_plan = format!(
-        "ProjectionExec: expr=[count(Int64(1))@0 as count(*)]\n  \
+    let query_plan = "ProjectionExec: expr=[count(Int64(1))@0 as count(*)]\n  \
          AggregateExec: mode=Final, gby=[], aggr=[count(Int64(1))]\n    \
          CoalescePartitionsExec\n      \
          AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]\n        \
          RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n          \
          RemoteTableScanExec: source=query, projection=[]\n"
-    );
+        .to_string();
     let expected_plans: Vec<&str> = match &source {
         RemoteSource::Table(_) => {
             vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"]
