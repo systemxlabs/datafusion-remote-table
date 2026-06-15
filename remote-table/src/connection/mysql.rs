@@ -102,7 +102,7 @@ impl Connection for MysqlConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Mysql.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Mysql.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing mysql query: {sql}");
 
         let projection = projection.cloned();

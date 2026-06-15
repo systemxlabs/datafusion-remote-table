@@ -183,7 +183,7 @@ order by ordinal_position",
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::Postgres.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Postgres.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing postgres query: {sql}");
 
         let projection = projection.cloned();

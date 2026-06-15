@@ -121,7 +121,7 @@ impl Connection for SqliteConnection {
         limit: Option<usize>,
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
-        let sql = RemoteDbType::Sqlite.rewrite_query(source, unparsed_filters, limit);
+        let sql = RemoteDbType::Sqlite.rewrite_query(source, unparsed_filters, limit)?;
         debug!("[remote-table] executing sqlite query: {sql}");
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<DFResult<RecordBatch>>(1);
