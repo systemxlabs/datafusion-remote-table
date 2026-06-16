@@ -1,22 +1,15 @@
-#[cfg(feature = "opengauss")]
 use datafusion::arrow::util::pretty::pretty_format_batches;
-#[cfg(feature = "opengauss")]
 use datafusion::prelude::SessionContext;
-#[cfg(feature = "opengauss")]
-use datafusion_remote_table::{ConnectionOptions, RemoteDbType, RemoteTable};
-#[cfg(feature = "opengauss")]
-use integration_tests::setup_opengauss_db;
-#[cfg(feature = "opengauss")]
+use datafusion_remote_table::{RemoteDbType, RemoteTable};
+use integration_tests::setup_gaussdb_db;
 use integration_tests::utils::build_conn_options;
-#[cfg(feature = "opengauss")]
 use std::sync::Arc;
 
-#[cfg(feature = "opengauss")]
 #[tokio::test(flavor = "multi_thread")]
-pub async fn opengauss_simple_query() {
-    setup_opengauss_db().await;
+pub async fn gaussdb_simple_query() {
+    setup_gaussdb_db().await;
 
-    let options = build_conn_options(RemoteDbType::OpenGauss);
+    let options = build_conn_options(RemoteDbType::GaussDB);
     let table = RemoteTable::try_new(options, "select 1 as id")
         .await
         .unwrap();

@@ -5,8 +5,9 @@ pub struct RemoteTablePhysicalPlanNode {
         oneof = "remote_table_physical_plan_node::RemoteTablePhysicalPlanType",
         tags = "1, 2"
     )]
-    pub remote_table_physical_plan_type:
-        ::core::option::Option<remote_table_physical_plan_node::RemoteTablePhysicalPlanType>,
+    pub remote_table_physical_plan_type: ::core::option::Option<
+        remote_table_physical_plan_node::RemoteTablePhysicalPlanType,
+    >,
 }
 /// Nested message and enum types in `RemoteTablePhysicalPlanNode`.
 pub mod remote_table_physical_plan_node {
@@ -54,9 +55,11 @@ pub struct RemoteTableInsertExec {
 pub struct ConnectionOptions {
     #[prost(
         oneof = "connection_options::ConnectionOptions",
-        tags = "1, 2, 3, 4, 5, 6"
+        tags = "1, 2, 3, 4, 5, 6, 7"
     )]
-    pub connection_options: ::core::option::Option<connection_options::ConnectionOptions>,
+    pub connection_options: ::core::option::Option<
+        connection_options::ConnectionOptions,
+    >,
 }
 /// Nested message and enum types in `ConnectionOptions`.
 pub mod connection_options {
@@ -74,6 +77,8 @@ pub mod connection_options {
         Dm(super::DmConnectionOptions),
         #[prost(message, tag = "6")]
         Mdb(super::MdbConnectionOptions),
+        #[prost(message, tag = "7")]
+        Gaussdb(super::GaussDbConnectionOptions),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -99,19 +104,6 @@ pub struct MdbExtraParam {
     pub value: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct SourceCommand {
-    #[prost(oneof = "remote_command::Command", tags = "1")]
-    pub command: ::core::option::Option<remote_command::Command>,
-}
-/// Nested message and enum types in `SourceCommand`.
-pub mod remote_command {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Command {
-        #[prost(message, tag = "1")]
-        ListMdbTables(super::Empty),
-    }
-}
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteSource {
     #[prost(oneof = "remote_source::Source", tags = "1, 2, 3")]
     pub source: ::core::option::Option<remote_source::Source>,
@@ -126,6 +118,19 @@ pub mod remote_source {
         Table(super::Identifiers),
         #[prost(message, tag = "3")]
         Command(super::SourceCommand),
+    }
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SourceCommand {
+    #[prost(oneof = "source_command::Command", tags = "1")]
+    pub command: ::core::option::Option<source_command::Command>,
+}
+/// Nested message and enum types in `SourceCommand`.
+pub mod source_command {
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Command {
+        #[prost(message, tag = "1")]
+        ListMdbTables(super::Empty),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -228,6 +233,29 @@ pub struct DmConnectionOptions {
     #[prost(string, tag = "7")]
     pub driver: ::prost::alloc::string::String,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GaussDbConnectionOptions {
+    #[prost(string, tag = "1")]
+    pub host: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub port: u32,
+    #[prost(string, tag = "3")]
+    pub username: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub password: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "5")]
+    pub database: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, tag = "6")]
+    pub pool_max_size: u32,
+    #[prost(uint32, tag = "7")]
+    pub pool_min_idle: u32,
+    #[prost(message, optional, tag = "8")]
+    pub pool_idle_timeout: ::core::option::Option<Duration>,
+    #[prost(message, optional, tag = "9")]
+    pub pool_ttl_check_interval: ::core::option::Option<Duration>,
+    #[prost(uint32, tag = "10")]
+    pub stream_chunk_size: u32,
+}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Duration {
     #[prost(uint64, tag = "1")]
@@ -260,7 +288,7 @@ pub struct RemoteField {
 pub struct RemoteType {
     #[prost(
         oneof = "remote_type::Type",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 601"
     )]
     pub r#type: ::core::option::Option<remote_type::Type>,
 }
@@ -498,6 +526,8 @@ pub mod remote_type {
         MdbDate(super::Empty),
         #[prost(message, tag = "515")]
         MdbTime(super::Empty),
+        #[prost(message, tag = "601")]
+        GaussdbInteger(super::Empty),
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]

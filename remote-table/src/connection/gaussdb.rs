@@ -1,36 +1,72 @@
-use crate::connection::{RemoteDbType, projections_contains};
+use crate::connection::projections_contains;
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, OpenGaussConnectionOptions, OpenGaussType,
-    Pool, PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
-    literalize_array,
+    Connection, ConnectionOptions, DFResult, GaussDBConnectionOptions, GaussDBType, Literalize,
+    Pool, PoolState, RemoteDbType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
+    RemoteType, literalize_array,
 };
 use arrow::array::{
     ArrayBuilder, ArrayRef, Int32Builder, RecordBatch, RecordBatchOptions, make_builder,
 };
 use arrow::datatypes::{DataType, SchemaRef};
-use bb8_postgres::PostgresConnectionManager;
-use bb8_postgres::tokio_postgres::{NoTls, Row, Statement};
+use async_trait::async_trait;
 use datafusion_common::DataFusionError;
 use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;
 use log::debug;
+use std::future::Future;
 use std::sync::Arc;
+use tokio_gaussdb::NoTls;
 
 #[derive(Debug)]
-pub struct OpenGaussPool {
-    pool: bb8::Pool<PostgresConnectionManager<NoTls>>,
-    options: Arc<OpenGaussConnectionOptions>,
+pub struct GaussDBPool {
+    pool: bb8::Pool<GaussDBConnectionManager>,
+    options: Arc<GaussDBConnectionOptions>,
 }
 
-#[async_trait::async_trait]
-impl Pool for OpenGaussPool {
+#[derive(Debug)]
+pub(crate) struct GaussDBConnectionManager {
+    config: tokio_gaussdb::Config,
+}
+
+impl bb8::ManageConnection for GaussDBConnectionManager {
+    type Connection = tokio_gaussdb::Client;
+    type Error = tokio_gaussdb::Error;
+
+    fn connect(&self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + Send {
+        let config = self.config.clone();
+        async move {
+            let (client, connection) = config.connect(NoTls).await?;
+            // Spawn the connection future to keep it alive
+            tokio::spawn(async move {
+                if let Err(e) = connection.await {
+                    eprintln!("gaussdb connection error: {}", e);
+                }
+            });
+            Ok(client)
+        }
+    }
+
+    fn is_valid(
+        &self,
+        conn: &mut Self::Connection,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async move { conn.simple_query("").await.map(|_| ()) }
+    }
+
+    fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
+        false
+    }
+}
+
+#[async_trait]
+impl Pool for GaussDBPool {
     async fn get(&self) -> DFResult<Arc<dyn Connection>> {
         let conn = self.pool.get_owned().await.map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get opengauss connection due to {e:?}"))
+            DataFusionError::Execution(format!("Failed to get gaussdb connection due to {e:?}"))
         })?;
-        Ok(Arc::new(OpenGaussConnection {
+        Ok(Arc::new(GaussDBConnection {
             conn,
             options: self.options.clone(),
         }))
@@ -45,8 +81,8 @@ impl Pool for OpenGaussPool {
     }
 }
 
-pub async fn connect_opengauss(options: &OpenGaussConnectionOptions) -> DFResult<OpenGaussPool> {
-    let mut config = bb8_postgres::tokio_postgres::config::Config::new();
+pub async fn connect_gaussdb(options: &GaussDBConnectionOptions) -> DFResult<GaussDBPool> {
+    let mut config = tokio_gaussdb::Config::new();
     config
         .host(&options.host)
         .port(options.port)
@@ -55,7 +91,7 @@ pub async fn connect_opengauss(options: &OpenGaussConnectionOptions) -> DFResult
     if let Some(database) = &options.database {
         config.dbname(database);
     }
-    let manager = PostgresConnectionManager::new(config, NoTls);
+    let manager = GaussDBConnectionManager { config };
     let pool = bb8::Pool::builder()
         .max_size(options.pool_max_size as u32)
         .min_idle(Some(options.pool_min_idle as u32))
@@ -65,28 +101,28 @@ pub async fn connect_opengauss(options: &OpenGaussConnectionOptions) -> DFResult
         .await
         .map_err(|e| {
             DataFusionError::Execution(format!(
-                "Failed to create opengauss connection pool due to {e}",
+                "Failed to create gaussdb connection pool due to {e}",
             ))
         })?;
 
-    Ok(OpenGaussPool {
+    Ok(GaussDBPool {
         pool,
         options: Arc::new(options.clone()),
     })
 }
 
 #[derive(Debug)]
-pub struct OpenGaussConnection {
-    pub conn: bb8::PooledConnection<'static, PostgresConnectionManager<NoTls>>,
-    pub options: Arc<OpenGaussConnectionOptions>,
+pub struct GaussDBConnection {
+    pub(crate) conn: bb8::PooledConnection<'static, GaussDBConnectionManager>,
+    pub options: Arc<GaussDBConnectionOptions>,
 }
 
-#[async_trait::async_trait]
-impl Connection for OpenGaussConnection {
+#[async_trait]
+impl Connection for GaussDBConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
         match source {
             RemoteSource::Table(table) => {
-                let db_type = RemoteDbType::OpenGauss;
+                let db_type = RemoteDbType::GaussDB;
                 let where_condition = if table.len() == 1 {
                     format!("table_name = {}", db_type.sql_string_literal(&table[0]))
                 } else if table.len() == 2 {
@@ -110,7 +146,7 @@ impl Connection for OpenGaussConnection {
                 );
                 let rows = self.conn.query(&sql, &[]).await.map_err(|e| {
                     DataFusionError::Plan(format!(
-                        "Failed to execute query {sql} on opengauss: {e:?}",
+                        "Failed to execute query {sql} on gaussdb: {e:?}",
                     ))
                 })?;
                 let remote_schema = Arc::new(build_remote_schema_for_table(rows)?);
@@ -119,14 +155,14 @@ impl Connection for OpenGaussConnection {
             RemoteSource::Query(query) => {
                 let stmt = self.conn.prepare(query).await.map_err(|e| {
                     DataFusionError::Plan(format!(
-                        "Failed to execute query {query} on opengauss: {e:?}",
+                        "Failed to execute query {query} on gaussdb: {e:?}",
                     ))
                 })?;
                 let remote_schema = Arc::new(build_remote_schema_for_query(stmt).await?);
                 Ok(remote_schema)
             }
             RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
-                "Command {cmd:?} is not supported for OpenGauss"
+                "Command {cmd:?} is not supported for GaussDB"
             ))),
         }
     }
@@ -142,8 +178,8 @@ impl Connection for OpenGaussConnection {
     ) -> DFResult<SendableRecordBatchStream> {
         let projected_schema = project_schema(&table_schema, projection)?;
 
-        let sql = RemoteDbType::OpenGauss.rewrite_query(source, unparsed_filters, limit)?;
-        debug!("[remote-table] executing opengauss query: {sql}");
+        let sql = RemoteDbType::GaussDB.rewrite_query(source, unparsed_filters, limit)?;
+        debug!("[remote-table] executing gaussdb query: {sql}");
 
         let projection = projection.cloned();
         let chunk_size = conn_options.stream_chunk_size();
@@ -153,19 +189,19 @@ impl Connection for OpenGaussConnection {
             .await
             .map_err(|e| {
                 DataFusionError::Execution(format!(
-                    "Failed to execute query {sql} on opengauss: {e}",
+                    "Failed to execute query {sql} on gaussdb: {e}",
                 ))
             })?
             .chunks(chunk_size)
             .boxed();
 
         let stream = stream.map(move |rows| {
-            let rows: Vec<Row> = rows
+            let rows: Vec<tokio_gaussdb::Row> = rows
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| {
                     DataFusionError::Execution(format!(
-                        "Failed to collect rows from opengauss due to {e}",
+                        "Failed to collect rows from gaussdb due to {e}",
                     ))
                 })?;
             rows_to_batch(rows.as_slice(), &table_schema, projection.as_ref())
@@ -207,19 +243,19 @@ impl Connection for OpenGaussConnection {
 
         let mut col_names = Vec::with_capacity(remote_schema.fields.len());
         for remote_field in remote_schema.fields.iter() {
-            col_names.push(RemoteDbType::OpenGauss.sql_identifier(&remote_field.name));
+            col_names.push(RemoteDbType::GaussDB.sql_identifier(&remote_field.name));
         }
 
         let sql = format!(
             "INSERT INTO {} ({}) VALUES {}",
-            RemoteDbType::OpenGauss.sql_table_name(table),
+            RemoteDbType::GaussDB.sql_table_name(table),
             col_names.join(","),
             values.join(",")
         );
 
         let count = self.conn.execute(&sql, &[]).await.map_err(|e| {
             DataFusionError::Execution(format!(
-                "Failed to execute insert statement on opengauss: {e:?}, sql: {sql}"
+                "Failed to execute insert statement on gaussdb: {e:?}, sql: {sql}"
             ))
         })?;
 
@@ -236,44 +272,44 @@ impl Connection for OpenGaussConnection {
     }
 }
 
-fn parse_og_type(data_type: &str) -> DFResult<OpenGaussType> {
+fn parse_gdb_type(data_type: &str) -> DFResult<GaussDBType> {
     match data_type {
-        "integer" | "int" | "int4" => Ok(OpenGaussType::Integer),
+        "integer" | "int" | "int4" => Ok(GaussDBType::Integer),
         _ => Err(DataFusionError::NotImplemented(format!(
-            "Unsupported opengauss type: {data_type}"
+            "Unsupported gaussdb type: {data_type}"
         ))),
     }
 }
 
-async fn build_remote_schema_for_query(stmt: Statement) -> DFResult<RemoteSchema> {
+async fn build_remote_schema_for_query(stmt: tokio_gaussdb::Statement) -> DFResult<RemoteSchema> {
     let mut remote_fields = Vec::new();
     for col in stmt.columns().iter() {
         let data_type = col.type_().name().to_string();
-        let og_type = parse_og_type(&data_type)?;
+        let gdb_type = parse_gdb_type(&data_type)?;
         remote_fields.push(RemoteField::new(
             col.name(),
-            RemoteType::OpenGauss(og_type),
+            RemoteType::GaussDB(gdb_type),
             true,
         ));
     }
     Ok(RemoteSchema::new(remote_fields))
 }
 
-fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
+fn build_remote_schema_for_table(rows: Vec<tokio_gaussdb::Row>) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
     for row in rows {
         let column_name: String = row.try_get(0).map_err(|e| {
             DataFusionError::Plan(format!(
-                "Failed to get column name from opengauss row: {e:?}"
+                "Failed to get column name from gaussdb row: {e:?}"
             ))
         })?;
         let data_type: String = row.try_get(1).map_err(|e| {
-            DataFusionError::Plan(format!("Failed to get data type from opengauss row: {e:?}"))
+            DataFusionError::Plan(format!("Failed to get data type from gaussdb row: {e:?}"))
         })?;
-        let og_type = parse_og_type(&data_type)?;
+        let gdb_type = parse_gdb_type(&data_type)?;
         remote_fields.push(RemoteField::new(
             column_name,
-            RemoteType::OpenGauss(og_type),
+            RemoteType::GaussDB(gdb_type),
             true,
         ));
     }
@@ -281,7 +317,7 @@ fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
 }
 
 fn rows_to_batch(
-    rows: &[Row],
+    rows: &[tokio_gaussdb::Row],
     table_schema: &SchemaRef,
     projection: Option<&Vec<usize>>,
 ) -> DFResult<RecordBatch> {
@@ -314,7 +350,7 @@ fn rows_to_batch(
                 }
                 _ => {
                     return Err(DataFusionError::NotImplemented(format!(
-                        "Unsupported data type {} for opengauss",
+                        "Unsupported data type {} for gaussdb",
                         field.data_type()
                     )));
                 }

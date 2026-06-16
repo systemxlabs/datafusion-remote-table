@@ -110,20 +110,18 @@ pub fn setup_mdb() -> &'static Path {
     })
 }
 
-#[cfg(feature = "opengauss")]
-static OPENGAUSS_DB: OnceLock<DockerCompose> = OnceLock::new();
-#[cfg(feature = "opengauss")]
-pub async fn setup_opengauss_db() {
-    let _ = OPENGAUSS_DB.get_or_init(|| {
+static GAUSSDB_DB: OnceLock<DockerCompose> = OnceLock::new();
+pub async fn setup_gaussdb_db() {
+    let _ = GAUSSDB_DB.get_or_init(|| {
         let compose = DockerCompose::new(
-            "opengauss",
-            format!("{}/testdata/opengauss", env!("CARGO_MANIFEST_DIR")),
+            "gaussdb",
+            format!("{}/testdata/gaussdb", env!("CARGO_MANIFEST_DIR")),
         );
         compose.down();
         compose.up();
         compose
     });
-    wait_container_ready(RemoteDbType::OpenGauss).await;
+    wait_container_ready(RemoteDbType::GaussDB).await;
 }
 
 static DM_DB: OnceLock<DockerCompose> = OnceLock::new();

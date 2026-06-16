@@ -12,7 +12,7 @@ pub enum ConnectionOptions {
     Sqlite(SqliteConnectionOptions),
     Dm(DmConnectionOptions),
     Mdb(MdbConnectionOptions),
-    OpenGauss(OpenGaussConnectionOptions),
+    GaussDB(GaussDBConnectionOptions),
 }
 
 impl ConnectionOptions {
@@ -24,7 +24,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(options) => options.stream_chunk_size,
             ConnectionOptions::Dm(options) => options.stream_chunk_size,
             ConnectionOptions::Mdb(options) => options.stream_chunk_size,
-            ConnectionOptions::OpenGauss(options) => options.stream_chunk_size,
+            ConnectionOptions::GaussDB(options) => options.stream_chunk_size,
         }
     }
 
@@ -36,7 +36,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(_) => RemoteDbType::Sqlite,
             ConnectionOptions::Dm(_) => RemoteDbType::Dm,
             ConnectionOptions::Mdb(_) => RemoteDbType::Mdb,
-            ConnectionOptions::OpenGauss(_) => RemoteDbType::OpenGauss,
+            ConnectionOptions::GaussDB(_) => RemoteDbType::GaussDB,
         }
     }
 
@@ -54,7 +54,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
             ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
             ConnectionOptions::Mdb(options) => ConnectionOptions::Mdb(options),
-            ConnectionOptions::OpenGauss(options) => ConnectionOptions::OpenGauss(options),
+            ConnectionOptions::GaussDB(options) => ConnectionOptions::GaussDB(options),
         }
     }
 }
@@ -307,7 +307,7 @@ impl From<MdbConnectionOptions> for ConnectionOptions {
 }
 
 #[derive(Debug, Clone, With, Getters)]
-pub struct OpenGaussConnectionOptions {
+pub struct GaussDBConnectionOptions {
     pub(crate) host: String,
     pub(crate) port: u16,
     pub(crate) username: String,
@@ -320,7 +320,7 @@ pub struct OpenGaussConnectionOptions {
     pub(crate) stream_chunk_size: usize,
 }
 
-impl OpenGaussConnectionOptions {
+impl GaussDBConnectionOptions {
     pub fn new(
         host: impl Into<String>,
         port: u16,
@@ -342,8 +342,8 @@ impl OpenGaussConnectionOptions {
     }
 }
 
-impl From<OpenGaussConnectionOptions> for ConnectionOptions {
-    fn from(options: OpenGaussConnectionOptions) -> Self {
-        ConnectionOptions::OpenGauss(options)
+impl From<GaussDBConnectionOptions> for ConnectionOptions {
+    fn from(options: GaussDBConnectionOptions) -> Self {
+        ConnectionOptions::GaussDB(options)
     }
 }

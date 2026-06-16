@@ -1,0 +1,15 @@
+services:
+  gaussdb:
+    image: opengauss/opengauss:7.0.0-RC1
+    container_name: gaussdb-test
+    environment:
+      GS_PASSWORD: Secret@1234
+      GS_USERNAME: gaussdb
+      GS_PORT: 5432
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "LD_LIBRARY_PATH=/usr/local/opengauss/lib /usr/local/opengauss/bin/gsql -U gaussdb -h 127.0.0.1 -d postgres -c 'SELECT 1'"]
+      interval: 5s
+      timeout: 30s
+      retries: 60
