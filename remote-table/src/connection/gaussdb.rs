@@ -5,7 +5,8 @@ use crate::{
     RemoteType, literalize_array,
 };
 use arrow::array::{
-    ArrayBuilder, ArrayRef, Int32Builder, RecordBatch, RecordBatchOptions, make_builder,
+    ArrayBuilder, ArrayRef, Int32Builder, Int64Builder, RecordBatch, RecordBatchOptions,
+    make_builder,
 };
 use arrow::datatypes::{DataType, SchemaRef};
 use async_trait::async_trait;
@@ -275,6 +276,7 @@ impl Connection for GaussDBConnection {
 fn parse_gdb_type(data_type: &str) -> DFResult<GaussDBType> {
     match data_type {
         "integer" | "int" | "int4" => Ok(GaussDBType::Integer),
+        "bigint" | "int8" => Ok(GaussDBType::BigInt),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported gaussdb type: {data_type}"
         ))),
@@ -342,6 +344,19 @@ fn rows_to_batch(
                         .expect("Failed to downcast to Int32Builder");
                     let v: Option<i32> = row.try_get(idx).map_err(|e| {
                         DataFusionError::Execution(format!("Failed to get Int32 value: {e:?}"))
+                    })?;
+                    match v {
+                        Some(v) => builder.append_value(v),
+                        None => builder.append_null(),
+                    }
+                }
+                DataType::Int64 => {
+                    let builder = builder
+                        .as_any_mut()
+                        .downcast_mut::<Int64Builder>()
+                        .expect("Failed to downcast to Int64Builder");
+                    let v: Option<i64> = row.try_get(idx).map_err(|e| {
+                        DataFusionError::Execution(format!("Failed to get Int64 value: {e:?}"))
                     })?;
                     match v {
                         Some(v) => builder.append_value(v),

@@ -281,6 +281,7 @@ message RemoteType {
     Empty mdb_date = 514;
     Empty mdb_time = 515;
     Empty gaussdb_integer = 601;
+    Empty gaussdb_bigint = 602;
   }
 }
 

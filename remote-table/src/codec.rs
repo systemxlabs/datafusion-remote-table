@@ -1083,6 +1083,11 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
                 protobuf::Empty {},
             )),
         },
+        RemoteType::GaussDB(GaussDBType::BigInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::GaussdbBigint(
+                protobuf::Empty {},
+            )),
+        },
     }
 }
 
@@ -1330,6 +1335,9 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         protobuf::remote_type::Type::MdbTime(_) => RemoteType::Mdb(MdbType::Time),
         protobuf::remote_type::Type::GaussdbInteger(_) => {
             RemoteType::GaussDB(GaussDBType::Integer)
+        }
+        protobuf::remote_type::Type::GaussdbBigint(_) => {
+            RemoteType::GaussDB(GaussDBType::BigInt)
         }
     })
 }

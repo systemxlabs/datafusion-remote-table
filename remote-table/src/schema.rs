@@ -495,16 +495,18 @@ impl MdbType {
     }
 }
 
-/// GaussDB type mapping — minimal support (int only).
+/// GaussDB type mapping — minimal support (int, bigint).
 #[derive(Debug, Clone)]
 pub enum GaussDBType {
     Integer,
+    BigInt,
 }
 
 impl GaussDBType {
     pub fn to_arrow_type(&self) -> DataType {
         match self {
             GaussDBType::Integer => DataType::Int32,
+            GaussDBType::BigInt => DataType::Int64,
         }
     }
 }
