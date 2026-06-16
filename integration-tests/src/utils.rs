@@ -142,5 +142,19 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
         RemoteDbType::Mdb => {
             ConnectionOptions::Mdb(MdbConnectionOptions::new(crate::setup_mdb().to_path_buf()))
         }
+        RemoteDbType::OpenGauss => {
+            #[cfg(feature = "opengauss")]
+            {
+                use datafusion_remote_table::OpenGaussConnectionOptions;
+                ConnectionOptions::OpenGauss(
+                    OpenGaussConnectionOptions::new("localhost", 5432, "gaussdb", "Secret@1234")
+                        .with_database(Some("postgres".to_string())),
+                )
+            }
+            #[cfg(not(feature = "opengauss"))]
+            {
+                panic!("OpenGauss feature not enabled")
+            }
+        }
     }
 }

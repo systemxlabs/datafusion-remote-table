@@ -4,6 +4,8 @@ mod dm;
 mod mdb;
 #[cfg(feature = "mysql")]
 mod mysql;
+#[cfg(feature = "opengauss")]
+mod opengauss;
 mod options;
 #[cfg(feature = "oracle")]
 mod oracle;
@@ -18,6 +20,8 @@ pub use dm::*;
 pub use mdb::*;
 #[cfg(feature = "mysql")]
 pub use mysql::*;
+#[cfg(feature = "opengauss")]
+pub use opengauss::*;
 pub use options::*;
 #[cfg(feature = "oracle")]
 pub use oracle::*;
@@ -204,6 +208,19 @@ pub async fn connect(options: &ConnectionOptions) -> DFResult<Arc<dyn Pool>> {
                 ))
             }
         }
+        ConnectionOptions::OpenGauss(options) => {
+            #[cfg(feature = "opengauss")]
+            {
+                let pool = connect_opengauss(options).await?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "opengauss"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the opengauss feature".to_string(),
+                ))
+            }
+        }
     }
 }
 
@@ -215,6 +232,7 @@ pub enum RemoteDbType {
     Sqlite,
     Dm,
     Mdb,
+    OpenGauss,
 }
 
 impl RemoteDbType {
@@ -231,7 +249,9 @@ impl RemoteDbType {
 
     pub(crate) fn create_unparser(&self) -> DFResult<Unparser<'_>> {
         match self {
-            RemoteDbType::Postgres => Ok(Unparser::new(&PostgreSqlDialect {})),
+            RemoteDbType::Postgres | RemoteDbType::OpenGauss => {
+                Ok(Unparser::new(&PostgreSqlDialect {}))
+            }
             RemoteDbType::Mysql => Ok(Unparser::new(&MySqlDialect {})),
             RemoteDbType::Sqlite => Ok(Unparser::new(&SqliteDialect {})),
             RemoteDbType::Oracle => Err(DataFusionError::NotImplemented(
@@ -255,7 +275,8 @@ impl RemoteDbType {
                 RemoteDbType::Postgres
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
-                | RemoteDbType::Dm => {
+                | RemoteDbType::Dm
+                | RemoteDbType::OpenGauss => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
@@ -317,7 +338,8 @@ impl RemoteDbType {
                 | RemoteDbType::Mysql
                 | RemoteDbType::Sqlite
                 | RemoteDbType::Dm
-                | RemoteDbType::Mdb => {
+                | RemoteDbType::Mdb
+                | RemoteDbType::OpenGauss => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
@@ -367,7 +389,8 @@ impl RemoteDbType {
             RemoteDbType::Postgres
             | RemoteDbType::Oracle
             | RemoteDbType::Sqlite
-            | RemoteDbType::Dm => {
+            | RemoteDbType::Dm
+            | RemoteDbType::OpenGauss => {
                 format!("\"{identifier}\"")
             }
             RemoteDbType::Mysql => {
@@ -394,7 +417,9 @@ impl RemoteDbType {
 
     pub(crate) fn sql_binary_literal(&self, value: &[u8]) -> String {
         match self {
-            RemoteDbType::Postgres => format!("E'\\\\x{}'", hex::encode(value)),
+            RemoteDbType::Postgres | RemoteDbType::OpenGauss => {
+                format!("E'\\\\x{}'", hex::encode(value))
+            }
             RemoteDbType::Mysql | RemoteDbType::Sqlite => {
                 format!("X'{}'", hex::encode(value))
             }
@@ -412,7 +437,8 @@ impl RemoteDbType {
             | RemoteDbType::Oracle
             | RemoteDbType::Sqlite
             | RemoteDbType::Dm
-            | RemoteDbType::Mdb => {
+            | RemoteDbType::Mdb
+            | RemoteDbType::OpenGauss => {
                 format!("SELECT * FROM {}", self.sql_table_name(table_identifiers))
             }
         }
@@ -440,7 +466,8 @@ impl RemoteDbType {
                     RemoteDbType::Postgres
                     | RemoteDbType::Mysql
                     | RemoteDbType::Sqlite
-                    | RemoteDbType::Dm => {
+                    | RemoteDbType::Dm
+                    | RemoteDbType::OpenGauss => {
                         Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery"))
                     }
                     RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),

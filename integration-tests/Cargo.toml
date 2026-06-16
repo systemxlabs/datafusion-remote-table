@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[features]
+opengauss = []
+
 [dependencies]
-datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm", "mdb"] }
+datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm", "mdb", "opengauss"] }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 tokio = { workspace = true }

@@ -2,6 +2,7 @@ use crate::DmConnectionOptions;
 use crate::LazyPool;
 use crate::MdbConnectionOptions;
 use crate::MysqlConnectionOptions;
+use crate::OpenGaussType;
 use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
@@ -374,6 +375,25 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                             value: v.clone(),
                         })
                         .collect(),
+                },
+            )),
+        },
+        ConnectionOptions::OpenGauss(options) => protobuf::ConnectionOptions {
+            connection_options: Some(protobuf::connection_options::ConnectionOptions::Postgres(
+                protobuf::PostgresConnectionOptions {
+                    host: options.host.clone(),
+                    port: options.port as u32,
+                    username: options.username.clone(),
+                    password: options.password.clone(),
+                    database: options.database.clone(),
+                    pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
+                    stream_chunk_size: options.stream_chunk_size as u32,
+                    default_numeric_scale: 0,
                 },
             )),
         },
@@ -1034,6 +1054,11 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         },
         RemoteType::Mdb(MdbType::Time) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MdbTime(protobuf::Empty {})),
+        },
+        RemoteType::OpenGauss(OpenGaussType::Integer) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::PostgresInt4(
+                protobuf::Empty {},
+            )),
         },
     }
 }

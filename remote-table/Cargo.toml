@@ -17,6 +17,7 @@ oracle = ["dep:bb8", "dep:oracle", "dep:bb8-oracle"]
 sqlite = ["dep:rusqlite"]
 dm = ["dep:odbc-api"]
 mdb = ["dep:odbc-api"]
+opengauss = ["dep:bb8", "dep:bb8-postgres"]
 
 [dependencies]
 arrow = { workspace = true }
