@@ -452,6 +452,7 @@ dependencies = [
 [[package]]
 name = "bb8-gaussdb"
 version = "0.1.0"
+source = "git+https://github.com/systemxlabs/bb8-gaussdb.git#094b7b7df18869439fc24ee7db2829143aeaa479"
 dependencies = [
  "bb8",
  "tokio",
