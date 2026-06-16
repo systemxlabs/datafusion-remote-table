@@ -10,55 +10,20 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, SchemaRef};
 use async_trait::async_trait;
+use bb8_gaussdb::tokio_gaussdb::NoTls;
+use bb8_gaussdb::GaussDBConnectionManager;
 use datafusion_common::DataFusionError;
 use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::StreamExt;
 use log::debug;
-use std::future::Future;
 use std::sync::Arc;
-use tokio_gaussdb::NoTls;
 
 #[derive(Debug)]
 pub struct GaussDBPool {
-    pool: bb8::Pool<GaussDBConnectionManager>,
+    pool: bb8::Pool<GaussDBConnectionManager<NoTls>>,
     options: Arc<GaussDBConnectionOptions>,
-}
-
-#[derive(Debug)]
-pub(crate) struct GaussDBConnectionManager {
-    config: tokio_gaussdb::Config,
-}
-
-impl bb8::ManageConnection for GaussDBConnectionManager {
-    type Connection = tokio_gaussdb::Client;
-    type Error = tokio_gaussdb::Error;
-
-    fn connect(&self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + Send {
-        let config = self.config.clone();
-        async move {
-            let (client, connection) = config.connect(NoTls).await?;
-            // Spawn the connection future to keep it alive
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    eprintln!("gaussdb connection error: {}", e);
-                }
-            });
-            Ok(client)
-        }
-    }
-
-    fn is_valid(
-        &self,
-        conn: &mut Self::Connection,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        async move { conn.simple_query("").await.map(|_| ()) }
-    }
-
-    fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
-        false
-    }
 }
 
 #[async_trait]
@@ -83,7 +48,7 @@ impl Pool for GaussDBPool {
 }
 
 pub async fn connect_gaussdb(options: &GaussDBConnectionOptions) -> DFResult<GaussDBPool> {
-    let mut config = tokio_gaussdb::Config::new();
+    let mut config = bb8_gaussdb::tokio_gaussdb::Config::new();
     config
         .host(&options.host)
         .port(options.port)
@@ -92,7 +57,7 @@ pub async fn connect_gaussdb(options: &GaussDBConnectionOptions) -> DFResult<Gau
     if let Some(database) = &options.database {
         config.dbname(database);
     }
-    let manager = GaussDBConnectionManager { config };
+    let manager = GaussDBConnectionManager::new(config, NoTls);
     let pool = bb8::Pool::builder()
         .max_size(options.pool_max_size as u32)
         .min_idle(Some(options.pool_min_idle as u32))
@@ -114,8 +79,9 @@ pub async fn connect_gaussdb(options: &GaussDBConnectionOptions) -> DFResult<Gau
 
 #[derive(Debug)]
 pub struct GaussDBConnection {
-    pub(crate) conn: bb8::PooledConnection<'static, GaussDBConnectionManager>,
-    pub options: Arc<GaussDBConnectionOptions>,
+    pub(crate) conn: bb8::PooledConnection<'static, GaussDBConnectionManager<NoTls>>,
+    #[allow(dead_code)]
+    pub(crate) options: Arc<GaussDBConnectionOptions>,
 }
 
 #[async_trait]
@@ -189,15 +155,15 @@ impl Connection for GaussDBConnection {
             .query_raw(&sql, Vec::<String>::new())
             .await
             .map_err(|e| {
-                DataFusionError::Execution(
-                    format!("Failed to execute query {sql} on gaussdb: {e}",),
-                )
+                DataFusionError::Execution(format!(
+                    "Failed to execute query {sql} on gaussdb: {e}",
+                ))
             })?
             .chunks(chunk_size)
             .boxed();
 
         let stream = stream.map(move |rows| {
-            let rows: Vec<tokio_gaussdb::Row> = rows
+            let rows: Vec<bb8_gaussdb::tokio_gaussdb::Row> = rows
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| {
@@ -283,7 +249,9 @@ fn parse_gdb_type(data_type: &str) -> DFResult<GaussDBType> {
     }
 }
 
-async fn build_remote_schema_for_query(stmt: tokio_gaussdb::Statement) -> DFResult<RemoteSchema> {
+async fn build_remote_schema_for_query(
+    stmt: bb8_gaussdb::tokio_gaussdb::Statement,
+) -> DFResult<RemoteSchema> {
     let mut remote_fields = Vec::new();
     for col in stmt.columns().iter() {
         let data_type = col.type_().name().to_string();
@@ -297,11 +265,15 @@ async fn build_remote_schema_for_query(stmt: tokio_gaussdb::Statement) -> DFResu
     Ok(RemoteSchema::new(remote_fields))
 }
 
-fn build_remote_schema_for_table(rows: Vec<tokio_gaussdb::Row>) -> DFResult<RemoteSchema> {
+fn build_remote_schema_for_table(
+    rows: Vec<bb8_gaussdb::tokio_gaussdb::Row>,
+) -> DFResult<RemoteSchema> {
     let mut remote_fields = vec![];
     for row in rows {
         let column_name: String = row.try_get(0).map_err(|e| {
-            DataFusionError::Plan(format!("Failed to get column name from gaussdb row: {e:?}"))
+            DataFusionError::Plan(format!(
+                "Failed to get column name from gaussdb row: {e:?}"
+            ))
         })?;
         let data_type: String = row.try_get(1).map_err(|e| {
             DataFusionError::Plan(format!("Failed to get data type from gaussdb row: {e:?}"))
@@ -317,7 +289,7 @@ fn build_remote_schema_for_table(rows: Vec<tokio_gaussdb::Row>) -> DFResult<Remo
 }
 
 fn rows_to_batch(
-    rows: &[tokio_gaussdb::Row],
+    rows: &[bb8_gaussdb::tokio_gaussdb::Row],
     table_schema: &SchemaRef,
     projection: Option<&Vec<usize>>,
 ) -> DFResult<RecordBatch> {

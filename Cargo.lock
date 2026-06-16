@@ -450,6 +450,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bb8-gaussdb"
+version = "0.1.0"
+dependencies = [
+ "bb8",
+ "tokio",
+ "tokio-gaussdb",
+]
+
+[[package]]
 name = "bb8-oracle"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1563,6 +1572,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "bb8",
+ "bb8-gaussdb",
  "bb8-oracle",
  "bb8-postgres",
  "bigdecimal",
@@ -1593,7 +1603,6 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
- "tokio-gaussdb",
  "uuid",
 ]
 
