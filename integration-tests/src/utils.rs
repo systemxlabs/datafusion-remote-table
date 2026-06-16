@@ -145,7 +145,7 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
         RemoteDbType::GaussDB => {
             use datafusion_remote_table::GaussDBConnectionOptions;
             ConnectionOptions::GaussDB(
-                GaussDBConnectionOptions::new("localhost", 5433, "gaussdb", "Secret@1234")
+                GaussDBConnectionOptions::new("localhost", 5433, "omm", "Secret@1234")
                     .with_database(Some("postgres".to_string())),
             )
         }
