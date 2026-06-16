@@ -17,6 +17,7 @@ oracle = ["dep:bb8", "dep:oracle", "dep:bb8-oracle"]
 sqlite = ["dep:rusqlite"]
 dm = ["dep:odbc-api"]
 mdb = ["dep:odbc-api"]
+gaussdb = ["dep:bb8", "dep:bb8-gaussdb"]
 
 [dependencies]
 arrow = { workspace = true }
@@ -50,6 +51,8 @@ hex = "0.4"
 
 # Postgres
 bb8-postgres = { version = "0.9", features = ["with-chrono-0_4", "with-serde_json-1", "with-uuid-1"], optional = true }
+# GaussDB
+bb8-gaussdb = { git = "https://github.com/systemxlabs/bb8-gaussdb.git", optional = true }
 # MySQL
 mysql_async = { version = "0.37", features = [
     "native-tls-tls",

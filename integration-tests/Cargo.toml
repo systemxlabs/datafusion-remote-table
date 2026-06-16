@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm", "mdb"] }
+datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm", "mdb", "gaussdb"] }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 tokio = { workspace = true }

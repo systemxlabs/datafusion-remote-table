@@ -39,6 +39,7 @@ message ConnectionOptions {
     SqliteConnectionOptions sqlite = 4;
     DmConnectionOptions dm = 5;
     MdbConnectionOptions mdb = 6;
+    GaussDBConnectionOptions gaussdb = 7;
   }
 }
 
@@ -127,6 +128,19 @@ message DmConnectionOptions {
   optional string schema = 5;
   uint32 stream_chunk_size = 6;
   string driver = 7;
+}
+
+message GaussDBConnectionOptions {
+  string host = 1;
+  uint32 port = 2;
+  string username = 3;
+  string password = 4;
+  optional string database = 5;
+  uint32 pool_max_size = 6;
+  uint32 pool_min_idle = 7;
+  Duration pool_idle_timeout = 8;
+  Duration pool_ttl_check_interval = 9;
+  uint32 stream_chunk_size = 10;
 }
 
 message Duration {
@@ -266,6 +280,8 @@ message RemoteType {
     Empty mdb_date_time = 513;
     Empty mdb_date = 514;
     Empty mdb_time = 515;
+    Empty gaussdb_integer = 601;
+    Empty gaussdb_bigint = 602;
   }
 }
 

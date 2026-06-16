@@ -13,6 +13,7 @@ pub enum RemoteType {
     Sqlite(SqliteType),
     Dm(DmType),
     Mdb(MdbType),
+    GaussDB(GaussDBType),
 }
 
 impl RemoteType {
@@ -24,6 +25,7 @@ impl RemoteType {
             RemoteType::Sqlite(sqlite_type) => sqlite_type.to_arrow_type(),
             RemoteType::Dm(dm_type) => dm_type.to_arrow_type(),
             RemoteType::Mdb(mdb_type) => mdb_type.to_arrow_type(),
+            RemoteType::GaussDB(gdb_type) => gdb_type.to_arrow_type(),
         }
     }
 
@@ -35,6 +37,7 @@ impl RemoteType {
             RemoteType::Sqlite(_) => RemoteDbType::Sqlite,
             RemoteType::Dm(_) => RemoteDbType::Dm,
             RemoteType::Mdb(_) => RemoteDbType::Mdb,
+            RemoteType::GaussDB(_) => RemoteDbType::GaussDB,
         }
     }
 }
@@ -488,6 +491,22 @@ impl MdbType {
         match self {
             MdbType::Text(len) | MdbType::Binary(len) => len.map(|l| l as i32),
             _ => None,
+        }
+    }
+}
+
+/// GaussDB type mapping — minimal support (int, bigint).
+#[derive(Debug, Clone)]
+pub enum GaussDBType {
+    Integer,
+    BigInt,
+}
+
+impl GaussDBType {
+    pub fn to_arrow_type(&self) -> DataType {
+        match self {
+            GaussDBType::Integer => DataType::Int32,
+            GaussDBType::BigInt => DataType::Int64,
         }
     }
 }

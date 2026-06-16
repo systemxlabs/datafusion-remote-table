@@ -12,6 +12,7 @@ pub enum ConnectionOptions {
     Sqlite(SqliteConnectionOptions),
     Dm(DmConnectionOptions),
     Mdb(MdbConnectionOptions),
+    GaussDB(GaussDBConnectionOptions),
 }
 
 impl ConnectionOptions {
@@ -23,6 +24,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(options) => options.stream_chunk_size,
             ConnectionOptions::Dm(options) => options.stream_chunk_size,
             ConnectionOptions::Mdb(options) => options.stream_chunk_size,
+            ConnectionOptions::GaussDB(options) => options.stream_chunk_size,
         }
     }
 
@@ -34,6 +36,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(_) => RemoteDbType::Sqlite,
             ConnectionOptions::Dm(_) => RemoteDbType::Dm,
             ConnectionOptions::Mdb(_) => RemoteDbType::Mdb,
+            ConnectionOptions::GaussDB(_) => RemoteDbType::GaussDB,
         }
     }
 
@@ -51,6 +54,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
             ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
             ConnectionOptions::Mdb(options) => ConnectionOptions::Mdb(options),
+            ConnectionOptions::GaussDB(options) => ConnectionOptions::GaussDB(options),
         }
     }
 }
@@ -299,5 +303,47 @@ impl MdbConnectionOptions {
 impl From<MdbConnectionOptions> for ConnectionOptions {
     fn from(options: MdbConnectionOptions) -> Self {
         ConnectionOptions::Mdb(options)
+    }
+}
+
+#[derive(Debug, Clone, With, Getters)]
+pub struct GaussDBConnectionOptions {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) username: String,
+    pub(crate) password: String,
+    pub(crate) database: Option<String>,
+    pub(crate) pool_max_size: usize,
+    pub(crate) pool_min_idle: usize,
+    pub(crate) pool_idle_timeout: Duration,
+    pub(crate) pool_ttl_check_interval: Duration,
+    pub(crate) stream_chunk_size: usize,
+}
+
+impl GaussDBConnectionOptions {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            username: username.into(),
+            password: password.into(),
+            database: None,
+            pool_max_size: 10,
+            pool_min_idle: 0,
+            pool_idle_timeout: Duration::from_secs(10 * 60),
+            pool_ttl_check_interval: Duration::from_secs(30),
+            stream_chunk_size: 2048,
+        }
+    }
+}
+
+impl From<GaussDBConnectionOptions> for ConnectionOptions {
+    fn from(options: GaussDBConnectionOptions) -> Self {
+        ConnectionOptions::GaussDB(options)
     }
 }
