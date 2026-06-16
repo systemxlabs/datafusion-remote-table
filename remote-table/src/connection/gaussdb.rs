@@ -23,7 +23,6 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct GaussDBPool {
     pool: bb8::Pool<GaussDBConnectionManager<NoTls>>,
-    options: Arc<GaussDBConnectionOptions>,
 }
 
 #[async_trait]
@@ -32,10 +31,7 @@ impl Pool for GaussDBPool {
         let conn = self.pool.get_owned().await.map_err(|e| {
             DataFusionError::Execution(format!("Failed to get gaussdb connection due to {e:?}"))
         })?;
-        Ok(Arc::new(GaussDBConnection {
-            conn,
-            options: self.options.clone(),
-        }))
+        Ok(Arc::new(GaussDBConnection { conn }))
     }
 
     async fn state(&self) -> DFResult<PoolState> {
@@ -71,17 +67,12 @@ pub async fn connect_gaussdb(options: &GaussDBConnectionOptions) -> DFResult<Gau
             ))
         })?;
 
-    Ok(GaussDBPool {
-        pool,
-        options: Arc::new(options.clone()),
-    })
+    Ok(GaussDBPool { pool })
 }
 
 #[derive(Debug)]
 pub struct GaussDBConnection {
     pub(crate) conn: bb8::PooledConnection<'static, GaussDBConnectionManager<NoTls>>,
-    #[allow(dead_code)]
-    pub(crate) options: Arc<GaussDBConnectionOptions>,
 }
 
 #[async_trait]
