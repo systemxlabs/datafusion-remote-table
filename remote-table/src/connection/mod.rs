@@ -1,11 +1,11 @@
 #[cfg(feature = "dm")]
 mod dm;
+#[cfg(feature = "gaussdb")]
+mod gaussdb;
 #[cfg(feature = "mdb")]
 mod mdb;
 #[cfg(feature = "mysql")]
 mod mysql;
-#[cfg(feature = "gaussdb")]
-mod gaussdb;
 mod options;
 #[cfg(feature = "oracle")]
 mod oracle;
@@ -16,12 +16,12 @@ mod sqlite;
 
 #[cfg(feature = "dm")]
 pub use dm::*;
+#[cfg(feature = "gaussdb")]
+pub use gaussdb::*;
 #[cfg(feature = "mdb")]
 pub use mdb::*;
 #[cfg(feature = "mysql")]
 pub use mysql::*;
-#[cfg(feature = "gaussdb")]
-pub use gaussdb::*;
 pub use options::*;
 #[cfg(feature = "oracle")]
 pub use oracle::*;

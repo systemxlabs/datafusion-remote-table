@@ -5,9 +5,8 @@ pub struct RemoteTablePhysicalPlanNode {
         oneof = "remote_table_physical_plan_node::RemoteTablePhysicalPlanType",
         tags = "1, 2"
     )]
-    pub remote_table_physical_plan_type: ::core::option::Option<
-        remote_table_physical_plan_node::RemoteTablePhysicalPlanType,
-    >,
+    pub remote_table_physical_plan_type:
+        ::core::option::Option<remote_table_physical_plan_node::RemoteTablePhysicalPlanType>,
 }
 /// Nested message and enum types in `RemoteTablePhysicalPlanNode`.
 pub mod remote_table_physical_plan_node {
@@ -57,9 +56,7 @@ pub struct ConnectionOptions {
         oneof = "connection_options::ConnectionOptions",
         tags = "1, 2, 3, 4, 5, 6, 7"
     )]
-    pub connection_options: ::core::option::Option<
-        connection_options::ConnectionOptions,
-    >,
+    pub connection_options: ::core::option::Option<connection_options::ConnectionOptions>,
 }
 /// Nested message and enum types in `ConnectionOptions`.
 pub mod connection_options {

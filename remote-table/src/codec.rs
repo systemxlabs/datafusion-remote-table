@@ -1,9 +1,9 @@
 use crate::DmConnectionOptions;
+use crate::GaussDBConnectionOptions;
+use crate::GaussDBType;
 use crate::LazyPool;
 use crate::MdbConnectionOptions;
 use crate::MysqlConnectionOptions;
-use crate::GaussDBConnectionOptions;
-use crate::GaussDBType;
 use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
@@ -380,24 +380,22 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
             )),
         },
         ConnectionOptions::GaussDB(options) => protobuf::ConnectionOptions {
-            connection_options: Some(
-                protobuf::connection_options::ConnectionOptions::Gaussdb(
-                    protobuf::GaussDbConnectionOptions {
-                        host: options.host.clone(),
-                        port: options.port as u32,
-                        username: options.username.clone(),
-                        password: options.password.clone(),
-                        database: options.database.clone(),
-                        pool_max_size: options.pool_max_size as u32,
-                        pool_min_idle: options.pool_min_idle as u32,
-                        pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
-                        pool_ttl_check_interval: Some(serialize_duration(
-                            &options.pool_ttl_check_interval,
-                        )),
-                        stream_chunk_size: options.stream_chunk_size as u32,
-                    },
-                ),
-            ),
+            connection_options: Some(protobuf::connection_options::ConnectionOptions::Gaussdb(
+                protobuf::GaussDbConnectionOptions {
+                    host: options.host.clone(),
+                    port: options.port as u32,
+                    username: options.username.clone(),
+                    password: options.password.clone(),
+                    database: options.database.clone(),
+                    pool_max_size: options.pool_max_size as u32,
+                    pool_min_idle: options.pool_min_idle as u32,
+                    pool_idle_timeout: Some(serialize_duration(&options.pool_idle_timeout)),
+                    pool_ttl_check_interval: Some(serialize_duration(
+                        &options.pool_ttl_check_interval,
+                    )),
+                    stream_chunk_size: options.stream_chunk_size as u32,
+                },
+            )),
         },
     }
 }
@@ -505,7 +503,8 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<Co
                 gdb_opts.pool_max_size = options.pool_max_size as usize;
                 gdb_opts.pool_min_idle = options.pool_min_idle as usize;
                 gdb_opts.pool_idle_timeout = parse_duration(&options.pool_idle_timeout.unwrap());
-                gdb_opts.pool_ttl_check_interval = parse_duration(&options.pool_ttl_check_interval.unwrap());
+                gdb_opts.pool_ttl_check_interval =
+                    parse_duration(&options.pool_ttl_check_interval.unwrap());
                 gdb_opts
             })
         }
@@ -1333,12 +1332,8 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         protobuf::remote_type::Type::MdbDateTime(_) => RemoteType::Mdb(MdbType::DateTime),
         protobuf::remote_type::Type::MdbDate(_) => RemoteType::Mdb(MdbType::Date),
         protobuf::remote_type::Type::MdbTime(_) => RemoteType::Mdb(MdbType::Time),
-        protobuf::remote_type::Type::GaussdbInteger(_) => {
-            RemoteType::GaussDB(GaussDBType::Integer)
-        }
-        protobuf::remote_type::Type::GaussdbBigint(_) => {
-            RemoteType::GaussDB(GaussDBType::BigInt)
-        }
+        protobuf::remote_type::Type::GaussdbInteger(_) => RemoteType::GaussDB(GaussDBType::Integer),
+        protobuf::remote_type::Type::GaussdbBigint(_) => RemoteType::GaussDB(GaussDBType::BigInt),
     })
 }
 

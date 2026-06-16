@@ -189,9 +189,9 @@ impl Connection for GaussDBConnection {
             .query_raw(&sql, Vec::<String>::new())
             .await
             .map_err(|e| {
-                DataFusionError::Execution(format!(
-                    "Failed to execute query {sql} on gaussdb: {e}",
-                ))
+                DataFusionError::Execution(
+                    format!("Failed to execute query {sql} on gaussdb: {e}",),
+                )
             })?
             .chunks(chunk_size)
             .boxed();
@@ -301,9 +301,7 @@ fn build_remote_schema_for_table(rows: Vec<tokio_gaussdb::Row>) -> DFResult<Remo
     let mut remote_fields = vec![];
     for row in rows {
         let column_name: String = row.try_get(0).map_err(|e| {
-            DataFusionError::Plan(format!(
-                "Failed to get column name from gaussdb row: {e:?}"
-            ))
+            DataFusionError::Plan(format!("Failed to get column name from gaussdb row: {e:?}"))
         })?;
         let data_type: String = row.try_get(1).map_err(|e| {
             DataFusionError::Plan(format!("Failed to get data type from gaussdb row: {e:?}"))
