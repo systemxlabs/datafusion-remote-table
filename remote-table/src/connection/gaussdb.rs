@@ -10,8 +10,8 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, SchemaRef};
 use async_trait::async_trait;
-use bb8_gaussdb::tokio_gaussdb::NoTls;
 use bb8_gaussdb::GaussDBConnectionManager;
+use bb8_gaussdb::tokio_gaussdb::NoTls;
 use datafusion_common::DataFusionError;
 use datafusion_common::project_schema;
 use datafusion_execution::SendableRecordBatchStream;
@@ -146,9 +146,9 @@ impl Connection for GaussDBConnection {
             .query_raw(&sql, Vec::<String>::new())
             .await
             .map_err(|e| {
-                DataFusionError::Execution(format!(
-                    "Failed to execute query {sql} on gaussdb: {e}",
-                ))
+                DataFusionError::Execution(
+                    format!("Failed to execute query {sql} on gaussdb: {e}",),
+                )
             })?
             .chunks(chunk_size)
             .boxed();
@@ -262,9 +262,7 @@ fn build_remote_schema_for_table(
     let mut remote_fields = vec![];
     for row in rows {
         let column_name: String = row.try_get(0).map_err(|e| {
-            DataFusionError::Plan(format!(
-                "Failed to get column name from gaussdb row: {e:?}"
-            ))
+            DataFusionError::Plan(format!("Failed to get column name from gaussdb row: {e:?}"))
         })?;
         let data_type: String = row.try_get(1).map_err(|e| {
             DataFusionError::Plan(format!("Failed to get data type from gaussdb row: {e:?}"))
