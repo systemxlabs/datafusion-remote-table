@@ -1,8 +1,8 @@
 use crate::connection::{RemoteDbType, just_return, projections_contains};
 use crate::utils::{big_decimal_to_i128, big_decimal_to_i256};
 use crate::{
-    Connection, ConnectionOptions, DFResult, GaussDBConnectionOptions, GaussDBType, Literalize, Pool,
-    PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
+    Connection, ConnectionOptions, DFResult, GaussDBConnectionOptions, GaussDBType, Literalize,
+    Pool, PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
     literalize_array,
 };
 use arrow::array::{
@@ -102,10 +102,7 @@ macro_rules! handle_primitive_type {
                 )
             });
         let v: Option<$value_ty> = $row.try_get($col_idx).map_err(|e| {
-            DataFusionError::Execution(format!(
-                "Failed to get value for {:?}: {e:?}",
-                $field
-            ))
+            DataFusionError::Execution(format!("Failed to get value for {:?}: {e:?}", $field))
         })?;
         match v {
             Some(value) => builder.append_value($convert(value)?),
@@ -120,16 +117,10 @@ macro_rules! handle_primitive_array_type {
             .as_any_mut()
             .downcast_mut::<ListBuilder<$builder_ty>>()
             .unwrap_or_else(|| {
-                panic!(
-                    "Failed to downcast builder to ListBuilder for {:?}",
-                    $field,
-                )
+                panic!("Failed to downcast builder to ListBuilder for {:?}", $field,)
             });
         let v: Option<Vec<Option<$value_ty>>> = $row.try_get($col_idx).map_err(|e| {
-            DataFusionError::Execution(format!(
-                "Failed to get array value for {:?}: {e:?}",
-                $field
-            ))
+            DataFusionError::Execution(format!("Failed to get array value for {:?}: {e:?}", $field))
         })?;
         match v {
             Some(values) => {
@@ -278,11 +269,7 @@ fn gdb_type_to_remote_type(data_type: &Type) -> DFResult<GaussDBType> {
         Type::FLOAT4_ARRAY => GaussDBType::Float4Array,
         Type::FLOAT8_ARRAY => GaussDBType::Float8Array,
         Type::UUID => GaussDBType::Uuid,
-        ref ty
-            if ty.name() == "xml" =>
-        {
-            GaussDBType::Xml
-        }
+        ref ty if ty.name() == "xml" => GaussDBType::Xml,
         _ => {
             return Err(DataFusionError::NotImplemented(format!(
                 "Unsupported gaussdb type: {data_type:?}"
@@ -291,7 +278,11 @@ fn gdb_type_to_remote_type(data_type: &Type) -> DFResult<GaussDBType> {
     })
 }
 
-fn parse_gdb_type(data_type: &str, numeric_precision: Option<u8>, numeric_scale: Option<i8>) -> DFResult<GaussDBType> {
+fn parse_gdb_type(
+    data_type: &str,
+    numeric_precision: Option<u8>,
+    numeric_scale: Option<i8>,
+) -> DFResult<GaussDBType> {
     match data_type {
         "smallint" | "int2" => Ok(GaussDBType::Int2),
         "integer" | "int" | "int4" => Ok(GaussDBType::Int4),
@@ -338,7 +329,11 @@ async fn build_remote_schema_for_query(stmt: Statement) -> DFResult<RemoteSchema
     let mut remote_fields = Vec::new();
     for col in stmt.columns().iter() {
         let gdb_type = gdb_type_to_remote_type(col.type_())?;
-        remote_fields.push(RemoteField::new(col.name(), RemoteType::GaussDB(gdb_type), true));
+        remote_fields.push(RemoteField::new(
+            col.name(),
+            RemoteType::GaussDB(gdb_type),
+            true,
+        ));
     }
     Ok(RemoteSchema::new(remote_fields))
 }
@@ -363,8 +358,10 @@ fn build_remote_schema_for_table(rows: Vec<Row>) -> DFResult<RemoteSchema> {
             numeric_scale.map(|s| s as i8),
         )?;
         let nullable = is_nullable == "YES";
-        let auto_increment =
-            is_identity == "YES" || column_default.as_ref().map_or(false, |d| d.contains("nextval("));
+        let auto_increment = is_identity == "YES"
+            || column_default
+                .as_ref()
+                .is_some_and(|d| d.contains("nextval("));
         remote_fields.push(
             RemoteField::new(column_name, RemoteType::GaussDB(gdb_type), nullable)
                 .with_auto_increment(auto_increment),
@@ -447,9 +444,9 @@ impl Connection for GaussDBConnection {
             .query_raw(&sql, Vec::<String>::new())
             .await
             .map_err(|e| {
-                DataFusionError::Execution(format!(
-                    "Failed to execute query {sql} on gaussdb: {e}",
-                ))
+                DataFusionError::Execution(
+                    format!("Failed to execute query {sql} on gaussdb: {e}",),
+                )
             })?
             .chunks(chunk_size)
             .boxed();
@@ -554,45 +551,91 @@ fn rows_to_batch(
             match field.data_type() {
                 DataType::Boolean => {
                     handle_primitive_type!(
-                        builder, field, BooleanBuilder, row, idx, bool, just_return
+                        builder,
+                        field,
+                        BooleanBuilder,
+                        row,
+                        idx,
+                        bool,
+                        just_return
                     );
                 }
                 DataType::Int16 => {
                     handle_primitive_type!(
-                        builder, field, Int16Builder, row, idx, i16, just_return
+                        builder,
+                        field,
+                        Int16Builder,
+                        row,
+                        idx,
+                        i16,
+                        just_return
                     );
                 }
                 DataType::Int32 => {
                     if field.name() == "oid" {
                         handle_primitive_type!(
-                            builder, field, Int32Builder, row, idx, i32, just_return
+                            builder,
+                            field,
+                            Int32Builder,
+                            row,
+                            idx,
+                            i32,
+                            just_return
                         );
                     } else {
                         handle_primitive_type!(
-                            builder, field, Int32Builder, row, idx, i32, just_return
+                            builder,
+                            field,
+                            Int32Builder,
+                            row,
+                            idx,
+                            i32,
+                            just_return
                         );
                     }
                 }
                 DataType::UInt32 => {
                     handle_primitive_type!(
-                        builder, field, UInt32Builder, row, idx, i32, |v: i32| {
-                            Ok::<u32, DataFusionError>(v as u32)
-                        }
+                        builder,
+                        field,
+                        UInt32Builder,
+                        row,
+                        idx,
+                        i32,
+                        |v: i32| { Ok::<u32, DataFusionError>(v as u32) }
                     );
                 }
                 DataType::Int64 => {
                     handle_primitive_type!(
-                        builder, field, Int64Builder, row, idx, i64, just_return
+                        builder,
+                        field,
+                        Int64Builder,
+                        row,
+                        idx,
+                        i64,
+                        just_return
                     );
                 }
                 DataType::Float32 => {
                     handle_primitive_type!(
-                        builder, field, Float32Builder, row, idx, f32, just_return
+                        builder,
+                        field,
+                        Float32Builder,
+                        row,
+                        idx,
+                        f32,
+                        just_return
                     );
                 }
                 DataType::Float64 => {
                     handle_primitive_type!(
-                        builder, field, Float64Builder, row, idx, f64, just_return
+                        builder,
+                        field,
+                        Float64Builder,
+                        row,
+                        idx,
+                        f64,
+                        just_return
                     );
                 }
                 DataType::Decimal128(_precision, _scale) => {
@@ -604,7 +647,8 @@ fn rows_to_batch(
                         });
                     let v: Option<BigDecimalFromSql> = row.try_get(idx).map_err(|e| {
                         DataFusionError::Execution(format!(
-                            "Failed to get decimal value for {:?}: {e:?}", field
+                            "Failed to get decimal value for {:?}: {e:?}",
+                            field
                         ))
                     })?;
                     match v {
@@ -624,7 +668,8 @@ fn rows_to_batch(
                         });
                     let v: Option<BigDecimalFromSql> = row.try_get(idx).map_err(|e| {
                         DataFusionError::Execution(format!(
-                            "Failed to get decimal value for {:?}: {e:?}", field
+                            "Failed to get decimal value for {:?}: {e:?}",
+                            field
                         ))
                     })?;
                     match v {
@@ -655,7 +700,13 @@ fn rows_to_batch(
                         }
                     } else {
                         handle_primitive_type!(
-                            builder, field, StringBuilder, row, idx, String, just_return
+                            builder,
+                            field,
+                            StringBuilder,
+                            row,
+                            idx,
+                            String,
+                            just_return
                         );
                     }
                 }
@@ -713,7 +764,13 @@ fn rows_to_batch(
                         }
                     } else {
                         handle_primitive_type!(
-                            builder, field, StringViewBuilder, row, idx, String, just_return
+                            builder,
+                            field,
+                            StringViewBuilder,
+                            row,
+                            idx,
+                            String,
+                            just_return
                         );
                     }
                 }
@@ -756,7 +813,13 @@ fn rows_to_batch(
                         }
                     } else {
                         handle_primitive_type!(
-                            builder, field, BinaryBuilder, row, idx, Vec<u8>, just_return
+                            builder,
+                            field,
+                            BinaryBuilder,
+                            row,
+                            idx,
+                            Vec<u8>,
+                            just_return
                         );
                     }
                 }
@@ -784,7 +847,13 @@ fn rows_to_batch(
                         }
                     } else {
                         handle_primitive_type!(
-                            builder, field, BinaryViewBuilder, row, idx, Vec<u8>, just_return
+                            builder,
+                            field,
+                            BinaryViewBuilder,
+                            row,
+                            idx,
+                            Vec<u8>,
+                            just_return
                         );
                     }
                 }
@@ -868,13 +937,11 @@ fn rows_to_batch(
                         idx,
                         chrono::NaiveDateTime,
                         |v: chrono::NaiveDateTime| {
-                            v.and_utc()
-                                .timestamp_nanos_opt()
-                                .ok_or_else(|| {
-                                    DataFusionError::Execution(format!(
-                                        "Timestamp out of range for {field:?}"
-                                    ))
-                                })
+                            v.and_utc().timestamp_nanos_opt().ok_or_else(|| {
+                                DataFusionError::Execution(format!(
+                                    "Timestamp out of range for {field:?}"
+                                ))
+                            })
                         }
                     );
                 }
@@ -967,42 +1034,90 @@ fn rows_to_batch(
                 DataType::List(inner) => match inner.data_type() {
                     DataType::Int16 => {
                         handle_primitive_array_type!(
-                            builder, field, Int16Builder, row, idx, i16, just_return
+                            builder,
+                            field,
+                            Int16Builder,
+                            row,
+                            idx,
+                            i16,
+                            just_return
                         );
                     }
                     DataType::Int32 => {
                         handle_primitive_array_type!(
-                            builder, field, Int32Builder, row, idx, i32, just_return
+                            builder,
+                            field,
+                            Int32Builder,
+                            row,
+                            idx,
+                            i32,
+                            just_return
                         );
                     }
                     DataType::Int64 => {
                         handle_primitive_array_type!(
-                            builder, field, Int64Builder, row, idx, i64, just_return
+                            builder,
+                            field,
+                            Int64Builder,
+                            row,
+                            idx,
+                            i64,
+                            just_return
                         );
                     }
                     DataType::Float32 => {
                         handle_primitive_array_type!(
-                            builder, field, Float32Builder, row, idx, f32, just_return
+                            builder,
+                            field,
+                            Float32Builder,
+                            row,
+                            idx,
+                            f32,
+                            just_return
                         );
                     }
                     DataType::Float64 => {
                         handle_primitive_array_type!(
-                            builder, field, Float64Builder, row, idx, f64, just_return
+                            builder,
+                            field,
+                            Float64Builder,
+                            row,
+                            idx,
+                            f64,
+                            just_return
                         );
                     }
                     DataType::Utf8 => {
                         handle_primitive_array_type!(
-                            builder, field, StringBuilder, row, idx, String, just_return
+                            builder,
+                            field,
+                            StringBuilder,
+                            row,
+                            idx,
+                            String,
+                            just_return
                         );
                     }
                     DataType::Binary => {
                         handle_primitive_array_type!(
-                            builder, field, BinaryBuilder, row, idx, Vec<u8>, just_return
+                            builder,
+                            field,
+                            BinaryBuilder,
+                            row,
+                            idx,
+                            Vec<u8>,
+                            just_return
                         );
                     }
                     DataType::Boolean => {
                         handle_primitive_array_type!(
-                            builder, field, BooleanBuilder, row, idx, bool, just_return
+                            builder,
+                            field,
+                            BooleanBuilder,
+                            row,
+                            idx,
+                            bool,
+                            just_return
                         );
                     }
                     _ => {
