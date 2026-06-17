@@ -495,18 +495,107 @@ impl MdbType {
     }
 }
 
-/// GaussDB type mapping — minimal support (int, bigint).
+/// GaussDB type mapping.
 #[derive(Debug, Clone)]
 pub enum GaussDBType {
-    Integer,
-    BigInt,
+    // smallint
+    Int2,
+    // integer
+    Int4,
+    // bigint
+    Int8,
+    // real
+    Float4,
+    // double precision
+    Float8,
+    // numeric(p, s), decimal(p, s)
+    Numeric(u8, i8),
+    Oid,
+    Name,
+    // varchar(n)
+    Varchar,
+    // char, char(n), bpchar(n), bpchar
+    Bpchar,
+    Text,
+    Bytea,
+    Date,
+    Timestamp,
+    TimestampTz,
+    Time,
+    Interval,
+    Bool,
+    Json,
+    Jsonb,
+    Int2Array,
+    Int4Array,
+    Int8Array,
+    Float4Array,
+    Float8Array,
+    VarcharArray,
+    BpcharArray,
+    TextArray,
+    ByteaArray,
+    BoolArray,
+    Xml,
+    Uuid,
 }
 
 impl GaussDBType {
     pub fn to_arrow_type(&self) -> DataType {
         match self {
-            GaussDBType::Integer => DataType::Int32,
-            GaussDBType::BigInt => DataType::Int64,
+            GaussDBType::Int2 => DataType::Int16,
+            GaussDBType::Int4 => DataType::Int32,
+            GaussDBType::Int8 => DataType::Int64,
+            GaussDBType::Float4 => DataType::Float32,
+            GaussDBType::Float8 => DataType::Float64,
+            GaussDBType::Numeric(precision, scale) => {
+                if *precision <= DECIMAL128_MAX_PRECISION {
+                    DataType::Decimal128(*precision, *scale)
+                } else {
+                    DataType::Decimal256(*precision, *scale)
+                }
+            }
+            GaussDBType::Oid => DataType::UInt32,
+            GaussDBType::Name
+            | GaussDBType::Text
+            | GaussDBType::Varchar
+            | GaussDBType::Bpchar
+            | GaussDBType::Xml => DataType::Utf8,
+            GaussDBType::Bytea => DataType::Binary,
+            GaussDBType::Date => DataType::Date32,
+            GaussDBType::Timestamp => DataType::Timestamp(TimeUnit::Microsecond, None),
+            GaussDBType::TimestampTz => {
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
+            }
+            GaussDBType::Time => DataType::Time64(TimeUnit::Microsecond),
+            GaussDBType::Interval => DataType::Interval(IntervalUnit::MonthDayNano),
+            GaussDBType::Bool => DataType::Boolean,
+            GaussDBType::Json | GaussDBType::Jsonb => DataType::LargeUtf8,
+            GaussDBType::Int2Array => {
+                DataType::List(Arc::new(Field::new("", DataType::Int16, true)))
+            }
+            GaussDBType::Int4Array => {
+                DataType::List(Arc::new(Field::new("", DataType::Int32, true)))
+            }
+            GaussDBType::Int8Array => {
+                DataType::List(Arc::new(Field::new("", DataType::Int64, true)))
+            }
+            GaussDBType::Float4Array => {
+                DataType::List(Arc::new(Field::new("", DataType::Float32, true)))
+            }
+            GaussDBType::Float8Array => {
+                DataType::List(Arc::new(Field::new("", DataType::Float64, true)))
+            }
+            GaussDBType::VarcharArray | GaussDBType::BpcharArray | GaussDBType::TextArray => {
+                DataType::List(Arc::new(Field::new("", DataType::Utf8, true)))
+            }
+            GaussDBType::ByteaArray => {
+                DataType::List(Arc::new(Field::new("", DataType::Binary, true)))
+            }
+            GaussDBType::BoolArray => {
+                DataType::List(Arc::new(Field::new("", DataType::Boolean, true)))
+            }
+            GaussDBType::Uuid => DataType::FixedSizeBinary(16),
         }
     }
 }

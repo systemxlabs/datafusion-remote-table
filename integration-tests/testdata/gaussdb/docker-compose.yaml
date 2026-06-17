@@ -7,3 +7,5 @@ services:
       GS_PORT: 5432
     ports:
       - "5433:5432"
+    volumes:
+      - ./opengauss_init.sql:/docker-entrypoint-initdb.d/init.sql
