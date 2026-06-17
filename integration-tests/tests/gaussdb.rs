@@ -71,7 +71,12 @@ pub async fn pushdown_limit() {
         RemoteDbType::GaussDB,
         RemoteSource::Table(vec!["public".to_string(), "simple_table".to_string()]),
         "SELECT id FROM remote_table ORDER BY id LIMIT 2",
-        vec!["RemoteTableScanExec: projection=[id]"],
+        vec![
+            r#"SortExec: TopK(fetch=2), expr=[id@0 ASC NULLS LAST], preserve_partitioning=[false]
+  CooperativeExec
+    RemoteTableScanExec: source=public.simple_table, projection=[id]
+"#,
+        ],
         r#"+----+
 | id |
 +----+
@@ -90,7 +95,11 @@ pub async fn pushdown_filters() {
         RemoteDbType::GaussDB,
         RemoteSource::Table(vec!["public".to_string(), "simple_table".to_string()]),
         "SELECT id, name FROM remote_table WHERE id > 1",
-        vec!["RemoteTableScanExec: projection=[id, name]"],
+        vec![
+            r#"CooperativeExec
+  RemoteTableScanExec: source=public.simple_table, filters=[("id" > 1)]
+"#,
+        ],
         r#"+----+-------+
 | id | name  |
 +----+-------+
@@ -109,7 +118,11 @@ pub async fn table_projection() {
         RemoteDbType::GaussDB,
         RemoteSource::Table(vec!["public".to_string(), "simple_table".to_string()]),
         "SELECT name FROM remote_table",
-        vec!["RemoteTableScanExec: projection=[name]"],
+        vec![
+            r#"CooperativeExec
+  RemoteTableScanExec: source=public.simple_table, projection=[name]
+"#,
+        ],
         r#"+-------+
 | name  |
 +-------+
@@ -143,11 +156,11 @@ pub async fn empty_projection() {
         .collect()
         .await
         .unwrap();
-    let expected = r#"+----------+
-| count(1) |
-+----------+
-| 3        |
-+----------+"#;
+    let expected = r#"+-----------------+
+| count(Int64(1)) |
++-----------------+
+| 3               |
++-----------------+"#;
     assert_eq!(
         pretty_format_batches(&result).unwrap().to_string(),
         expected

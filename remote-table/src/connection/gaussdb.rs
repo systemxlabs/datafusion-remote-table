@@ -115,9 +115,20 @@ macro_rules! handle_primitive_array_type {
     ($builder:expr, $field:expr, $builder_ty:ty, $row:expr, $col_idx:expr, $value_ty:ty, $convert:expr) => {{
         let builder = $builder
             .as_any_mut()
-            .downcast_mut::<ListBuilder<$builder_ty>>()
+            .downcast_mut::<ListBuilder<Box<dyn ArrayBuilder>>>()
             .unwrap_or_else(|| {
                 panic!("Failed to downcast builder to ListBuilder for {:?}", $field,)
+            });
+        let values_builder = builder
+            .values()
+            .as_any_mut()
+            .downcast_mut::<$builder_ty>()
+            .unwrap_or_else(|| {
+                panic!(
+                    "Failed to downcast values builder to {} for {:?}",
+                    stringify!($builder_ty),
+                    $field,
+                )
             });
         let v: Option<Vec<Option<$value_ty>>> = $row.try_get($col_idx).map_err(|e| {
             DataFusionError::Execution(format!("Failed to get array value for {:?}: {e:?}", $field))
@@ -126,8 +137,8 @@ macro_rules! handle_primitive_array_type {
             Some(values) => {
                 for value in values {
                     match value {
-                        Some(v) => builder.values().append_value($convert(v)?),
-                        None => builder.values().append_null(),
+                        Some(v) => values_builder.append_value($convert(v)?),
+                        None => values_builder.append_null(),
                     }
                 }
                 builder.append(true);
@@ -246,21 +257,24 @@ fn gdb_type_to_remote_type(data_type: &Type) -> DFResult<GaussDBType> {
         Type::INT8 => GaussDBType::Int8,
         Type::FLOAT4 => GaussDBType::Float4,
         Type::FLOAT8 => GaussDBType::Float8,
-        Type::NUMERIC | Type::NUMERIC_ARRAY => {
-            unimplemented!("NUMERIC is handled via information_schema")
-        }
+        Type::NUMERIC | Type::NUMERIC_ARRAY => GaussDBType::Numeric(38, 10),
         Type::OID => GaussDBType::Oid,
         Type::NAME => GaussDBType::Name,
-        Type::VARCHAR | Type::VARCHAR_ARRAY => GaussDBType::Varchar,
-        Type::BPCHAR | Type::BPCHAR_ARRAY => GaussDBType::Bpchar,
-        Type::TEXT | Type::TEXT_ARRAY => GaussDBType::Text,
-        Type::BYTEA | Type::BYTEA_ARRAY => GaussDBType::Bytea,
+        Type::VARCHAR => GaussDBType::Varchar,
+        Type::VARCHAR_ARRAY => GaussDBType::VarcharArray,
+        Type::BPCHAR => GaussDBType::Bpchar,
+        Type::BPCHAR_ARRAY => GaussDBType::BpcharArray,
+        Type::TEXT => GaussDBType::Text,
+        Type::TEXT_ARRAY => GaussDBType::TextArray,
+        Type::BYTEA => GaussDBType::Bytea,
+        Type::BYTEA_ARRAY => GaussDBType::ByteaArray,
         Type::DATE => GaussDBType::Date,
         Type::TIMESTAMP => GaussDBType::Timestamp,
         Type::TIMESTAMPTZ => GaussDBType::TimestampTz,
         Type::TIME => GaussDBType::Time,
         Type::INTERVAL => GaussDBType::Interval,
-        Type::BOOL | Type::BOOL_ARRAY => GaussDBType::Bool,
+        Type::BOOL => GaussDBType::Bool,
+        Type::BOOL_ARRAY => GaussDBType::BoolArray,
         Type::JSON => GaussDBType::Json,
         Type::JSONB => GaussDBType::Jsonb,
         Type::INT2_ARRAY => GaussDBType::Int2Array,
@@ -309,7 +323,7 @@ fn parse_gdb_type(
         "jsonb" => Ok(GaussDBType::Jsonb),
         "xml" => Ok(GaussDBType::Xml),
         "uuid" => Ok(GaussDBType::Uuid),
-        "ARRAY" | "ARRAY_int2" | "_int2" => Ok(GaussDBType::Int2Array),
+        "ARRAY_int2" | "_int2" => Ok(GaussDBType::Int2Array),
         "ARRAY_int4" | "_int4" => Ok(GaussDBType::Int4Array),
         "ARRAY_int8" | "_int8" => Ok(GaussDBType::Int8Array),
         "ARRAY_float4" | "_float4" => Ok(GaussDBType::Float4Array),
@@ -395,8 +409,13 @@ impl Connection for GaussDBConnection {
                     )
                 };
                 let sql = format!(
-                    "select column_name, data_type, numeric_precision, numeric_scale, is_nullable, column_default, is_identity
-                    from information_schema.columns
+                    "select column_name, \
+                     case when data_type = 'ARRAY' then data_type || udt_name \
+                          when data_type = 'USER-DEFINED' then udt_schema || '.' || udt_name \
+                          else data_type \
+                     end as column_type, \
+                     numeric_precision, numeric_scale, is_nullable, column_default, is_identity \
+                    from information_schema.columns \
                     where {} order by ordinal_position",
                     where_condition
                 );
