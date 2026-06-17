@@ -4,6 +4,7 @@ services:
     container_name: gaussdb-test
     environment:
       GS_PASSWORD: Secret@1234
+      GS_USERNAME: gaussdb
       GS_PORT: 5432
     ports:
       - "5433:5432"
