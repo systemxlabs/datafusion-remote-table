@@ -452,7 +452,7 @@ dependencies = [
 [[package]]
 name = "bb8-gaussdb"
 version = "0.1.0"
-source = "git+https://github.com/systemxlabs/bb8-gaussdb.git#85eaa0bd9c1d7337da06fc840320538027725af7"
+source = "git+https://github.com/systemxlabs/bb8-gaussdb.git#094b7b7df18869439fc24ee7db2829143aeaa479"
 dependencies = [
  "bb8",
  "tokio",
@@ -1735,7 +1735,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1960,12 +1960,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5cdc4bb67ba30e52534ea8afc5440d7667211a420b86d02a2b4badcbe67731f"
 dependencies = [
  "bytes",
- "chrono",
  "fallible-iterator 0.2.0",
  "gaussdb-protocol",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -3474,7 +3470,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3816,7 +3812,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4410,7 +4406,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
