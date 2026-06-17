@@ -280,38 +280,8 @@ message RemoteType {
     Empty mdb_date_time = 513;
     Empty mdb_date = 514;
     Empty mdb_time = 515;
-    Empty gaussdb_int2 = 601;
-    Empty gaussdb_int4 = 602;
-    Empty gaussdb_int8 = 603;
-    Empty gaussdb_float4 = 604;
-    Empty gaussdb_float8 = 605;
-    GaussDBNumeric gaussdb_numeric = 606;
-    Empty gaussdb_oid = 607;
-    Empty gaussdb_name = 608;
-    Empty gaussdb_varchar = 609;
-    Empty gaussdb_bpchar = 610;
-    Empty gaussdb_text = 611;
-    Empty gaussdb_bytea = 612;
-    Empty gaussdb_date = 613;
-    Empty gaussdb_timestamp = 614;
-    Empty gaussdb_timestamptz = 615;
-    Empty gaussdb_time = 616;
-    Empty gaussdb_interval = 617;
-    Empty gaussdb_bool = 618;
-    Empty gaussdb_json = 619;
-    Empty gaussdb_jsonb = 620;
-    Empty gaussdb_int2_array = 621;
-    Empty gaussdb_int4_array = 622;
-    Empty gaussdb_int8_array = 623;
-    Empty gaussdb_float4_array = 624;
-    Empty gaussdb_float8_array = 625;
-    Empty gaussdb_varchar_array = 626;
-    Empty gaussdb_bpchar_array = 627;
-    Empty gaussdb_text_array = 628;
-    Empty gaussdb_bytea_array = 629;
-    Empty gaussdb_bool_array = 630;
-    Empty gaussdb_xml = 631;
-    Empty gaussdb_uuid = 632;
+    Empty gaussdb_integer = 601;
+    Empty gaussdb_bigint = 602;
   }
 }
 
@@ -382,11 +352,6 @@ message DmChar {
 message DmVarchar {
   optional uint32 length = 1;
 }
-message GaussDBNumeric {
-  uint32 precision = 1;
-  int32 scale = 2;
-}
-
 message DmBinary {
   uint32 length = 1;
 }

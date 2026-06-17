@@ -285,7 +285,7 @@ pub struct RemoteField {
 pub struct RemoteType {
     #[prost(
         oneof = "remote_type::Type",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 601, 602"
     )]
     pub r#type: ::core::option::Option<remote_type::Type>,
 }
@@ -524,69 +524,9 @@ pub mod remote_type {
         #[prost(message, tag = "515")]
         MdbTime(super::Empty),
         #[prost(message, tag = "601")]
-        GaussdbInt2(super::Empty),
+        GaussdbInteger(super::Empty),
         #[prost(message, tag = "602")]
-        GaussdbInt4(super::Empty),
-        #[prost(message, tag = "603")]
-        GaussdbInt8(super::Empty),
-        #[prost(message, tag = "604")]
-        GaussdbFloat4(super::Empty),
-        #[prost(message, tag = "605")]
-        GaussdbFloat8(super::Empty),
-        #[prost(message, tag = "606")]
-        GaussdbNumeric(super::GaussDbNumeric),
-        #[prost(message, tag = "607")]
-        GaussdbOid(super::Empty),
-        #[prost(message, tag = "608")]
-        GaussdbName(super::Empty),
-        #[prost(message, tag = "609")]
-        GaussdbVarchar(super::Empty),
-        #[prost(message, tag = "610")]
-        GaussdbBpchar(super::Empty),
-        #[prost(message, tag = "611")]
-        GaussdbText(super::Empty),
-        #[prost(message, tag = "612")]
-        GaussdbBytea(super::Empty),
-        #[prost(message, tag = "613")]
-        GaussdbDate(super::Empty),
-        #[prost(message, tag = "614")]
-        GaussdbTimestamp(super::Empty),
-        #[prost(message, tag = "615")]
-        GaussdbTimestamptz(super::Empty),
-        #[prost(message, tag = "616")]
-        GaussdbTime(super::Empty),
-        #[prost(message, tag = "617")]
-        GaussdbInterval(super::Empty),
-        #[prost(message, tag = "618")]
-        GaussdbBool(super::Empty),
-        #[prost(message, tag = "619")]
-        GaussdbJson(super::Empty),
-        #[prost(message, tag = "620")]
-        GaussdbJsonb(super::Empty),
-        #[prost(message, tag = "621")]
-        GaussdbInt2Array(super::Empty),
-        #[prost(message, tag = "622")]
-        GaussdbInt4Array(super::Empty),
-        #[prost(message, tag = "623")]
-        GaussdbInt8Array(super::Empty),
-        #[prost(message, tag = "624")]
-        GaussdbFloat4Array(super::Empty),
-        #[prost(message, tag = "625")]
-        GaussdbFloat8Array(super::Empty),
-        #[prost(message, tag = "626")]
-        GaussdbVarcharArray(super::Empty),
-        #[prost(message, tag = "627")]
-        GaussdbBpcharArray(super::Empty),
-        #[prost(message, tag = "628")]
-        GaussdbTextArray(super::Empty),
-        #[prost(message, tag = "629")]
-        GaussdbByteaArray(super::Empty),
-        #[prost(message, tag = "630")]
-        GaussdbBoolArray(super::Empty),
-        #[prost(message, tag = "631")]
-        GaussdbXml(super::Empty),
-        #[prost(message, tag = "632")]
-        GaussdbUuid(super::Empty),
+        GaussdbBigint(super::Empty),
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -686,13 +626,6 @@ pub struct DmChar {
 pub struct DmVarchar {
     #[prost(uint32, optional, tag = "1")]
     pub length: ::core::option::Option<u32>,
-}
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct GaussDbNumeric {
-    #[prost(uint32, tag = "1")]
-    pub precision: u32,
-    #[prost(int32, tag = "2")]
-    pub scale: i32,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DmBinary {
