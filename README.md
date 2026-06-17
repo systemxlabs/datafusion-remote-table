@@ -76,6 +76,15 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Char / Varchar / Text
   - [x] Binary / Varbinary / Image
   - [x] Bit / Timestamp / Time / Date
+- [x] GaussDB / OpenGauss
+  - [x] Int2 / Int4 / Int8
+  - [x] Float4 / Float8 / Numeric
+  - [x] Char / Varchar / Text / Bpchar / Bytea
+  - [x] Date / Time / Timestamp / Timestamptz / Interval
+  - [x] Bool / Oid / Name / Json / Jsonb / Xml / Uuid
+  - [x] Int2[] / Int4[] / Int8[]
+  - [x] Float4[] / Float8[]
+  - [x] Varchar[] / Text[] / Bool[]
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)
