@@ -1078,19 +1078,13 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MdbTime(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Int2) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbInt2(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbInt2(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Int4) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbInt4(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbInt4(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Int8) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbInt8(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbInt8(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Float4) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbFloat4(
@@ -1111,14 +1105,10 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::GaussDB(GaussDBType::Oid) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbOid(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbOid(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Name) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbName(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbName(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Varchar) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbVarchar(
@@ -1131,9 +1121,7 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::GaussDB(GaussDBType::Text) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbText(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbText(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Bytea) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbBytea(
@@ -1141,9 +1129,7 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::GaussDB(GaussDBType::Date) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbDate(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbDate(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Timestamp) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbTimestamp(
@@ -1156,9 +1142,7 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::GaussDB(GaussDBType::Time) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbTime(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbTime(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Interval) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbInterval(
@@ -1166,14 +1150,10 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::GaussDB(GaussDBType::Bool) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbBool(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbBool(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Json) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbJson(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbJson(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Jsonb) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbJsonb(
@@ -1231,14 +1211,10 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             )),
         },
         RemoteType::GaussDB(GaussDBType::Xml) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbXml(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbXml(protobuf::Empty {})),
         },
         RemoteType::GaussDB(GaussDBType::Uuid) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::GaussdbUuid(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::GaussdbUuid(protobuf::Empty {})),
         },
     }
 }
@@ -1490,9 +1466,9 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         protobuf::remote_type::Type::GaussdbInt8(_) => RemoteType::GaussDB(GaussDBType::Int8),
         protobuf::remote_type::Type::GaussdbFloat4(_) => RemoteType::GaussDB(GaussDBType::Float4),
         protobuf::remote_type::Type::GaussdbFloat8(_) => RemoteType::GaussDB(GaussDBType::Float8),
-        protobuf::remote_type::Type::GaussdbNumeric(proto) => {
-            RemoteType::GaussDB(GaussDBType::Numeric(proto.precision as u8, proto.scale as i8))
-        }
+        protobuf::remote_type::Type::GaussdbNumeric(proto) => RemoteType::GaussDB(
+            GaussDBType::Numeric(proto.precision as u8, proto.scale as i8),
+        ),
         protobuf::remote_type::Type::GaussdbOid(_) => RemoteType::GaussDB(GaussDBType::Oid),
         protobuf::remote_type::Type::GaussdbName(_) => RemoteType::GaussDB(GaussDBType::Name),
         protobuf::remote_type::Type::GaussdbVarchar(_) => RemoteType::GaussDB(GaussDBType::Varchar),
@@ -1500,23 +1476,49 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         protobuf::remote_type::Type::GaussdbText(_) => RemoteType::GaussDB(GaussDBType::Text),
         protobuf::remote_type::Type::GaussdbBytea(_) => RemoteType::GaussDB(GaussDBType::Bytea),
         protobuf::remote_type::Type::GaussdbDate(_) => RemoteType::GaussDB(GaussDBType::Date),
-        protobuf::remote_type::Type::GaussdbTimestamp(_) => RemoteType::GaussDB(GaussDBType::Timestamp),
-        protobuf::remote_type::Type::GaussdbTimestamptz(_) => RemoteType::GaussDB(GaussDBType::TimestampTz),
+        protobuf::remote_type::Type::GaussdbTimestamp(_) => {
+            RemoteType::GaussDB(GaussDBType::Timestamp)
+        }
+        protobuf::remote_type::Type::GaussdbTimestamptz(_) => {
+            RemoteType::GaussDB(GaussDBType::TimestampTz)
+        }
         protobuf::remote_type::Type::GaussdbTime(_) => RemoteType::GaussDB(GaussDBType::Time),
-        protobuf::remote_type::Type::GaussdbInterval(_) => RemoteType::GaussDB(GaussDBType::Interval),
+        protobuf::remote_type::Type::GaussdbInterval(_) => {
+            RemoteType::GaussDB(GaussDBType::Interval)
+        }
         protobuf::remote_type::Type::GaussdbBool(_) => RemoteType::GaussDB(GaussDBType::Bool),
         protobuf::remote_type::Type::GaussdbJson(_) => RemoteType::GaussDB(GaussDBType::Json),
         protobuf::remote_type::Type::GaussdbJsonb(_) => RemoteType::GaussDB(GaussDBType::Jsonb),
-        protobuf::remote_type::Type::GaussdbInt2Array(_) => RemoteType::GaussDB(GaussDBType::Int2Array),
-        protobuf::remote_type::Type::GaussdbInt4Array(_) => RemoteType::GaussDB(GaussDBType::Int4Array),
-        protobuf::remote_type::Type::GaussdbInt8Array(_) => RemoteType::GaussDB(GaussDBType::Int8Array),
-        protobuf::remote_type::Type::GaussdbFloat4Array(_) => RemoteType::GaussDB(GaussDBType::Float4Array),
-        protobuf::remote_type::Type::GaussdbFloat8Array(_) => RemoteType::GaussDB(GaussDBType::Float8Array),
-        protobuf::remote_type::Type::GaussdbVarcharArray(_) => RemoteType::GaussDB(GaussDBType::VarcharArray),
-        protobuf::remote_type::Type::GaussdbBpcharArray(_) => RemoteType::GaussDB(GaussDBType::BpcharArray),
-        protobuf::remote_type::Type::GaussdbTextArray(_) => RemoteType::GaussDB(GaussDBType::TextArray),
-        protobuf::remote_type::Type::GaussdbByteaArray(_) => RemoteType::GaussDB(GaussDBType::ByteaArray),
-        protobuf::remote_type::Type::GaussdbBoolArray(_) => RemoteType::GaussDB(GaussDBType::BoolArray),
+        protobuf::remote_type::Type::GaussdbInt2Array(_) => {
+            RemoteType::GaussDB(GaussDBType::Int2Array)
+        }
+        protobuf::remote_type::Type::GaussdbInt4Array(_) => {
+            RemoteType::GaussDB(GaussDBType::Int4Array)
+        }
+        protobuf::remote_type::Type::GaussdbInt8Array(_) => {
+            RemoteType::GaussDB(GaussDBType::Int8Array)
+        }
+        protobuf::remote_type::Type::GaussdbFloat4Array(_) => {
+            RemoteType::GaussDB(GaussDBType::Float4Array)
+        }
+        protobuf::remote_type::Type::GaussdbFloat8Array(_) => {
+            RemoteType::GaussDB(GaussDBType::Float8Array)
+        }
+        protobuf::remote_type::Type::GaussdbVarcharArray(_) => {
+            RemoteType::GaussDB(GaussDBType::VarcharArray)
+        }
+        protobuf::remote_type::Type::GaussdbBpcharArray(_) => {
+            RemoteType::GaussDB(GaussDBType::BpcharArray)
+        }
+        protobuf::remote_type::Type::GaussdbTextArray(_) => {
+            RemoteType::GaussDB(GaussDBType::TextArray)
+        }
+        protobuf::remote_type::Type::GaussdbByteaArray(_) => {
+            RemoteType::GaussDB(GaussDBType::ByteaArray)
+        }
+        protobuf::remote_type::Type::GaussdbBoolArray(_) => {
+            RemoteType::GaussDB(GaussDBType::BoolArray)
+        }
         protobuf::remote_type::Type::GaussdbXml(_) => RemoteType::GaussDB(GaussDBType::Xml),
         protobuf::remote_type::Type::GaussdbUuid(_) => RemoteType::GaussDB(GaussDBType::Uuid),
     })
