@@ -357,54 +357,33 @@ impl MdbConnection {
         tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
             let conn = handle.block_on(async { conn.lock().await });
-            let pre = conn.preallocate().map_err(|e| {
-                DataFusionError::Execution(format!(
-                    "Failed to preallocate statement for MDB row count: {e:?}"
-                ))
-            })?;
-            let mut stmt = pre.into_handle();
-            let sql_text = SqlText::new(&count_query);
-            // SAFETY: `count_query` is owned by this closure and outlives `stmt`.
-            if unsafe { stmt.exec_direct(&sql_text) }.is_err() {
-                return Err(DataFusionError::Execution(format!(
-                    "Failed to execute MDB row count query: {count_query}"
-                )));
-            }
 
             // mdbtools ODBC returns 0 for aggregate COUNT(*) even though
-            // mdb-sql returns the correct value. Count table rows by fetching
-            // the first column instead; this keeps COUNT pushdown table-only
-            // without materializing Arrow batches.
-            let mut dummy = odbc_api::Nullable::<i32>::null();
-            match unsafe { stmt.bind_col(1, &mut dummy) } {
-                SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {}
-                SqlResult::Error { function } => {
-                    return Err(DataFusionError::Execution(format!(
-                        "{function} failed binding MDB row-count column"
-                    )));
-                }
-                other => {
-                    return Err(DataFusionError::Execution(format!(
-                        "Unexpected result binding MDB row-count column: {other:?}"
-                    )));
-                }
-            }
+            // mdb-sql returns the correct value. Count table rows by iterating
+            // the cursor instead.
+            let mut cursor = conn
+                .execute(&count_query, (), None)
+                .map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to execute MDB row count query: {e:?}, sql: {count_query}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    DataFusionError::Execution(format!(
+                        "No result set for MDB row count query: {count_query}"
+                    ))
+                })?;
 
             let mut row_count = 0usize;
             loop {
-                match unsafe { stmt.fetch() } {
-                    SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {
+                match cursor.next_row() {
+                    Ok(Some(_row)) => {
                         row_count += 1;
                     }
-                    SqlResult::NoData => break,
-                    SqlResult::Error { function } => {
+                    Ok(None) => break,
+                    Err(e) => {
                         return Err(DataFusionError::Execution(format!(
-                            "{function} failed fetching MDB row count"
-                        )));
-                    }
-                    other => {
-                        return Err(DataFusionError::Execution(format!(
-                            "Unexpected result fetching MDB row count: {other:?}"
+                            "Failed fetching MDB row count: {e}"
                         )));
                     }
                 }
