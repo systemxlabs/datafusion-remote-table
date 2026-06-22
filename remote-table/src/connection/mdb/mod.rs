@@ -18,9 +18,8 @@ use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
+use odbc_api::Cursor;
 use odbc_api::Environment;
-use odbc_api::handles::{SqlText, Statement, StatementImpl};
-use odbc_api::{Cursor, CursorImpl};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -397,57 +396,53 @@ impl MdbConnection {
         })?
     }
 
-    /// Core: call ODBC SQLTables on an already-locked connection.
+    /// Core: query MSysObjects on an already-locked connection.
     /// Returns (table_name, table_type), system tables filtered out.
+    ///
+    /// Queries the MDB system table directly via `conn.execute()` instead of
+    /// the ODBC catalog function `SQLTables`, avoiding the need for unsafe
+    /// `CursorImpl::new`. MSysObjects.Type values: 1=local table, 4=linked
+    /// ODBC, 5=query/view, 6=linked table.
     fn list_tables_sync(conn: &odbc_api::Connection<'_>) -> DFResult<Vec<(String, String)>> {
-        let pre = conn.preallocate().map_err(|e| {
-            DataFusionError::Execution(format!(
-                "Failed to preallocate statement for list_tables: {e:?}"
-            ))
-        })?;
-        let mut stmt = pre.into_handle();
-
-        let sql_cat = SqlText::new("");
-        let sql_sch = SqlText::new("");
-        let sql_tbl = SqlText::new("%");
-        let sql_typ = SqlText::new("TABLE,VIEW");
-        stmt.tables(&sql_cat, &sql_sch, &sql_tbl, &sql_typ)
-            .into_result(&stmt)
+        let mut cursor = conn
+            .execute(
+                "SELECT Name, Type FROM MSysObjects WHERE Type IN (1,4,5,6)",
+                (),
+                None,
+            )
             .map_err(|e| {
-                DataFusionError::Execution(format!("Failed to execute SQLTables on mdb: {e:?}"))
+                DataFusionError::Execution(format!("Failed to query MSysObjects on mdb: {e:?}"))
+            })?
+            .ok_or_else(|| {
+                DataFusionError::Execution("No result from MSysObjects query".to_string())
             })?;
 
-        // SAFETY: stmt is in cursor state after a successful tables() call.
-        let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
         let mut tables = Vec::new();
-        let mut text_buf: Vec<u8> = Vec::new();
+        let mut name_buf: Vec<u8> = Vec::new();
+        let mut type_buf: Vec<u8> = Vec::new();
 
         loop {
             match cursor.next_row() {
                 Ok(Some(mut row)) => {
-                    // Column 3 = TABLE_NAME
-                    text_buf.clear();
-                    if row.get_text(3, &mut text_buf).unwrap_or(false) {
-                        let table_name = String::from_utf8_lossy(&text_buf).into_owned();
-
-                        // Column 4 = TABLE_TYPE
-                        text_buf.clear();
-                        let table_type = if row.get_text(4, &mut text_buf).unwrap_or(false) {
-                            String::from_utf8_lossy(&text_buf).into_owned()
-                        } else {
-                            "TABLE".to_string()
-                        };
-
-                        // Filter system/internal tables
-                        if !table_name.starts_with("MSys") && !table_name.starts_with("~") {
-                            let display_type = if table_type.eq_ignore_ascii_case("VIEW") {
-                                "View"
-                            } else {
-                                "Table"
-                            };
-                            tables.push((table_name, display_type.to_string()));
-                        }
+                    // Column 1 = Name
+                    name_buf.clear();
+                    if !row.get_text(1, &mut name_buf).unwrap_or(false) {
+                        continue;
                     }
+                    let table_name = String::from_utf8_lossy(&name_buf).into_owned();
+
+                    // Filter system/internal tables
+                    if table_name.starts_with("MSys") || table_name.starts_with("~") {
+                        continue;
+                    }
+
+                    // Column 2 = Type: 5 = query/view
+                    type_buf.clear();
+                    let is_view = row.get_text(2, &mut type_buf).unwrap_or(false)
+                        && String::from_utf8_lossy(&type_buf).trim() == "5";
+
+                    let display_type = if is_view { "View" } else { "Table" };
+                    tables.push((table_name, display_type.to_string()));
                 }
                 Ok(None) => break,
                 Err(e) => {
