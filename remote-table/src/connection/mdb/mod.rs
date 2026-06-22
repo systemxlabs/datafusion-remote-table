@@ -195,6 +195,15 @@ impl Connection for MdbConnection {
                 "Failed to prepare query for schema inference on mdb: {e:?}, sql: {sql}"
             ))
         })?;
+        // mdbtools does not populate result-set metadata (SQLNumResultCols /
+        // SQLDescribeCol) until after SQLExecute. Prepared::execute(()) is the
+        // safe wrapper around SQLExecute; we discard the returned cursor since
+        // column metadata is then available on `prepared` itself.
+        prepared.execute(()).map_err(|e| {
+            DataFusionError::Plan(format!(
+                "Failed to execute query for schema inference on mdb: {e:?}, sql: {sql}"
+            ))
+        })?;
         let remote_schema = Arc::new(build_remote_schema(&mut prepared)?);
         Ok(remote_schema)
     }
