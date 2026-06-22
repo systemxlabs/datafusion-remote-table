@@ -406,7 +406,7 @@ impl MdbConnection {
     fn list_tables_sync(conn: &odbc_api::Connection<'_>) -> DFResult<Vec<(String, String)>> {
         let mut cursor = conn
             .execute(
-                "SELECT Name, Type FROM MSysObjects WHERE Type IN (1,4,5,6)",
+                "SELECT Name, Type FROM MSysObjects WHERE Type=1 OR Type=4 OR Type=5 OR Type=6",
                 (),
                 None,
             )
