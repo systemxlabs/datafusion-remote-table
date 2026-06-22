@@ -236,7 +236,8 @@ impl Connection for MdbConnection {
             let handle = Handle::current();
             let conn = handle.block_on(async { conn.lock().await });
 
-            let mut cursor = conn.execute(&sql, (), None)
+            let mut cursor = conn
+                .execute(&sql, (), None)
                 .map_err(|e| {
                     DataFusionError::Execution(format!(
                         "Failed to execute query on mdb: {e:?}, sql: {sql}"
