@@ -11,7 +11,7 @@ datafusion-execution = "53"
 datafusion-expr = "53"
 datafusion-physical-plan = "53"
 datafusion-physical-expr = "53"
-datafusion-catalog = "53"
+datafusion-catalog = "54"
 datafusion-datasource = "53"
 datafusion-sql = "53"
 tokio = { version = "1", features = ["full"] }
