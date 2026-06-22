@@ -19,7 +19,7 @@ use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
 use odbc_api::Environment;
-use odbc_api::handles::{SqlResult, SqlText, Statement, StatementImpl};
+use odbc_api::handles::{SqlText, Statement, StatementImpl};
 use odbc_api::{Cursor, CursorImpl};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -416,18 +416,6 @@ impl MdbConnection {
             .map_err(|e| {
                 DataFusionError::Execution(format!("Failed to execute SQLTables on mdb: {e:?}"))
             })?;
-
-        // Bind dummy column (mdbtools workaround: SQLFetch hangs without at
-        // least one bound column, same as the query path).
-        let mut dummy = odbc_api::Nullable::<i32>::null();
-        match unsafe { Statement::bind_col(&mut stmt, 1, &mut dummy) } {
-            SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {}
-            other => {
-                return Err(DataFusionError::Execution(format!(
-                    "Failed to bind dummy column for list_tables: {other:?}"
-                )));
-            }
-        }
 
         // SAFETY: stmt is in cursor state after a successful tables() call.
         let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
