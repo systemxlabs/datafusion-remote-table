@@ -19,7 +19,7 @@ use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
 use odbc_api::Environment;
-use odbc_api::handles::{AsStatementRef, SqlResult, SqlText, Statement, StatementImpl};
+use odbc_api::handles::{SqlResult, SqlText, Statement, StatementImpl};
 use odbc_api::{Cursor, CursorImpl};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -249,28 +249,6 @@ impl Connection for MdbConnection {
                     ))
                 })?;
 
-            // mdbtools 1.0.x requires SQLBindCol before SQLFetch — without it,
-            // SQLFetch hangs indefinitely. odbc-api's Cursor::next_row() calls
-            // SQLFetch without binding columns.
-            //
-            // Workaround: bind a single dummy column (column 1) to allow
-            // SQLFetch to proceed, then use the row-by-row Cursor::next_row()
-            // path which calls SQLGetData for each cell. SQLGetData after
-            // SQLBindCol works because the dummy buffer is ignored.
-            let mut dummy = odbc_api::Nullable::<i32>::null();
-            match unsafe { cursor.as_stmt_ref().bind_col(1, &mut dummy) } {
-                SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {}
-                SqlResult::Error { function } => {
-                    return Err(DataFusionError::Execution(format!(
-                        "{function} failed binding dummy column for mdb"
-                    )));
-                }
-                other => {
-                    return Err(DataFusionError::Execution(format!(
-                        "Unexpected result binding dummy column: {other:?}"
-                    )));
-                }
-            }
             let mut exhausted = false;
 
             loop {
