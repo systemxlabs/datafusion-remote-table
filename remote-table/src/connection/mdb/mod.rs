@@ -19,7 +19,7 @@ use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::lock::Mutex;
 use log::debug;
 use odbc_api::Environment;
-use odbc_api::handles::{SqlResult, SqlText, Statement, StatementImpl};
+use odbc_api::handles::{AsStatementRef, SqlResult, SqlText, Statement, StatementImpl};
 use odbc_api::{Cursor, CursorImpl};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -236,40 +236,28 @@ impl Connection for MdbConnection {
             let handle = Handle::current();
             let conn = handle.block_on(async { conn.lock().await });
 
-            // mdbtools does not support SQL_ATTR_PARAMSET_SIZE, so odbc-api's safe
-            // `conn.execute()` fails with HY092. Use SQLExecDirect (like the
-            // mdbtools C unit test does) followed by SQLBindCol + SQLFetch.
-            let pre = conn.preallocate().map_err(|e| {
-                DataFusionError::Execution(format!(
-                    "Failed to preallocate statement for mdb query: {e:?}"
-                ))
-            })?;
-            let mut stmt = pre.into_handle();
-            let sql_text = SqlText::new(&sql);
-            // SAFETY: `sql` is owned by this closure and outlives `stmt`.
-            // `exec_direct` is unsafe (may dereference bound parameters; we have none).
-            if unsafe { stmt.exec_direct(&sql_text) }.is_err() {
-                return Err(DataFusionError::Execution(format!(
-                    "Failed to execute query on mdb: {sql}"
-                )));
-            }
+            let mut cursor = conn.execute(&sql, (), None)
+                .map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "Failed to execute query on mdb: {e:?}, sql: {sql}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    DataFusionError::Execution(format!(
+                        "No result set returned for mdb query: {sql}"
+                    ))
+                })?;
+
             // mdbtools 1.0.x requires SQLBindCol before SQLFetch — without it,
             // SQLFetch hangs indefinitely. odbc-api's Cursor::next_row() calls
-            // SQLFetch without binding columns, so we bypass CursorImpl entirely
-            // and use the Statement trait's bind_col() + fetch() directly.
-            // Each column is bound to a single-row buffer; each fetch() call
-            // writes one row into the bound buffers.
-
-            // mdbtools' SQLFetch requires at least one column to be bound with
-            // SQLBindCol before the first SQLFetch call, otherwise it hangs.
-            // However, with all columns bound, SQLFetch never returns SQL_NO_DATA.
+            // SQLFetch without binding columns.
             //
             // Workaround: bind a single dummy column (column 1) to allow
             // SQLFetch to proceed, then use the row-by-row Cursor::next_row()
             // path which calls SQLGetData for each cell. SQLGetData after
             // SQLBindCol works because the dummy buffer is ignored.
             let mut dummy = odbc_api::Nullable::<i32>::null();
-            match unsafe { stmt.bind_col(1, &mut dummy) } {
+            match unsafe { cursor.as_stmt_ref().bind_col(1, &mut dummy) } {
                 SqlResult::Success(()) | SqlResult::SuccessWithInfo(()) => {}
                 SqlResult::Error { function } => {
                     return Err(DataFusionError::Execution(format!(
@@ -282,9 +270,6 @@ impl Connection for MdbConnection {
                     )));
                 }
             }
-
-            // SAFETY: stmt is in cursor state after exec_direct.
-            let mut cursor: CursorImpl<StatementImpl> = unsafe { CursorImpl::new(stmt) };
             let mut exhausted = false;
 
             loop {
