@@ -4,7 +4,7 @@ use crate::RemoteField;
 use crate::RemoteSchema;
 use crate::RemoteType;
 use datafusion_common::DataFusionError;
-use odbc_api::Prepared;
+use odbc_api::CursorImpl;
 use odbc_api::ResultSetMetadata;
 use odbc_api::handles::{AsStatementRef, ColumnDescription, Statement, StatementImpl};
 
@@ -26,10 +26,8 @@ fn sql_chars_to_string_lossy(name: &[u16]) -> String {
     String::from_utf16_lossy(name)
 }
 
-pub(super) fn build_remote_schema(
-    prepared: &mut Prepared<StatementImpl<'_>>,
-) -> DFResult<RemoteSchema> {
-    let col_count = prepared
+pub(super) fn build_remote_schema(mut cursor: CursorImpl<StatementImpl>) -> DFResult<RemoteSchema> {
+    let col_count = cursor
         .num_result_cols()
         .map_err(|e| DataFusionError::External(Box::new(e)))? as u16;
     let mut remote_fields = vec![];
@@ -39,7 +37,7 @@ pub(super) fn build_remote_schema(
         // col_nullability return NoDiagnostics), so we go through the
         // low-level SQLDescribeCol path.
         let mut col_desc = ColumnDescription::default();
-        let describe_result = prepared.as_stmt_ref().describe_col(i, &mut col_desc);
+        let describe_result = cursor.as_stmt_ref().describe_col(i, &mut col_desc);
         if describe_result.is_err() {
             return Err(DataFusionError::Plan(format!(
                 "describe_col failed for column {i} on mdb"
