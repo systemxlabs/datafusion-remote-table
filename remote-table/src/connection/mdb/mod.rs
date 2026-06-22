@@ -190,34 +190,12 @@ impl Connection for MdbConnection {
         let sql = RemoteDbType::Mdb.limit_1_query_if_possible(source)?;
         debug!("[remote-table] inferring mdb schema with: {sql}");
         let conn = self.conn.lock().await;
-        // mdbtools 1.0.0 does not support SQL_ATTR_PARAMSET_SIZE, and
-        // `SQLExecDirect` + `SQLFetch` hangs. Use SQLPrepare + SQLExecute.
-        let pre = conn.preallocate().map_err(|e| {
+        let mut prepared = conn.prepare(&sql).map_err(|e| {
             DataFusionError::Plan(format!(
-                "Failed to preallocate statement for schema inference on mdb: {e:?}, sql: {sql}"
+                "Failed to prepare query for schema inference on mdb: {e:?}, sql: {sql}"
             ))
         })?;
-        let mut stmt = pre.into_handle();
-        let sql_text = SqlText::new(&sql);
-        // SAFETY: `sql` is owned by this stack frame and outlives `stmt` (which
-        // is consumed by `CursorImpl::new` below), so the `SqlText` borrow is
-        // valid for the duration of the prepare + execute. `prepare` is safe;
-        // `execute` is unsafe (may deref bound parameters; we have none).
-        if stmt.prepare(&sql_text).is_err() {
-            return Err(DataFusionError::Plan(format!(
-                "Failed to prepare query for schema inference on mdb: {sql}"
-            )));
-        }
-        if unsafe { stmt.execute() }.is_err() {
-            return Err(DataFusionError::Plan(format!(
-                "Failed to execute query for schema inference on mdb: {sql}"
-            )));
-        }
-        // SAFETY: `stmt` is in cursor state after a successful execute that
-        // produced a result set; we verify with num_result_cols() in
-        // build_remote_schema.
-        let cursor = unsafe { CursorImpl::new(stmt) };
-        let remote_schema = Arc::new(build_remote_schema(cursor)?);
+        let remote_schema = Arc::new(build_remote_schema(&mut prepared)?);
         Ok(remote_schema)
     }
 
