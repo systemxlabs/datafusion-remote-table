@@ -49,6 +49,11 @@ CREATE TABLE simple_table (
 
 INSERT INTO simple_table VALUES (1, 'Tom'), (2, 'Jerry'), (3, 'Spike');
 
+CREATE TABLE empty_table (
+    id INT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
 
 CREATE TABLE insert_supported_data_types (
     smallint_col SMALLINT,
@@ -89,6 +94,11 @@ CREATE TABLE insert_supported_data_types (
     uuid_col UUID
 );
 
+CREATE TABLE insert_table_with_primary_key (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255)
+);
+
 
 CREATE TABLE timestamp_test (
     timestamp_col TIMESTAMP,
@@ -108,3 +118,4 @@ INSERT INTO timestamp_test VALUES
 (NULL, NULL, NULL, NULL, NULL);
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO gaussdb;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO gaussdb;
