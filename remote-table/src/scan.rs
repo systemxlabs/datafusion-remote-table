@@ -18,7 +18,6 @@ use datafusion_physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, project_schema,
 };
 use futures::TryStreamExt;
-use std::any::Any;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -84,10 +83,6 @@ impl ExecutionPlan for RemoteTableScanExec {
         "RemoteTableScanExec"
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn properties(&self) -> &Arc<PlanProperties> {
         &self.plan_properties
     }
@@ -125,7 +120,7 @@ impl ExecutionPlan for RemoteTableScanExec {
         Ok(Box::pin(RecordBatchStreamAdapter::new(schema, stream)))
     }
 
-    fn partition_statistics(&self, partition: Option<usize>) -> DFResult<Statistics> {
+    fn partition_statistics(&self, partition: Option<usize>) -> DFResult<Arc<Statistics>> {
         if let Some(partition) = partition
             && partition != 0
         {
@@ -141,13 +136,13 @@ impl ExecutionPlan for RemoteTableScanExec {
             } else {
                 count
             };
-            Ok(Statistics {
+            Ok(Arc::new(Statistics {
                 num_rows: Precision::Exact(row_count_after_limit),
                 total_byte_size: Precision::Absent,
                 column_statistics: column_stat,
-            })
+            }))
         } else {
-            Ok(Statistics::new_unknown(self.schema().as_ref()))
+            Ok(Arc::new(Statistics::new_unknown(self.schema().as_ref())))
         }
     }
 
