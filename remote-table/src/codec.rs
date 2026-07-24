@@ -206,7 +206,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
     }
 
     fn try_encode(&self, node: Arc<dyn ExecutionPlan>, buf: &mut Vec<u8>) -> DFResult<()> {
-        if let Some(exec) = node.as_any().downcast_ref::<RemoteTableScanExec>() {
+        if let Some(exec) = node.downcast_ref::<RemoteTableScanExec>() {
             let serialized_transform = if exec.transform.is::<DefaultTransform>() {
                 DefaultTransformCodec {}.try_encode(exec.transform.as_ref())?
             } else {
@@ -243,7 +243,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
                 ))
             })?;
             Ok(())
-        } else if let Some(exec) = node.as_any().downcast_ref::<RemoteTableInsertExec>() {
+        } else if let Some(exec) = node.downcast_ref::<RemoteTableInsertExec>() {
             let serialized_connection_options = serialize_connection_options(&exec.conn_options);
             let remote_schema = serialize_remote_schema(&exec.remote_schema);
             let serialized_table = protobuf::Identifiers {

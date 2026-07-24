@@ -13,7 +13,6 @@ use datafusion_expr::dml::InsertOp;
 use datafusion_expr::{Expr, TableProviderFilterPushDown};
 use datafusion_physical_plan::ExecutionPlan;
 use log::debug;
-use std::any::Any;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -318,10 +317,6 @@ impl RemoteTable {
 
 #[async_trait::async_trait]
 impl TableProvider for RemoteTable {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.transformed_table_schema.clone()
     }

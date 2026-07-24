@@ -56,10 +56,6 @@ impl ExecutionPlan for RemoteTableInsertExec {
         "RemoteTableInsertExec"
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
     fn properties(&self) -> &Arc<PlanProperties> {
         &self.plan_properties
     }
