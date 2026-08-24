@@ -6,7 +6,9 @@ use arrow::datatypes::SchemaRef;
 use datafusion_common::DataFusionError;
 use datafusion_common::Statistics;
 use datafusion_common::stats::Precision;
+use datafusion_common::tree_node::TreeNodeRecursion;
 use datafusion_execution::{SendableRecordBatchStream, TaskContext};
+use datafusion_physical_expr::PhysicalExpr;
 use datafusion_physical_expr::{EquivalenceProperties, Partitioning};
 use datafusion_physical_plan::display::ProjectSchemaDisplay;
 use datafusion_physical_plan::execution_plan::{Boundedness, EmissionType};
@@ -15,7 +17,7 @@ use datafusion_physical_plan::metrics::BaselineMetrics;
 use datafusion_physical_plan::metrics::ExecutionPlanMetricsSet;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion_physical_plan::{
-    DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, project_schema,
+    DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, StatisticsArgs, project_schema,
 };
 use futures::TryStreamExt;
 use std::sync::Arc;
@@ -91,6 +93,13 @@ impl ExecutionPlan for RemoteTableScanExec {
         vec![]
     }
 
+    fn apply_expressions(
+        &self,
+        _f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> DFResult<TreeNodeRecursion>,
+    ) -> DFResult<TreeNodeRecursion> {
+        Ok(TreeNodeRecursion::Continue)
+    }
+
     fn with_new_children(
         self: Arc<Self>,
         _children: Vec<Arc<dyn ExecutionPlan>>,
@@ -120,8 +129,12 @@ impl ExecutionPlan for RemoteTableScanExec {
         Ok(Box::pin(RecordBatchStreamAdapter::new(schema, stream)))
     }
 
-    fn partition_statistics(&self, partition: Option<usize>) -> DFResult<Arc<Statistics>> {
-        if let Some(partition) = partition
+    fn statistics_from_inputs(
+        &self,
+        _input_stats: &[Arc<Statistics>],
+        args: &StatisticsArgs,
+    ) -> DFResult<Arc<Statistics>> {
+        if let Some(partition) = args.partition()
             && partition != 0
         {
             return Err(DataFusionError::Plan(format!(

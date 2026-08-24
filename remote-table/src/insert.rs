@@ -2,12 +2,13 @@ use crate::{ConnectionOptions, DFResult, LazyPool, Literalize, RemoteSchema, Rem
 use arrow::array::{ArrayRef, Int64Array, RecordBatch};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion_common::stats::Precision;
+use datafusion_common::tree_node::TreeNodeRecursion;
 use datafusion_execution::{SendableRecordBatchStream, TaskContext};
-use datafusion_physical_expr::EquivalenceProperties;
+use datafusion_physical_expr::{EquivalenceProperties, PhysicalExpr};
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion_physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, ExecutionPlanProperties, Partitioning,
-    PlanProperties,
+    PlanProperties, StatisticsArgs, StatisticsContext,
 };
 use futures::StreamExt;
 use std::sync::Arc;
@@ -62,6 +63,13 @@ impl ExecutionPlan for RemoteTableInsertExec {
 
     fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> {
         vec![&self.input]
+    }
+
+    fn apply_expressions(
+        &self,
+        _f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> DFResult<TreeNodeRecursion>,
+    ) -> DFResult<TreeNodeRecursion> {
+        Ok(TreeNodeRecursion::Continue)
     }
 
     fn with_new_children(
@@ -124,7 +132,9 @@ impl ExecutionPlan for RemoteTableInsertExec {
 impl DisplayAs for RemoteTableInsertExec {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "RemoteTableInsertExec: table={}", self.table.join("."))?;
-        if let Ok(stats) = self.input.partition_statistics(None) {
+        if let Ok(stats) =
+            StatisticsContext::new().compute(self.input.as_ref(), &StatisticsArgs::new())
+        {
             match stats.num_rows {
                 Precision::Exact(rows) => write!(f, ", rows={rows}")?,
                 Precision::Inexact(rows) => write!(f, ", rows~={rows}")?,

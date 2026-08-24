@@ -19,6 +19,7 @@ use datafusion_execution::TaskContext;
 use datafusion_physical_plan::ExecutionPlan;
 use datafusion_proto::convert_required;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
+use datafusion_proto::physical_plan::PhysicalProtoConverterExtension;
 use datafusion_proto::protobuf::proto_error;
 use derive_with::With;
 use prost::Message;
@@ -117,6 +118,7 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         buf: &[u8],
         inputs: &[Arc<dyn ExecutionPlan>],
         _ctx: &TaskContext,
+        _proto_converter: &dyn PhysicalProtoConverterExtension,
     ) -> DFResult<Arc<dyn ExecutionPlan>> {
         let remote_table_node =
             protobuf::RemoteTablePhysicalPlanNode::decode(buf).map_err(|e| {
@@ -205,7 +207,12 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
         }
     }
 
-    fn try_encode(&self, node: Arc<dyn ExecutionPlan>, buf: &mut Vec<u8>) -> DFResult<()> {
+    fn try_encode(
+        &self,
+        node: Arc<dyn ExecutionPlan>,
+        buf: &mut Vec<u8>,
+        _proto_converter: &dyn PhysicalProtoConverterExtension,
+    ) -> DFResult<()> {
         if let Some(exec) = node.downcast_ref::<RemoteTableScanExec>() {
             let serialized_transform = if exec.transform.is::<DefaultTransform>() {
                 DefaultTransformCodec {}.try_encode(exec.transform.as_ref())?
