@@ -97,11 +97,11 @@ async fn pushdown_filters(#[case] source: RemoteSource) {
         source,
         r#"select * from remote_table where "ID" = 1"#,
         vec![
-            r#"FilterExec: ID@0 = Some(1),38,0
+            r#"FilterExec: ID@0 = 1
   CooperativeExec
     RemoteTableScanExec: source=query
 "#,
-            r#"FilterExec: ID@0 = Some(1),38,0
+            r#"FilterExec: ID@0 = 1
   CooperativeExec
     RemoteTableScanExec: source=SYS.simple_table
 "#,
@@ -145,7 +145,7 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          FilterExec: ID@0 > Some(1),38,0, projection=[]
+          FilterExec: ID@0 > 1, projection=[]
             RemoteTableScanExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
@@ -153,7 +153,7 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          FilterExec: ID@0 > Some(1),38,0, projection=[]
+          FilterExec: ID@0 > 1, projection=[]
             RemoteTableScanExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
@@ -175,7 +175,7 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
+          FilterExec: ID@0 > 1, projection=[], fetch=1
             RemoteTableScanExec: source=query, projection=[ID]
 "#,
             r#"ProjectionExec: expr=[count(Int64(1))@0 as count(*)]
@@ -183,7 +183,7 @@ async fn count1_agg(#[case] source: RemoteSource) {
     CoalescePartitionsExec
       AggregateExec: mode=Partial, gby=[], aggr=[count(Int64(1))]
         RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1
-          FilterExec: ID@0 > Some(1),38,0, projection=[], fetch=1
+          FilterExec: ID@0 > 1, projection=[], fetch=1
             RemoteTableScanExec: source=SYS.simple_table, projection=[ID]
 "#,
         ],
