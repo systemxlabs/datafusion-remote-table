@@ -80,7 +80,7 @@ jobs:
 
       - name: Run integration tests
         # There is no easy way to install dm odbc driver, so skip dm integration tests
-        run: cargo test -p integration-tests --test common --test sqlite --test postgres --test mysql --test oracle --test mdb --test mdb_concurrent --test gaussdb
+        run: cargo test -p integration-tests --test common --test sqlite --test postgres --test mysql --test oracle --test mdb --test mdb_layers --test gaussdb
 
   lints:
     name: Lints
