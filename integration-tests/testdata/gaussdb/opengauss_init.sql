@@ -29,7 +29,9 @@ CREATE TABLE supported_data_types (
     real_array_col REAL[],
     double_array_col DOUBLE PRECISION[],
 
+    char_array_col CHAR(10)[],
     varchar_array_col VARCHAR(255)[],
+    bpchar_array_col BPCHAR[],
     text_array_col TEXT[],
 
     bool_array_col BOOLEAN[],
@@ -38,8 +40,8 @@ CREATE TABLE supported_data_types (
 );
 
 INSERT INTO supported_data_types VALUES
-(1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', E'\\xDEADBEEF', '2023-10-01', '12:34:56', '3 months 2 weeks', TRUE, '{"key1": "value1"}', '{"key2": "value2"}', ARRAY[1, 2], ARRAY[3, 4], ARRAY[5, 6], ARRAY[1.1, 2.2], ARRAY[3.3, 4.4], ARRAY['varchar0', 'varchar1'], ARRAY['text0', 'text1'], ARRAY[true, false], 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
-(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+(1, 2, 3, 1.1, 2.2, 3.3, 'char', 'varchar', 'bpchar', 'text', E'\\xDEADBEEF', '2023-10-01', '12:34:56', '3 months 2 weeks', TRUE, '{"key1": "value1"}', '{"key2": "value2"}', ARRAY[1, 2], ARRAY[3, 4], ARRAY[5, 6], ARRAY[1.1, 2.2], ARRAY[3.3, 4.4], ARRAY['char0', 'char1'], ARRAY['varchar0', 'varchar1'], ARRAY['bpchar0', 'bpchar1'], ARRAY['text0', 'text1'], ARRAY[true, false], 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
+(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 
 CREATE TABLE simple_table (
@@ -81,12 +83,20 @@ CREATE TABLE insert_supported_data_types (
     real_array_col REAL[],
     double_array_col DOUBLE PRECISION[],
 
+    char_array_col CHAR(10)[],
     varchar_array_col VARCHAR(255)[],
+    bpchar_array_col BPCHAR[],
     text_array_col TEXT[],
 
     bool_array_col BOOLEAN[],
 
     uuid_col UUID
+);
+
+
+CREATE TABLE insert_table_with_primary_key (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255)
 );
 
 
@@ -106,5 +116,12 @@ INSERT INTO timestamp_test VALUES
 ('0001-01-01 00:00:00', '0001-01-01 00:00:00+00', '0001-01-01 00:00:00', '0001-01-01 00:00:00.000', '0001-01-01 00:00:00.000000'),
 ('9999-12-31 23:59:59', '9999-12-31 23:59:59+00', '9999-12-31 23:59:59', '9999-12-31 23:59:59.999', '9999-12-31 23:59:59.999999'),
 (NULL, NULL, NULL, NULL, NULL);
+
+
+CREATE TABLE unconstrained_numeric (
+    numeric_col NUMERIC
+);
+
+INSERT INTO unconstrained_numeric VALUES (1.1), (12.12), (123.123), (12345678901.12345678901), (123456789012345678901234567890.1234567890123456789);
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO gaussdb;

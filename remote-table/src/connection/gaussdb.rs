@@ -14,7 +14,8 @@ use arrow::array::{
     TimestampNanosecondBuilder, UInt32Builder, make_builder,
 };
 use arrow::datatypes::{
-    DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit, SchemaRef, TimeUnit,
+    DECIMAL256_MAX_PRECISION, DataType, Date32Type, IntervalMonthDayNanoType, IntervalUnit,
+    SchemaRef, TimeUnit,
 };
 use bb8_gaussdb::GaussDBConnectionManager;
 use bb8_gaussdb::tokio_gaussdb::types::{FromSql, Type};
@@ -152,37 +153,69 @@ macro_rules! handle_primitive_array_type {
 
 struct BigDecimalFromSql(BigDecimal);
 
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_possible_truncation)]
 impl<'a> FromSql<'a> for BigDecimalFromSql {
     fn from_sql(
         _ty: &Type,
         raw: &'a [u8],
     ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
-        // Numeric is stored as digits in base 10000
+        // Numeric is stored as digits in base 10000, preceded by the digit
+        // count, the weight of the first digit, the sign and the display scale.
         if raw.len() < 8 {
             return Err("numeric too short".into());
         }
-        let num_digits = u16::from_be_bytes([raw[0], raw[1]]);
-        let _weight = i16::from_be_bytes([raw[2], raw[3]]);
-        let sign = u16::from_be_bytes([raw[4], raw[5]]);
-        let dscale = u16::from_be_bytes([raw[6], raw[7]]);
+        let raw_u16: Vec<u16> = raw
+            .chunks(2)
+            .map(|chunk| {
+                if chunk.len() == 2 {
+                    u16::from_be_bytes([chunk[0], chunk[1]])
+                } else {
+                    u16::from_be_bytes([chunk[0], 0])
+                }
+            })
+            .collect();
 
-        let mut result = BigInt::from(0u8);
-        for i in 0..num_digits as usize {
-            let start = 8 + i * 2;
-            let digit = u16::from_be_bytes([raw[start], raw[start + 1]]);
-            result = result * 10000u16 + BigInt::from(digit);
+        let base_10_000_digit_count = raw_u16[0];
+        let weight = raw_u16[1] as i16;
+        let sign = raw_u16[2];
+        let scale = raw_u16[3];
+
+        let mut base_10_000_digits = Vec::new();
+        for i in 4..4 + base_10_000_digit_count {
+            base_10_000_digits.push(raw_u16[i as usize]);
         }
+
+        let mut u8_digits = Vec::new();
+        for &base_10_000_digit in base_10_000_digits.iter().rev() {
+            let mut base_10_000_digit = base_10_000_digit;
+            let mut temp_result = Vec::new();
+            while base_10_000_digit > 0 {
+                temp_result.push((base_10_000_digit % 10) as u8);
+                base_10_000_digit /= 10;
+            }
+            while temp_result.len() < 4 {
+                temp_result.push(0);
+            }
+            u8_digits.extend(temp_result);
+        }
+        u8_digits.reverse();
+
+        let value_scale = 4 * (i64::from(base_10_000_digit_count) - i64::from(weight) - 1);
+        let size = i64::try_from(u8_digits.len())? + i64::from(scale) - value_scale;
+        u8_digits.resize(size as usize, 0);
+
         let sign = match sign {
-            0x0000 => Sign::Plus,
             0x4000 => Sign::Minus,
+            0x0000 => Sign::Plus,
             _ => return Err("invalid numeric sign".into()),
         };
 
-        let big_decimal = BigDecimal::new(
-            BigInt::from_bytes_be(sign, &result.to_bytes_be().1),
-            dscale as i64,
-        );
-        Ok(BigDecimalFromSql(big_decimal))
+        let Some(digits) = BigInt::from_radix_be(sign, u8_digits.as_slice(), 10) else {
+            return Err("Failed to parse numeric value".into());
+        };
+        Ok(BigDecimalFromSql(BigDecimal::new(digits, i64::from(scale))))
     }
 
     fn accepts(ty: &Type) -> bool {
@@ -257,7 +290,7 @@ fn gdb_type_to_remote_type(data_type: &Type) -> DFResult<GaussDBType> {
         Type::INT8 => GaussDBType::Int8,
         Type::FLOAT4 => GaussDBType::Float4,
         Type::FLOAT8 => GaussDBType::Float8,
-        Type::NUMERIC | Type::NUMERIC_ARRAY => GaussDBType::Numeric(38, 10),
+        Type::NUMERIC | Type::NUMERIC_ARRAY => GaussDBType::Numeric(DECIMAL256_MAX_PRECISION, 10),
         Type::OID => GaussDBType::Oid,
         Type::NAME => GaussDBType::Name,
         Type::VARCHAR => GaussDBType::Varchar,
@@ -304,7 +337,7 @@ fn parse_gdb_type(
         "real" | "float4" => Ok(GaussDBType::Float4),
         "double precision" | "float8" => Ok(GaussDBType::Float8),
         "numeric" => Ok(GaussDBType::Numeric(
-            numeric_precision.unwrap_or(38),
+            numeric_precision.unwrap_or(DECIMAL256_MAX_PRECISION),
             numeric_scale.unwrap_or(10),
         )),
         "oid" => Ok(GaussDBType::Oid),
@@ -620,8 +653,8 @@ fn rows_to_batch(
                         UInt32Builder,
                         row,
                         idx,
-                        i32,
-                        |v: i32| { Ok::<u32, DataFusionError>(v as u32) }
+                        u32,
+                        just_return
                     );
                 }
                 DataType::Int64 => {
@@ -657,7 +690,7 @@ fn rows_to_batch(
                         just_return
                     );
                 }
-                DataType::Decimal128(_precision, _scale) => {
+                DataType::Decimal128(_precision, scale) => {
                     let builder = builder
                         .as_any_mut()
                         .downcast_mut::<Decimal128Builder>()
@@ -672,7 +705,7 @@ fn rows_to_batch(
                     })?;
                     match v {
                         Some(bd) => {
-                            let i = big_decimal_to_i128(&bd.0, None)?;
+                            let i = big_decimal_to_i128(&bd.0, Some(*scale as i32))?;
                             builder.append_value(i);
                         }
                         None => builder.append_null(),

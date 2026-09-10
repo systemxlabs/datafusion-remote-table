@@ -122,6 +122,38 @@ pub async fn setup_gaussdb_db() {
         compose
     });
     wait_container_ready(RemoteDbType::GaussDB).await;
+    wait_gaussdb_init_done().await;
+}
+
+/// openGauss accepts connections while the init scripts are still running, so
+/// `select 1` is not enough to know that the test tables exist yet. Wait until
+/// the last table created by `opengauss_init.sql` is visible.
+async fn wait_gaussdb_init_done() {
+    let conn = utils::build_conn_options(RemoteDbType::GaussDB);
+    let mut retry = 0;
+    loop {
+        match datafusion_remote_table::RemoteTable::try_new(
+            conn.clone(),
+            vec!["unconstrained_numeric"],
+        )
+        .await
+        {
+            Ok(table)
+                if table
+                    .remote_schema()
+                    .is_some_and(|schema| !schema.fields.is_empty()) =>
+            {
+                break;
+            }
+            Ok(_) => eprintln!("gaussdb init not done: test tables not created yet"),
+            Err(err) => eprintln!("gaussdb init check error: {err:?}"),
+        }
+        retry += 1;
+        if retry > 60 {
+            panic!("gaussdb test tables are still not available after 300 seconds");
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
 }
 
 static DM_DB: OnceLock<DockerCompose> = OnceLock::new();
