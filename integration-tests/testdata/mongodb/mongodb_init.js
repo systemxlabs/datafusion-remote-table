@@ -11,8 +11,16 @@ test.simple_table.insertMany([
   { _id: 3, id: 3, name: 'Spike' },
 ]);
 
-// One row with a value for every supported BSON type, one row that is null
-// everywhere, so that type inference has to merge both.
+// A collection keyed by ObjectId, so that `_id` type inference is exercised
+// with MongoDB's default key type.
+test.object_id_table.drop();
+test.object_id_table.insertMany([
+  { _id: ObjectId('507f1f77bcf86cd799439011'), name: 'Tom' },
+  { _id: ObjectId('507f1f77bcf86cd799439012'), name: 'Jerry' },
+]);
+
+// Documents that use every supported BSON type, including nested documents and
+// arrays, to check that the raw document column round-trips faithfully.
 test.supported_data_types.drop();
 test.supported_data_types.insertMany([
   {

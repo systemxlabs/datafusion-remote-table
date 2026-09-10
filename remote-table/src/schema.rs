@@ -686,11 +686,11 @@ impl GaussDBType {
 
 /// BSON types reported for documents read from a MongoDB collection.
 ///
-/// MongoDB documents are schemaless, so the type of a field is inferred from
-/// the documents sampled by `MongoDBConnection::infer_schema`. Types that have
-/// no dedicated Arrow counterpart (embedded documents, arrays, `Decimal128`,
-/// BSON timestamps, ...) are surfaced as text rendered in the driver's display
-/// form, which is MongoDB shell syntax rather than valid JSON.
+/// A MongoDB collection is exposed as two columns: `_id` (typed from the
+/// documents sampled by `MongoDBConnection::infer_schema`) and a `document`
+/// column holding the whole BSON document. This enum therefore only has to
+/// describe `_id` plus the document column itself; the variants corresponding
+/// to the other BSON types are still used when a schema is declared explicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MongoDBType {
     Double,
@@ -699,6 +699,8 @@ pub enum MongoDBType {
     Object,
     /// Array, surfaced as JSON text.
     Array,
+    /// A whole BSON document, surfaced as raw BSON bytes.
+    Document,
     Binary,
     /// ObjectId, surfaced as its 24 character hex string.
     ObjectId,
@@ -729,7 +731,7 @@ impl MongoDBType {
             | MongoDBType::Timestamp
             | MongoDBType::Regex
             | MongoDBType::JavaScript => DataType::Utf8,
-            MongoDBType::Binary => DataType::Binary,
+            MongoDBType::Binary | MongoDBType::Document => DataType::Binary,
             MongoDBType::Boolean => DataType::Boolean,
             MongoDBType::Date => DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
             MongoDBType::Null => DataType::Null,

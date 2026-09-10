@@ -1,3 +1,4 @@
+use super::schema::{DOCUMENT_COLUMN, ID_COLUMN};
 use crate::{DFResult, MongoDBType, RemoteSchema, RemoteType};
 use arrow::array::{
     Array, ArrayBuilder, ArrayRef, AsArray, BinaryBuilder, BooleanBuilder, Float64Builder,
@@ -11,12 +12,13 @@ use arrow::datatypes::{
 };
 use datafusion_common::{DataFusionError, project_schema};
 use mongodb::bson::spec::BinarySubtype;
-use mongodb::bson::{Binary, Bson, DateTime, Decimal128, Document, oid::ObjectId};
+use mongodb::bson::{Binary, Bson, DateTime, Decimal128, Document, RawDocumentBuf, oid::ObjectId};
 use std::str::FromStr;
 
-/// Convert a chunk of documents into one record batch using `table_schema`.
+/// Convert a chunk of raw documents into one record batch: `_id` plus the
+/// whole BSON document.
 pub(crate) fn documents_to_batch(
-    documents: &[Document],
+    documents: &[RawDocumentBuf],
     table_schema: &SchemaRef,
     projection: Option<&Vec<usize>>,
     capacity: usize,
@@ -35,12 +37,29 @@ pub(crate) fn documents_to_batch(
     for document in documents {
         for (builder_index, field_index) in indices.iter().enumerate() {
             let field = table_schema.field(*field_index);
-            append_value(
-                &mut builders[builder_index],
-                document.get(field.name()),
-                field.data_type(),
-                field.name(),
-            )?;
+            let builder = &mut builders[builder_index];
+            if field.name() == DOCUMENT_COLUMN {
+                downcast::<BinaryBuilder>(builder, field.data_type(), field.name())?
+                    .append_value(document.as_bytes());
+            } else {
+                let value = document
+                    .get(field.name())
+                    .map_err(|e| {
+                        DataFusionError::Execution(format!(
+                            "Failed to read {:?} from a mongodb document: {e:?}",
+                            field.name()
+                        ))
+                    })?
+                    .map(Bson::try_from)
+                    .transpose()
+                    .map_err(|e| {
+                        DataFusionError::Execution(format!(
+                            "Failed to convert {:?} to BSON: {e:?}",
+                            field.name()
+                        ))
+                    })?;
+                append_value(builder, value.as_ref(), field.data_type(), field.name())?;
+            }
         }
     }
 
@@ -52,30 +71,53 @@ pub(crate) fn documents_to_batch(
     RecordBatch::try_new_with_options(projected_schema, columns, &options).map_err(Into::into)
 }
 
-/// Convert a record batch into BSON documents for insertion.
+/// Convert a record batch of `(_id, document)` rows back into BSON documents.
 ///
-/// Null values are omitted so that server-generated values (most notably `_id`)
-/// apply, and so that missing fields stay missing rather than becoming nulls.
+/// A non-null `_id` overrides the key already present in the document; a null
+/// `_id` leaves the document untouched so that the server generates one.
 pub(crate) fn batch_to_documents(
     batch: &RecordBatch,
     remote_schema: &RemoteSchema,
 ) -> DFResult<Vec<Document>> {
-    let mut documents = Vec::with_capacity(batch.num_rows());
+    let document_index = remote_schema
+        .fields
+        .iter()
+        .position(|field| field.name == DOCUMENT_COLUMN)
+        .ok_or_else(|| {
+            DataFusionError::Execution(format!(
+                "MongoDB insert requires a {DOCUMENT_COLUMN:?} column"
+            ))
+        })?;
+    let id_index = remote_schema
+        .fields
+        .iter()
+        .position(|field| field.name == ID_COLUMN);
+    let documents = batch.column(document_index).as_binary::<i32>();
+
+    let mut result = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
-        let mut document = Document::new();
-        for (index, field) in remote_schema.fields.iter().enumerate() {
-            let array = batch.column(index);
-            if array.is_null(row) {
-                continue;
-            }
-            document.insert(
-                field.name.clone(),
-                arrow_value_to_bson(array, row, &field.remote_type)?,
-            );
+        if documents.is_null(row) {
+            return Err(DataFusionError::Execution(format!(
+                "MongoDB insert requires a non-null {DOCUMENT_COLUMN:?} value, got null in row {row}"
+            )));
         }
-        documents.push(document);
+        let mut document = Document::from_reader(documents.value(row)).map_err(|e| {
+            DataFusionError::Execution(format!(
+                "Failed to decode the {DOCUMENT_COLUMN:?} column as BSON: {e:?}"
+            ))
+        })?;
+        if let Some(id_index) = id_index {
+            let id = batch.column(id_index);
+            if !id.is_null(row) {
+                document.insert(
+                    ID_COLUMN,
+                    arrow_value_to_bson(id, row, &remote_schema.fields[id_index].remote_type)?,
+                );
+            }
+        }
+        result.push(document);
     }
-    Ok(documents)
+    Ok(result)
 }
 
 fn append_value(

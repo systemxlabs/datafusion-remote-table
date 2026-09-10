@@ -97,12 +97,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Date / Time / DateTime
   - [x] Own type enum, options, pool and connection handling; tables are listed through the `MSysObjects` catalog table
 - [x] MongoDB
-  - [x] Double / Int32 / Int64
-  - [x] String / Boolean
-  - [x] Date / ObjectId / Binary
-  - [x] Embedded document / Array (as JSON text)
-  - [x] Decimal128 / BSON timestamp / Regular expression (as text)
-  - [x] Null
+  - [x] `_id` (typed from the stored key, including ObjectId)
+  - [x] Whole document as raw BSON bytes
 
 ## MongoDB
 
@@ -119,11 +115,33 @@ let remote_table = RemoteTable::try_new(options, vec!["restaurants"]).await?;
 let remote_table = RemoteTable::try_new(options, vec!["test", "restaurants"]).await?;
 ```
 
-MongoDB collections are schemaless: the schema is inferred from a sample of
-documents (`sample_size`, 100 by default) and is the union of their fields.
+A MongoDB collection is schemaless and can be arbitrarily nested, so it is
+exposed as exactly two columns:
+
+| Column | Type | Contents |
+|---|---|---|
+| `_id` | the Arrow type of the stored key | the document key; `ObjectId` becomes its 24 character hex string |
+| `document` | `Binary` | the whole document as raw BSON bytes |
+
+Only `_id` is typed (from a sample of `sample_size` documents, 100 by default)
+and the rest of the document is kept verbatim. Compared with inferring one
+column per field, this keeps the collection faithful - every BSON type, nested
+document and array survives, and field order is untouched - and the schema is
+stable no matter what the documents contain or how the collection evolves. A
+collection is queryable even when it is empty, in which case `_id` reports
+MongoDB's default key type (`ObjectId`).
+
+Inserts take the `document` column verbatim; a non-null `_id` overrides the key
+inside the document, and a null `_id` leaves it to the server to generate.
+
 Filters are not pushed down — a SQL predicate cannot be unparsed into a BSON
-filter — so DataFusion evaluates them locally. Limit pushdown, `count()`
-(via `count_documents`) and inserts are supported.
+filter — so DataFusion evaluates them locally, and predicates can only reference
+`_id` because the document itself is opaque to SQL. Limit pushdown and `count()`
+(via `count_documents`) are supported.
+
+To work with the fields inside a document, either decode the `document` column
+in a custom `Transform` (`remote-table/src/transform.rs`), or declare the schema
+explicitly with `RemoteTable::try_new_with_remote_schema`.
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)

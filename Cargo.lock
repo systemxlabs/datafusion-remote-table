@@ -2652,6 +2652,7 @@ dependencies = [
  "datafusion-proto",
  "datafusion-remote-table",
  "env_logger",
+ "mongodb",
  "odbc-api",
  "rstest",
  "rusqlite",

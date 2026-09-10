@@ -1374,6 +1374,11 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
                 protobuf::Empty {},
             )),
         },
+        RemoteType::MongoDB(MongoDBType::Document) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::MongodbDocument(
+                protobuf::Empty {},
+            )),
+        },
         RemoteType::MongoDB(MongoDBType::Binary) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MongodbBinary(
                 protobuf::Empty {},
@@ -1755,6 +1760,9 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         protobuf::remote_type::Type::MongodbString(_) => RemoteType::MongoDB(MongoDBType::String),
         protobuf::remote_type::Type::MongodbObject(_) => RemoteType::MongoDB(MongoDBType::Object),
         protobuf::remote_type::Type::MongodbArray(_) => RemoteType::MongoDB(MongoDBType::Array),
+        protobuf::remote_type::Type::MongodbDocument(_) => {
+            RemoteType::MongoDB(MongoDBType::Document)
+        }
         protobuf::remote_type::Type::MongodbBinary(_) => RemoteType::MongoDB(MongoDBType::Binary),
         protobuf::remote_type::Type::MongodbObjectId(_) => {
             RemoteType::MongoDB(MongoDBType::ObjectId)

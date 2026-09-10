@@ -1,41 +1,191 @@
+use datafusion::arrow::array::{Array, AsArray};
+use datafusion::arrow::datatypes::{DataType, SchemaRef};
+use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::arrow::util::pretty::pretty_format_batches;
+use datafusion::catalog::TableProvider;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::physical_plan::{ExecutionPlan, collect};
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_proto::physical_plan::AsExecutionPlan;
 use datafusion_proto::protobuf::PhysicalPlanNode;
 use datafusion_remote_table::{
-    ConnectionOptions, MongoDBConnectionOptions, MongoDBType, RemoteDbType, RemoteField,
-    RemotePhysicalCodec, RemoteSchema, RemoteTable, RemoteType, connect,
+    ConnectionOptions, MongoDBConnectionOptions, RemoteDbType, RemotePhysicalCodec, RemoteTable,
+    connect,
 };
 use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
 use integration_tests::{MONGODB_DATABASE, MONGODB_URI, setup_mongodb_db};
+use mongodb::bson::spec::BinarySubtype;
+use mongodb::bson::{Binary, Bson, DateTime, Decimal128, Document, doc, oid::ObjectId};
+use std::str::FromStr;
 use std::sync::Arc;
 
-const SIMPLE_TABLE: &str = r#"+-----+----+-------+
-| _id | id | name  |
-+-----+----+-------+
-| 1   | 1  | Tom   |
-| 2   | 2  | Jerry |
-| 3   | 3  | Spike |
-+-----+----+-------+"#;
+/// Parse every document out of a result set's `document` column.
+fn documents_of(batches: &[RecordBatch]) -> Vec<Document> {
+    let mut documents = Vec::new();
+    for batch in batches {
+        let index = batch.schema().index_of("document").unwrap();
+        let column = batch.column(index).as_binary::<i32>();
+        for row in 0..column.len() {
+            documents.push(Document::from_reader(column.value(row)).unwrap());
+        }
+    }
+    documents
+}
 
+fn schema_of(schema: &SchemaRef) -> Vec<(String, DataType)> {
+    schema
+        .fields()
+        .iter()
+        .map(|field| (field.name().clone(), field.data_type().clone()))
+        .collect()
+}
+
+/// A collection is exposed as exactly two columns: a typed `_id` and the whole
+/// document as raw BSON.
 #[tokio::test(flavor = "multi_thread")]
-pub async fn supported_mongodb_types() {
+async fn schema_is_id_and_document() {
+    setup_mongodb_db().await;
+
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    for (collection, expected_key_type) in [
+        ("simple_table", DataType::Int32),
+        ("object_id_table", DataType::Utf8),
+    ] {
+        let table = RemoteTable::try_new(options.clone(), vec![collection])
+            .await
+            .unwrap();
+        assert_eq!(
+            schema_of(&table.schema()),
+            vec![
+                ("_id".to_string(), expected_key_type),
+                ("document".to_string(), DataType::Binary),
+            ],
+            "unexpected schema for {collection}"
+        );
+    }
+}
+
+/// The `document` column holds the document bytes, so decoding it must give
+/// back exactly what was stored - including nested documents, arrays and the
+/// BSON types that have no Arrow counterpart.
+#[tokio::test(flavor = "multi_thread")]
+async fn documents_round_trip_faithfully() {
+    setup_mongodb_db().await;
+
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    let table = RemoteTable::try_new(options, vec!["supported_data_types"])
+        .await
+        .unwrap();
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    let batches = ctx
+        .sql("select * from remote_table order by _id")
+        .await
+        .unwrap()
+        .collect()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        documents_of(&batches),
+        vec![
+            doc! {
+                "_id": 1,
+                "double_col": 1.5,
+                "int32_col": 2,
+                "int64_col": 3_i64,
+                "string_col": "text",
+                "bool_col": true,
+                "date_col": DateTime::parse_rfc3339_str("2024-01-02T03:04:05Z").unwrap(),
+                "object_id_col": ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap(),
+                "binary_col": Binary { subtype: BinarySubtype::Generic, bytes: vec![1, 2] },
+                "decimal_col": Decimal128::from_str("1.23").unwrap(),
+                "object_col": doc! { "a": 1 },
+                "array_col": [1, 2],
+                "null_col": Bson::Null,
+            },
+            doc! {
+                "_id": 2,
+                "double_col": Bson::Null,
+                "int32_col": Bson::Null,
+                "int64_col": Bson::Null,
+                "string_col": Bson::Null,
+                "bool_col": Bson::Null,
+                "date_col": Bson::Null,
+                "object_id_col": Bson::Null,
+                "binary_col": Bson::Null,
+                "decimal_col": Bson::Null,
+                "object_col": Bson::Null,
+                "array_col": Bson::Null,
+                "null_col": Bson::Null,
+            },
+        ]
+    );
+}
+
+/// `_id` is typed from the sampled keys, including MongoDB's default ObjectId.
+#[tokio::test(flavor = "multi_thread")]
+async fn key_values_are_typed() {
     setup_mongodb_db().await;
 
     assert_result(
         RemoteDbType::MongoDB,
-        vec!["supported_data_types"],
-        "select * from remote_table order by _id",
-        r#"+-----+------------+-----------+-----------+------------+----------+----------------------+--------------------------+------------+-------------+------------+-----------+----------+
-| _id | double_col | int32_col | int64_col | string_col | bool_col | date_col             | object_id_col            | binary_col | decimal_col | object_col | array_col | null_col |
-+-----+------------+-----------+-----------+------------+----------+----------------------+--------------------------+------------+-------------+------------+-----------+----------+
-| 1   | 1.5        | 2         | 3         | text       | true     | 2024-01-02T03:04:05Z | 507f1f77bcf86cd799439011 | 0102       | 1.23        | { "a": 1 } | [1, 2]    |          |
-| 2   |            |           |           |            |          |                      |                          |            |             |            |           |          |
-+-----+------------+-----------+-----------+------------+----------+----------------------+--------------------------+------------+-------------+------------+-----------+----------+"#,
+        vec!["simple_table"],
+        "select _id from remote_table order by _id",
+        r#"+-----+
+| _id |
++-----+
+| 1   |
+| 2   |
+| 3   |
++-----+"#,
     )
     .await;
+
+    assert_result(
+        RemoteDbType::MongoDB,
+        vec!["object_id_table"],
+        "select _id from remote_table order by _id",
+        r#"+--------------------------+
+| _id                      |
++--------------------------+
+| 507f1f77bcf86cd799439011 |
+| 507f1f77bcf86cd799439012 |
++--------------------------+"#,
+    )
+    .await;
+}
+
+/// An empty collection has no schema to sample, but the collection is still
+/// queryable: there is nothing to infer because only `_id` is typed.
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_collection_is_queryable() {
+    setup_mongodb_db().await;
+
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    let table = RemoteTable::try_new(options, vec!["insert_supported_data_types"])
+        .await
+        .unwrap();
+    assert_eq!(
+        schema_of(&table.schema()),
+        vec![
+            // The default key type MongoDB would generate.
+            ("_id".to_string(), DataType::Utf8),
+            ("document".to_string(), DataType::Binary),
+        ]
+    );
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+    let batches = ctx
+        .sql("select * from remote_table")
+        .await
+        .unwrap()
+        .collect()
+        .await
+        .unwrap();
+    assert!(batches.is_empty() || batches.iter().all(|batch| batch.num_rows() == 0));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -54,7 +204,7 @@ async fn streaming_execution() {
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
 
     let result = ctx
-        .sql("select * from remote_table")
+        .sql("select _id from remote_table")
         .await
         .unwrap()
         .collect()
@@ -63,7 +213,16 @@ async fn streaming_execution() {
     let table_str = pretty_format_batches(&result).unwrap().to_string();
     println!("{table_str}");
 
-    assert_eq!(table_str, SIMPLE_TABLE);
+    assert_eq!(
+        table_str,
+        r#"+-----+
+| _id |
++-----+
+| 1   |
+| 2   |
+| 3   |
++-----+"#
+    );
     assert_eq!(result.len(), 3);
 }
 
@@ -74,13 +233,13 @@ async fn pushdown_limit() {
     assert_plan_and_result(
         RemoteDbType::MongoDB,
         vec!["simple_table"],
-        "select * from remote_table limit 1",
-        vec!["CooperativeExec\n  RemoteTableScanExec: source=simple_table, limit=1\n"],
-        r#"+-----+----+------+
-| _id | id | name |
-+-----+----+------+
-| 1   | 1  | Tom  |
-+-----+----+------+"#,
+        "select _id from remote_table limit 1",
+        vec!["CooperativeExec\n  RemoteTableScanExec: source=simple_table, projection=[_id], limit=1\n"],
+        r#"+-----+
+| _id |
++-----+
+| 1   |
++-----+"#,
     )
     .await;
 }
@@ -93,13 +252,15 @@ async fn filters_are_applied_locally() {
     assert_plan_and_result(
         RemoteDbType::MongoDB,
         vec!["simple_table"],
-        "select * from remote_table where id = 1",
-        vec!["FilterExec: id@1 = 1\n  CooperativeExec\n    RemoteTableScanExec: source=simple_table\n"],
-        r#"+-----+----+------+
-| _id | id | name |
-+-----+----+------+
-| 1   | 1  | Tom  |
-+-----+----+------+"#,
+        "select _id from remote_table where _id = 1",
+        vec![
+            "FilterExec: _id@0 = 1\n  CooperativeExec\n    RemoteTableScanExec: source=simple_table, projection=[_id]\n",
+        ],
+        r#"+-----+
+| _id |
++-----+
+| 1   |
++-----+"#,
     )
     .await;
 }
@@ -151,41 +312,42 @@ async fn empty_projection() {
     assert_eq!(batch.num_rows(), 3);
 }
 
+/// Inserting takes the `document` column verbatim and lets an explicit `_id`
+/// override the key inside it.
+///
+/// The collection starts empty, so `_id` is typed as MongoDB's default key
+/// type (ObjectId), which is what an insert has to supply here.
 #[tokio::test(flavor = "multi_thread")]
-pub async fn insert_supported_mongodb_types() {
+pub async fn insert_documents() {
     setup_mongodb_db().await;
 
-    // The collection starts empty, so the insert tests declare the schema explicitly.
-    let options =
-        ConnectionOptions::MongoDB(MongoDBConnectionOptions::new(MONGODB_URI, MONGODB_DATABASE));
-    let remote_schema = Arc::new(RemoteSchema::new(vec![
-        RemoteField::new("name", RemoteType::MongoDB(MongoDBType::String), true),
-        RemoteField::new("score", RemoteType::MongoDB(MongoDBType::Double), true),
-        RemoteField::new("active", RemoteType::MongoDB(MongoDBType::Boolean), true),
-        RemoteField::new("id", RemoteType::MongoDB(MongoDBType::Int32), true),
-    ]));
-    let table = RemoteTable::try_new_with_remote_schema(
-        options,
-        vec!["insert_supported_data_types"],
-        remote_schema,
-    )
-    .await
-    .unwrap();
-
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    let table = RemoteTable::try_new(options, vec!["insert_supported_data_types"])
+        .await
+        .unwrap();
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
 
-    let df = ctx
-        .sql("insert into remote_table (name, score, active, id) values ('Eve', 1.5, true, 7)")
+    // A document that already carries the key `_id: 99`, which the inserted
+    // `_id` must override.
+    let document = doc! { "_id": 99, "name": "Eve", "score": 1.5, "active": true };
+    let hex: String = document
+        .to_vec()
+        .unwrap()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let id = "507f1f77bcf86cd799439013";
+
+    let result = ctx
+        .sql(&format!(
+            "insert into remote_table (_id, document) values ('{id}', X'{hex}')"
+        ))
+        .await
+        .unwrap()
+        .collect()
         .await
         .unwrap();
-    let exec_plan = df.create_physical_plan().await.unwrap();
-    println!(
-        "{}",
-        DisplayableExecutionPlan::new(exec_plan.as_ref()).indent(true)
-    );
-
-    let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
     assert_eq!(
         pretty_format_batches(&result).unwrap().to_string(),
         r#"+-------+
@@ -202,15 +364,14 @@ pub async fn insert_supported_mongodb_types() {
         .collect()
         .await
         .unwrap();
-    let table_str = pretty_format_batches(&result).unwrap().to_string();
-    println!("{table_str}");
     assert_eq!(
-        table_str,
-        r#"+------+-------+--------+----+
-| name | score | active | id |
-+------+-------+--------+----+
-| Eve  | 1.5   | true   | 7  |
-+------+-------+--------+----+"#,
+        documents_of(&result),
+        vec![doc! {
+            "_id": ObjectId::parse_str(id).unwrap(),
+            "name": "Eve",
+            "score": 1.5,
+            "active": true,
+        }]
     );
 }
 
@@ -226,7 +387,7 @@ async fn physical_plan_serialization() {
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
     let exec_plan = ctx
-        .sql("select * from remote_table limit 1")
+        .sql("select _id from remote_table limit 1")
         .await
         .unwrap()
         .create_physical_plan()

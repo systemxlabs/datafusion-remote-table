@@ -360,6 +360,7 @@ message RemoteType {
     Empty mongodb_timestamp = 813;
     Empty mongodb_regex = 814;
     Empty mongodb_javascript = 815;
+    Empty mongodb_document = 816;
   }
 }
 

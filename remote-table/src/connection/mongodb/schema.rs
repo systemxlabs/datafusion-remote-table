@@ -1,59 +1,43 @@
 use crate::{MongoDBType, RemoteField, RemoteSchema, RemoteType};
-use mongodb::bson::{Bson, Document};
-use std::collections::HashMap;
+use mongodb::bson::Bson;
 
-/// Infer the schema of a set of sampled documents.
+/// Column holding the whole BSON document.
+pub(crate) const DOCUMENT_COLUMN: &str = "document";
+/// Column holding the document key.
+pub(crate) const ID_COLUMN: &str = "_id";
+
+/// Build the two column schema of a collection: `_id` and the raw document.
 ///
-/// MongoDB collections are schemaless, so the schema is the union of the fields
-/// seen in the sample: fields are ordered by first appearance, a field missing
-/// from some documents (or holding a null) is nullable, and conflicting value
-/// types widen to the smallest type that can represent both.
-pub(crate) fn infer_remote_schema(documents: &[Document]) -> RemoteSchema {
-    let mut order: Vec<String> = Vec::new();
-    let mut types: HashMap<String, MongoDBType> = HashMap::new();
-    let mut has_null: HashMap<String, bool> = HashMap::new();
-    let mut seen: HashMap<String, usize> = HashMap::new();
-
-    for document in documents {
-        for name in document.keys() {
-            if !seen.contains_key(name) {
-                order.push(name.clone());
-                seen.insert(name.clone(), 0);
-                has_null.insert(name.clone(), false);
-            }
-            *seen.get_mut(name).expect("key was just inserted") += 1;
+/// A MongoDB collection is schemaless and can be arbitrarily nested, so only
+/// `_id` is typed (from the sampled documents) and the rest of the document is
+/// exposed as one column of raw BSON bytes. Unlike inferring a column per
+/// field, this keeps the collection faithful and the schema stable no matter
+/// what the documents contain.
+pub(crate) fn infer_remote_schema(id_values: &[Bson]) -> RemoteSchema {
+    let mut id_type: Option<MongoDBType> = None;
+    for value in id_values {
+        if matches!(value, Bson::Null) {
+            continue;
         }
-        for (name, value) in document.iter() {
-            if matches!(value, Bson::Null) {
-                has_null.insert(name.clone(), true);
-                continue;
-            }
-            let value_type = bson_to_type(value);
-            let merged = match types.get(name) {
-                Some(existing) => merge_types(existing, &value_type),
-                None => value_type,
-            };
-            types.insert(name.clone(), merged);
-        }
+        let value_type = bson_to_type(value);
+        id_type = Some(match id_type {
+            Some(existing) => merge_types(&existing, &value_type),
+            None => value_type,
+        });
     }
+    // MongoDB generates an ObjectId when `_id` is omitted, so that is what a
+    // collection with nothing to look at (yet) reports.
+    let id_type = id_type.unwrap_or(MongoDBType::ObjectId);
 
-    let fields = order
-        .into_iter()
-        .map(|name| {
-            let remote_type = types.get(&name).cloned().unwrap_or(MongoDBType::Null);
-            let nullable = seen.get(&name).copied().unwrap_or(0) < documents.len()
-                || has_null.get(&name).copied().unwrap_or(false);
-            let field = RemoteField::new(name.clone(), RemoteType::MongoDB(remote_type), nullable);
-            if name == "_id" {
-                // MongoDB generates `_id` when it is omitted from an insert.
-                field.with_auto_increment(true)
-            } else {
-                field
-            }
-        })
-        .collect();
-
-    RemoteSchema::new(fields)
+    RemoteSchema::new(vec![
+        // The server generates `_id` when an insert omits it.
+        RemoteField::new(ID_COLUMN, RemoteType::MongoDB(id_type), false).with_auto_increment(true),
+        RemoteField::new(
+            DOCUMENT_COLUMN,
+            RemoteType::MongoDB(MongoDBType::Document),
+            false,
+        ),
+    ])
 }
 
 /// Widen two types observed for the same field into a single type.

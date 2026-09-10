@@ -17,7 +17,7 @@ use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::TryStreamExt;
 use log::debug;
-use mongodb::bson::Document;
+use mongodb::bson::{Bson, Document, RawDocumentBuf};
 use mongodb::options::ClientOptions;
 use mongodb::{Client, Cursor};
 use std::sync::Arc;
@@ -88,13 +88,13 @@ impl MongoDBConnection {
         database: Option<&str>,
         collection: &str,
         limit: Option<usize>,
-    ) -> DFResult<Cursor<Document>> {
+    ) -> DFResult<Cursor<RawDocumentBuf>> {
         let database = self.database_name(database);
         debug!(
             "[remote-table] executing mongodb find: database={database}, collection={collection}, limit={limit:?}"
         );
         let db = self.client.database(database);
-        let collection = db.collection::<Document>(collection);
+        let collection = db.collection::<RawDocumentBuf>(collection);
         let mut find = collection.find(Document::new());
         if let Some(limit) = limit {
             find = find.limit(limit as i64);
@@ -117,19 +117,28 @@ impl Connection for MongoDBConnection {
             )
             .await?;
 
-        let mut documents = Vec::new();
+        // Only `_id` is typed, so a small sample is enough. The documents are
+        // not decoded: just enough of each one is read to get the key.
+        let mut id_values = Vec::new();
         while let Some(document) = cursor.try_next().await.map_err(|e| {
             DataFusionError::Plan(format!("Failed to sample documents from mongodb: {e:?}"))
         })? {
-            documents.push(document);
-        }
-        if documents.is_empty() {
-            return Err(DataFusionError::Plan(format!(
-                "No documents found to infer schema from {source}"
-            )));
+            let value = document
+                .get(schema::ID_COLUMN)
+                .map_err(|e| {
+                    DataFusionError::Plan(format!(
+                        "Failed to read _id from a sampled mongodb document: {e:?}"
+                    ))
+                })?
+                .map(Bson::try_from)
+                .transpose()
+                .map_err(|e| {
+                    DataFusionError::Plan(format!("Failed to convert _id to BSON: {e:?}"))
+                })?;
+            id_values.push(value.unwrap_or(Bson::Null));
         }
 
-        Ok(Arc::new(schema::infer_remote_schema(&documents)))
+        Ok(Arc::new(schema::infer_remote_schema(&id_values)))
     }
 
     async fn query(
@@ -161,7 +170,7 @@ impl Connection for MongoDBConnection {
             let mut cursor = Box::pin(cursor);
             let mut exhausted = false;
             while !exhausted {
-                let mut documents: Vec<Document> = Vec::with_capacity(chunk_size);
+                let mut documents: Vec<RawDocumentBuf> = Vec::with_capacity(chunk_size);
                 while documents.len() < chunk_size {
                     match cursor.try_next().await {
                         Ok(Some(document)) => documents.push(document),
