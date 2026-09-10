@@ -32,9 +32,23 @@ pub struct MongoDBPool {
 }
 
 pub async fn connect_mongodb(options: &MongoDBConnectionOptions) -> DFResult<MongoDBPool> {
-    let client_options = ClientOptions::parse(&options.uri).await.map_err(|e| {
+    let mut client_options = ClientOptions::parse(&options.uri).await.map_err(|e| {
         DataFusionError::Execution(format!("Failed to parse mongodb connection string: {e:?}"))
     })?;
+    // Only override what was configured here, so pool settings given in the
+    // connection string keep working.
+    if let Some(value) = options.pool_max_size {
+        client_options.max_pool_size = Some(value);
+    }
+    if let Some(value) = options.pool_min_idle {
+        client_options.min_pool_size = Some(value);
+    }
+    if let Some(value) = options.pool_max_connecting {
+        client_options.max_connecting = Some(value);
+    }
+    if let Some(value) = options.pool_idle_timeout {
+        client_options.max_idle_time = Some(value);
+    }
     let client = Client::with_options(client_options).map_err(|e| {
         DataFusionError::Execution(format!("Failed to create mongodb client: {e:?}"))
     })?;

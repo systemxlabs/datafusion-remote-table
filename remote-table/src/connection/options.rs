@@ -443,6 +443,15 @@ pub struct MongoDBConnectionOptions {
     /// part identifier (`[database, collection]`) overrides it per table.
     pub(crate) database: String,
     pub(crate) stream_chunk_size: usize,
+    /// Maximum number of connections the driver pools per server. `None` keeps
+    /// whatever the connection string (or the driver default, 10) specifies.
+    pub(crate) pool_max_size: Option<u32>,
+    /// Connections the driver keeps warm per server.
+    pub(crate) pool_min_idle: Option<u32>,
+    /// Maximum number of connections established concurrently.
+    pub(crate) pool_max_connecting: Option<u32>,
+    /// How long an idle pooled connection is kept before it is closed.
+    pub(crate) pool_idle_timeout: Option<Duration>,
 }
 
 impl MongoDBConnectionOptions {
@@ -451,6 +460,10 @@ impl MongoDBConnectionOptions {
             uri: uri.into(),
             database: database.into(),
             stream_chunk_size: 2048,
+            pool_max_size: None,
+            pool_min_idle: None,
+            pool_max_connecting: None,
+            pool_idle_timeout: None,
         }
     }
 }

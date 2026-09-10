@@ -114,6 +114,31 @@ let remote_table = RemoteTable::try_new(options, vec!["restaurants"]).await?;
 let remote_table = RemoteTable::try_new(options, vec!["test", "restaurants"]).await?;
 ```
 
+The connection string is handed to the driver as-is, so any driver option can
+live there. The connection pool can also be configured here:
+
+| Option | Meaning | Driver default |
+|---|---|---|
+| `pool_max_size` | connections pooled per server | 10 |
+| `pool_min_idle` | connections kept warm per server | 0 |
+| `pool_max_connecting` | connections established concurrently | 2 |
+| `pool_idle_timeout` | how long an idle connection is kept | kept forever |
+
+```rust
+let options = MongoDBConnectionOptions::new("mongodb://localhost:27017", "test")
+    .with_pool_max_size(Some(32));
+```
+
+Each option is unset by default, which leaves whatever the connection string
+says; a value set here wins over the connection string. `waitQueueTimeoutMS` -
+how long an operation waits for a free connection - has no field on the driver's
+options and is set through the connection string.
+
+Keep `pool_max_size` in step with query concurrency: concurrent scans each keep
+operations in flight, so more partitions than the pool has connections makes
+operations queue, which shows up as slow or timed-out queries rather than as an
+error.
+
 A MongoDB collection is schemaless and can be arbitrarily nested, so it is
 exposed as a **single** column holding every document as a Parquet
 [Variant](https://github.com/apache/parquet-format/blob/master/VariantEncoding.md):

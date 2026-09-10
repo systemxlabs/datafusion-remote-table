@@ -91,6 +91,16 @@ pub struct MongoDbConnectionOptions {
     pub database: ::prost::alloc::string::String,
     #[prost(uint32, tag = "3")]
     pub stream_chunk_size: u32,
+    /// Optional so that "not set" survives the round trip: it means "keep whatever
+    /// the connection string says", which is not the same as any explicit value.
+    #[prost(uint32, optional, tag = "4")]
+    pub pool_max_size: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "5")]
+    pub pool_min_idle: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "6")]
+    pub pool_max_connecting: ::core::option::Option<u32>,
+    #[prost(message, optional, tag = "7")]
+    pub pool_idle_timeout: ::core::option::Option<Duration>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MdbConnectionOptions {

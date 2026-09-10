@@ -89,6 +89,15 @@ async fn plan_and_rows(source: Vec<&str>, sql: &str) -> (String, usize) {
     (plan, batches.iter().map(|batch| batch.num_rows()).sum())
 }
 
+async fn plan_ref(ctx: &SessionContext, sql: &str) -> Arc<dyn ExecutionPlan> {
+    ctx.sql(sql)
+        .await
+        .unwrap()
+        .create_physical_plan()
+        .await
+        .unwrap()
+}
+
 async fn register(ctx: &SessionContext, name: &str, collection: &str) {
     let options = build_conn_options(RemoteDbType::MongoDB);
     let table = RemoteTable::try_new(options, vec![collection])
@@ -349,13 +358,7 @@ async fn physical_plan_serialization() {
 
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
-    let exec_plan = ctx
-        .sql("select * from remote_table limit 1")
-        .await
-        .unwrap()
-        .create_physical_plan()
-        .await
-        .unwrap();
+    let exec_plan = plan_ref(&ctx, "select * from remote_table limit 1").await;
     let expected = collect(exec_plan.clone(), ctx.task_ctx()).await.unwrap();
 
     let codec = RemotePhysicalCodec::new();
@@ -399,6 +402,66 @@ async fn query_source_is_rejected() {
             "unexpected error for {source}: {message}"
         );
     }
+}
+
+/// Pool settings have to reach the driver. It validates them when it builds a
+/// client and rejects a zero with a typed error, which is the cheapest proof
+/// that the value made it all the way; whether every value survives the plan
+/// codec is checked by a unit test on the codec itself, since a plan can only
+/// be serialized once the driver has accepted its options.
+#[tokio::test(flavor = "multi_thread")]
+async fn pool_options_reach_the_driver() {
+    setup_mongodb_db().await;
+
+    // Inferring the schema connects, so an invalid value is rejected here.
+    let err = RemoteTable::try_new(
+        ConnectionOptions::MongoDB(
+            MongoDBConnectionOptions::new(MONGODB_URI, MONGODB_DATABASE)
+                .with_pool_max_size(Some(0)),
+        ),
+        vec!["simple_table"],
+    )
+    .await
+    .expect_err("the driver rejects maxPoolSize=0");
+    assert!(
+        err.to_string().contains("maxPoolSize"),
+        "unexpected error: {err}"
+    );
+}
+
+/// Valid pool settings must not get in the way of querying.
+#[tokio::test(flavor = "multi_thread")]
+async fn pool_options_are_accepted() {
+    setup_mongodb_db().await;
+
+    let options = ConnectionOptions::MongoDB(
+        MongoDBConnectionOptions::new(MONGODB_URI, MONGODB_DATABASE)
+            .with_pool_max_size(Some(4))
+            .with_pool_min_idle(Some(1))
+            .with_pool_max_connecting(Some(2))
+            .with_pool_idle_timeout(Some(std::time::Duration::from_secs(60))),
+    );
+    let table = RemoteTable::try_new(options, vec!["simple_table"])
+        .await
+        .unwrap();
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    let batches = ctx
+        .sql("select count(*) from remote_table")
+        .await
+        .unwrap()
+        .collect()
+        .await
+        .unwrap();
+    assert_eq!(
+        pretty_format_batches(&batches).unwrap().to_string(),
+        r#"+----------+
+| count(*) |
++----------+
+| 3        |
++----------+"#
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
