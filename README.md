@@ -96,6 +96,34 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Text / Memo / Binary / OLE / Guid
   - [x] Date / Time / DateTime
   - [x] Own type enum, options, pool and connection handling; tables are listed through the `MSysObjects` catalog table
+- [x] MongoDB
+  - [x] Double / Int32 / Int64
+  - [x] String / Boolean
+  - [x] Date / ObjectId / Binary
+  - [x] Embedded document / Array (as JSON text)
+  - [x] Decimal128 / BSON timestamp / Regular expression (as text)
+  - [x] Null
+
+## MongoDB
+
+MongoDB has no SQL dialect and no query string, so only whole collections are
+supported: a `RemoteSource` must be a `RemoteSource::Table`. The collection is
+resolved against `MongoDBConnectionOptions::database`, or use
+`[database, collection]` to override it per table.
+
+```rust
+let options = MongoDBConnectionOptions::new("mongodb://localhost:27017", "test");
+
+let remote_table = RemoteTable::try_new(options, vec!["restaurants"]).await?;
+// Or an explicit database:
+let remote_table = RemoteTable::try_new(options, vec!["test", "restaurants"]).await?;
+```
+
+MongoDB collections are schemaless: the schema is inferred from a sample of
+documents (`sample_size`, 100 by default) and is the union of their fields.
+Filters are not pushed down — a SQL predicate cannot be unparsed into a BSON
+filter — so DataFusion evaluates them locally. Limit pushdown, `count()`
+(via `count_documents`) and inserts are supported.
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)

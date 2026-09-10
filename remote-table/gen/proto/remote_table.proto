@@ -42,7 +42,15 @@ message ConnectionOptions {
     GaussDBConnectionOptions gaussdb = 7;
     // Microsoft Access .accdb (ACE engine).
     AccessConnectionOptions access = 8;
+    MongoDbConnectionOptions mongodb = 9;
   }
+}
+
+message MongoDbConnectionOptions {
+  string uri = 1;
+  string database = 2;
+  uint32 stream_chunk_size = 3;
+  uint32 sample_size = 4;
 }
 
 message MdbConnectionOptions {
@@ -337,6 +345,21 @@ message RemoteType {
     Empty gaussdb_bool_array = 630;
     Empty gaussdb_xml = 631;
     Empty gaussdb_uuid = 632;
+    Empty mongodb_double = 801;
+    Empty mongodb_string = 802;
+    Empty mongodb_object = 803;
+    Empty mongodb_array = 804;
+    Empty mongodb_binary = 805;
+    Empty mongodb_object_id = 806;
+    Empty mongodb_boolean = 807;
+    Empty mongodb_date = 808;
+    Empty mongodb_null = 809;
+    Empty mongodb_int32 = 810;
+    Empty mongodb_int64 = 811;
+    Empty mongodb_decimal128 = 812;
+    Empty mongodb_timestamp = 813;
+    Empty mongodb_regex = 814;
+    Empty mongodb_javascript = 815;
   }
 }
 

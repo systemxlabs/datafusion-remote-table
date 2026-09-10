@@ -15,6 +15,7 @@ pub enum RemoteType {
     Mdb(MdbType),
     Access(AccessType),
     GaussDB(GaussDBType),
+    MongoDB(MongoDBType),
 }
 
 impl RemoteType {
@@ -28,6 +29,7 @@ impl RemoteType {
             RemoteType::Mdb(mdb_type) => mdb_type.to_arrow_type(),
             RemoteType::Access(access_type) => access_type.to_arrow_type(),
             RemoteType::GaussDB(gdb_type) => gdb_type.to_arrow_type(),
+            RemoteType::MongoDB(mongodb_type) => mongodb_type.to_arrow_type(),
         }
     }
 
@@ -41,6 +43,7 @@ impl RemoteType {
             RemoteType::Mdb(_) => RemoteDbType::Mdb,
             RemoteType::Access(_) => RemoteDbType::Access,
             RemoteType::GaussDB(_) => RemoteDbType::GaussDB,
+            RemoteType::MongoDB(_) => RemoteDbType::MongoDB,
         }
     }
 }
@@ -677,6 +680,61 @@ impl GaussDBType {
                 DataType::List(Arc::new(Field::new("", DataType::Boolean, true)))
             }
             GaussDBType::Uuid => DataType::FixedSizeBinary(16),
+        }
+    }
+}
+
+/// BSON types reported for documents read from a MongoDB collection.
+///
+/// MongoDB documents are schemaless, so the type of a field is inferred from
+/// the documents sampled by `MongoDBConnection::infer_schema`. Types that have
+/// no dedicated Arrow counterpart (embedded documents, arrays, `Decimal128`,
+/// BSON timestamps, ...) are surfaced as text rendered in the driver's display
+/// form, which is MongoDB shell syntax rather than valid JSON.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MongoDBType {
+    Double,
+    String,
+    /// Embedded document, surfaced as JSON text.
+    Object,
+    /// Array, surfaced as JSON text.
+    Array,
+    Binary,
+    /// ObjectId, surfaced as its 24 character hex string.
+    ObjectId,
+    Boolean,
+    Date,
+    Null,
+    Int32,
+    Int64,
+    /// 128-bit decimal, surfaced as its string form.
+    Decimal128,
+    /// BSON timestamp (internal replication type), surfaced as its string form.
+    Timestamp,
+    /// Regular expression, surfaced as its string form.
+    Regex,
+    /// JavaScript code / symbol, surfaced as its string form.
+    JavaScript,
+}
+
+impl MongoDBType {
+    pub fn to_arrow_type(&self) -> DataType {
+        match self {
+            MongoDBType::Double => DataType::Float64,
+            MongoDBType::String
+            | MongoDBType::Object
+            | MongoDBType::Array
+            | MongoDBType::ObjectId
+            | MongoDBType::Decimal128
+            | MongoDBType::Timestamp
+            | MongoDBType::Regex
+            | MongoDBType::JavaScript => DataType::Utf8,
+            MongoDBType::Binary => DataType::Binary,
+            MongoDBType::Boolean => DataType::Boolean,
+            MongoDBType::Date => DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
+            MongoDBType::Null => DataType::Null,
+            MongoDBType::Int32 => DataType::Int32,
+            MongoDBType::Int64 => DataType::Int64,
         }
     }
 }

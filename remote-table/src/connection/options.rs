@@ -17,6 +17,7 @@ pub enum ConnectionOptions {
     /// Microsoft Access `.accdb` files (ACE engine).
     Access(AccessConnectionOptions),
     GaussDB(GaussDBConnectionOptions),
+    MongoDB(MongoDBConnectionOptions),
 }
 
 impl ConnectionOptions {
@@ -30,6 +31,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mdb(options) => options.stream_chunk_size,
             ConnectionOptions::Access(options) => options.stream_chunk_size,
             ConnectionOptions::GaussDB(options) => options.stream_chunk_size,
+            ConnectionOptions::MongoDB(options) => options.stream_chunk_size,
         }
     }
 
@@ -43,6 +45,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mdb(_) => RemoteDbType::Mdb,
             ConnectionOptions::Access(_) => RemoteDbType::Access,
             ConnectionOptions::GaussDB(_) => RemoteDbType::GaussDB,
+            ConnectionOptions::MongoDB(_) => RemoteDbType::MongoDB,
         }
     }
 
@@ -62,6 +65,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mdb(options) => ConnectionOptions::Mdb(options),
             ConnectionOptions::Access(options) => ConnectionOptions::Access(options),
             ConnectionOptions::GaussDB(options) => ConnectionOptions::GaussDB(options),
+            ConnectionOptions::MongoDB(options) => ConnectionOptions::MongoDB(options),
         }
     }
 }
@@ -425,5 +429,39 @@ impl GaussDBConnectionOptions {
 impl From<GaussDBConnectionOptions> for ConnectionOptions {
     fn from(options: GaussDBConnectionOptions) -> Self {
         ConnectionOptions::GaussDB(options)
+    }
+}
+
+#[derive(Debug, Clone, With, Getters)]
+pub struct MongoDBConnectionOptions {
+    /// Connection string, e.g. `mongodb://user:password@localhost:27017`.
+    /// All driver options understood by the official Rust driver can be passed
+    /// here (e.g. `?authSource=admin`).
+    pub(crate) uri: String,
+    /// Database the collections are read from. For `RemoteSource::Table` with a
+    /// single identifier this is the database that holds the collection; a two
+    /// part identifier (`[database, collection]`) overrides it per table.
+    pub(crate) database: String,
+    pub(crate) stream_chunk_size: usize,
+    /// Number of documents sampled when inferring the schema of a collection.
+    /// MongoDB documents are schemaless, so the inferred schema is the union of
+    /// the fields of the sampled documents.
+    pub(crate) sample_size: u32,
+}
+
+impl MongoDBConnectionOptions {
+    pub fn new(uri: impl Into<String>, database: impl Into<String>) -> Self {
+        Self {
+            uri: uri.into(),
+            database: database.into(),
+            stream_chunk_size: 2048,
+            sample_size: 100,
+        }
+    }
+}
+
+impl From<MongoDBConnectionOptions> for ConnectionOptions {
+    fn from(options: MongoDBConnectionOptions) -> Self {
+        ConnectionOptions::MongoDB(options)
     }
 }

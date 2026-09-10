@@ -6,6 +6,8 @@ mod dm;
 mod gaussdb;
 #[cfg(feature = "mdb")]
 mod mdb;
+#[cfg(feature = "mongodb")]
+mod mongodb;
 #[cfg(feature = "mysql")]
 mod mysql;
 mod options;
@@ -24,6 +26,8 @@ pub use dm::*;
 pub use gaussdb::*;
 #[cfg(feature = "mdb")]
 pub use mdb::*;
+#[cfg(feature = "mongodb")]
+pub use mongodb::*;
 #[cfg(feature = "mysql")]
 pub use mysql::*;
 pub use options::*;
@@ -238,6 +242,19 @@ pub async fn connect(options: &ConnectionOptions) -> DFResult<Arc<dyn Pool>> {
                 ))
             }
         }
+        ConnectionOptions::MongoDB(options) => {
+            #[cfg(feature = "mongodb")]
+            {
+                let pool = connect_mongodb(options).await?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "mongodb"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the mongodb feature".to_string(),
+                ))
+            }
+        }
     }
 }
 
@@ -254,12 +271,16 @@ pub enum RemoteDbType {
     /// to the database is shared with [`RemoteDbType::Mdb`].
     Access,
     GaussDB,
+    MongoDB,
 }
 
 impl RemoteDbType {
     pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
         match self {
             RemoteDbType::Mdb | RemoteDbType::Access => matches!(source, RemoteSource::Table(_)),
+            // A MongoDB collection scan carries its own limit; filters are
+            // applied by DataFusion because they cannot be unparsed to BSON.
+            RemoteDbType::MongoDB => matches!(source, RemoteSource::Table(_)),
             _ => match source {
                 RemoteSource::Table(_) => true,
                 RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
@@ -282,6 +303,9 @@ impl RemoteDbType {
                 "Dm unparser not implemented".to_string(),
             )),
             RemoteDbType::Mdb | RemoteDbType::Access => Ok(Unparser::new(&PostgreSqlDialect {})),
+            RemoteDbType::MongoDB => Err(DataFusionError::NotImplemented(
+                "MongoDB unparser not implemented".to_string(),
+            )),
         }
     }
 
@@ -291,6 +315,26 @@ impl RemoteDbType {
         unparsed_filters: &[String],
         limit: Option<usize>,
     ) -> DFResult<String> {
+        // MongoDB has no SQL dialect: the rewritten query is a MongoDB find
+        // command document rather than a SQL statement.
+        if matches!(self, RemoteDbType::MongoDB) {
+            #[cfg(feature = "mongodb")]
+            {
+                return crate::connection::mongodb::rewrite_mongo_query(
+                    source,
+                    unparsed_filters,
+                    limit,
+                );
+            }
+            #[cfg(not(feature = "mongodb"))]
+            {
+                let _ = (source, unparsed_filters, limit);
+                return Err(DataFusionError::Internal(
+                    "Please enable the mongodb feature".to_string(),
+                ));
+            }
+        }
+
         match source {
             RemoteSource::Table(table) => match self {
                 RemoteDbType::Postgres
@@ -353,6 +397,10 @@ impl RemoteDbType {
                     };
                     Ok(format!("{}{where_clause}", self.select_all_query(table)))
                 }
+                // Handled by the early return above.
+                RemoteDbType::MongoDB => Err(DataFusionError::Internal(
+                    "MongoDB queries are rewritten to command documents, not SQL".to_string(),
+                )),
             },
             RemoteSource::Query(query) => match self {
                 RemoteDbType::Postgres
@@ -399,6 +447,10 @@ impl RemoteDbType {
                         Ok(format!("SELECT * FROM ({query}){where_clause}"))
                     }
                 }
+                // Handled by the early return above.
+                RemoteDbType::MongoDB => Err(DataFusionError::Internal(
+                    "MongoDB queries are rewritten to command documents, not SQL".to_string(),
+                )),
             },
             RemoteSource::Command(cmd) => Err(DataFusionError::NotImplemented(format!(
                 "Command {cmd:?} cannot be rewritten to a SQL query"
@@ -421,6 +473,8 @@ impl RemoteDbType {
             RemoteDbType::Mdb | RemoteDbType::Access => {
                 format!("[{identifier}]")
             }
+            // MongoDB field names are used verbatim.
+            RemoteDbType::MongoDB => identifier.to_string(),
         }
     }
 
@@ -449,6 +503,7 @@ impl RemoteDbType {
                 format!("HEXTORAW('{}')", hex::encode(value))
             }
             RemoteDbType::Mdb | RemoteDbType::Access => format!("X'{}'", hex::encode(value)),
+            RemoteDbType::MongoDB => format!("X'{}'", hex::encode(value)),
         }
     }
 
@@ -463,6 +518,17 @@ impl RemoteDbType {
             | RemoteDbType::Access
             | RemoteDbType::GaussDB => {
                 format!("SELECT * FROM {}", self.sql_table_name(table_identifiers))
+            }
+            RemoteDbType::MongoDB => {
+                #[cfg(feature = "mongodb")]
+                {
+                    crate::connection::mongodb::select_all_mongo_command(table_identifiers)
+                }
+                #[cfg(not(feature = "mongodb"))]
+                {
+                    let _ = table_identifiers;
+                    "{}".to_string()
+                }
             }
         }
     }
@@ -480,6 +546,7 @@ impl RemoteDbType {
         }
         match self {
             RemoteDbType::Mdb | RemoteDbType::Access => None,
+            RemoteDbType::MongoDB => None,
             _ => match source {
                 RemoteSource::Table(table) => Some(format!(
                     "SELECT COUNT(1) FROM {}",
@@ -495,6 +562,7 @@ impl RemoteDbType {
                     }
                     RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
                     RemoteDbType::Mdb | RemoteDbType::Access => unreachable!(),
+                    RemoteDbType::MongoDB => unreachable!(),
                 },
                 RemoteSource::Command(_) => None,
             },
