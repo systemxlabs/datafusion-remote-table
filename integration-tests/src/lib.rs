@@ -110,6 +110,30 @@ pub fn setup_mdb() -> &'static Path {
     })
 }
 
+static MDB_LAYERS_DB: OnceLock<PathBuf> = OnceLock::new();
+
+/// Returns the path to the bundled ESRI personal geodatabase fixture.
+///
+/// Unlike [`setup_mdb`], this fixture ships with the repository at
+/// `testdata/mdb/esri_layers.mdb`, so it needs no download and is stable across
+/// runs. It holds two feature layers, encoded with names in the file's code
+/// page: `公路编号` (47 rows) and `境界线` (242 rows), both carrying an OLE
+/// `SHAPE` geometry column.
+pub fn setup_mdb_layers() -> &'static Path {
+    MDB_LAYERS_DB.get_or_init(|| {
+        let db_path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/mdb/esri_layers.mdb"
+        ));
+        assert!(
+            db_path.is_file(),
+            "MDB layer fixture is missing at {}",
+            db_path.display()
+        );
+        db_path
+    })
+}
+
 static GAUSSDB_DB: OnceLock<DockerCompose> = OnceLock::new();
 pub async fn setup_gaussdb_db() {
     let _ = GAUSSDB_DB.get_or_init(|| {

@@ -2,10 +2,12 @@
 
 How to set up an MDB (Microsoft Access) integration-test environment on Linux.
 
-The `.mdb` fixture itself is fetched automatically at test time — only the
-runtime ODBC driver needs to be installed manually.
+The nwind fixture is fetched automatically at test time — only the runtime ODBC
+driver needs to be installed manually.
 
-## Fixture
+## Fixtures
+
+### `nwind.mdb` (downloaded)
 
 `integration-tests::setup_mdb()` downloads
 [`data/nwind.mdb`](https://github.com/mdbtools/mdbtestdata/blob/5ebf2d685ec628df72f4774b78abee96a866b837/data/nwind.mdb)
@@ -20,6 +22,28 @@ mdbtools' own test suite runs against this same file, so the `MDBTools` ODBC
 driver is known to be compatible with it.
 
 The tests use only the `Shippers` (3 rows) and `Products` (77 rows) tables.
+
+### `esri_layers.mdb` (bundled)
+
+`integration-tests::setup_mdb_layers()` returns `testdata/mdb/esri_layers.mdb`
+(1,974,272 bytes), which is committed to the repository. Unlike the nwind
+fixture it cannot be downloaded from a public URL, so it ships with the crate
+and needs no preparation step.
+
+It is an ESRI personal geodatabase holding two feature layers, whose table names
+are stored in the file's code page rather than UTF-8:
+
+| Layer | Rows | Notable columns |
+|---|---|---|
+| `公路编号` | 47 | `SHAPE` (OLE geometry), `ZOrder` (nullable), `TextString` |
+| `境界线` | 242 | `SHAPE` (OLE geometry), `RuleID` (nullable), `NAME` |
+
+`integration-tests/tests/mdb_concurrent.rs` reads both layers, including several
+concurrent readers, and is run by CI.
+
+The fixture is useful beyond concurrency: the ESRI system tables it carries
+(`GDB_Items` and friends) mix text and OLE columns that are frequently empty,
+which is where mdbtools' hand-rolled ODBC layer shows its rough edges.
 
 ## 1. Install unixODBC
 
@@ -119,12 +143,13 @@ odbcinst -q -d
 
 ```bash
 # From the project root
-cargo test --package integration-tests --test mdb
+cargo test --package integration-tests --test mdb --test mdb_concurrent
 ```
 
 What happens at test time:
 1. `setup_mdb()` downloads `nwind.mdb` (~3 MB) to `target/nwind.mdb` on first
-   call — subsequent calls reuse the cached file.
+   call — subsequent calls reuse the cached file. `setup_mdb_layers()` uses the
+   bundled `esri_layers.mdb` as-is.
 2. Tests connect via the `MDBTools` ODBC driver.
 3. Each test registers the database as a DataFusion remote table and runs
    queries against it.
