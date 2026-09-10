@@ -85,11 +85,17 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Int2[] / Int4[] / Int8[]
   - [x] Float4[] / Float8[]
   - [x] Varchar[] / Text[] / Bool[]
-- [x] MDB (Microsoft Access, via the MDBTools ODBC driver)
+- [x] MDB (Microsoft Access `.mdb`, Jet engine, via the MDBTools ODBC driver)
   - [x] Byte / Small Integer / Long Integer / Bit
   - [x] Real / Double / Currency
   - [x] Text / Memo / Binary / OLE / Guid
   - [x] Date / Time / DateTime
+- [x] Access (Microsoft Access `.accdb`, ACE engine, via the MDBTools ODBC driver)
+  - [x] Byte / Small Integer / Long Integer / Bit
+  - [x] Real / Double / Currency
+  - [x] Text / Memo / Binary / OLE / Guid
+  - [x] Date / Time / DateTime
+  - [x] Own type enum, options, pool and connection handling; tables are listed through the `MSysObjects` catalog table
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)
