@@ -131,12 +131,18 @@ The Variant column is an Arrow [canonical extension type][ext]: its Arrow type
 is `Struct<metadata: BinaryView, value: BinaryView>` carrying the
 `arrow.parquet.variant` extension name. Everything works at the Arrow level
 today, but DataFusion 55 has no SQL functions for Variant yet, so a query over a
-collection can essentially only project the column or count rows. Reaching into
-a document from SQL needs a UDF or a custom `Transform`; the
-`parquet-variant-compute` crate provides the `variant_get` and
-`variant_to_json` kernels to build on, and `variant_get` is also how a
-`_id` column could be derived again later without putting it back in the
-provider.
+collection can essentially only project the column or count rows.
+
+Reaching into a document from SQL is left to whoever runs the query: a table
+provider's job ends at a correctly tagged Variant column, so this crate does not
+depend on any Variant UDF package. The community crate
+[`datafusion-variant`](https://github.com/datafusion-contrib/datafusion-variant)
+supplies `variant_get` and friends, or a custom `Transform` built on the
+`parquet-variant-compute` kernels does the same closer to the source. Note that
+`datafusion-variant` currently targets an older DataFusion than this project,
+so its UDFs cannot be registered here until it catches up.
+`variant_get` is also how a `_id` column could be derived again later without
+putting it back in the provider.
 
 [ext]: https://arrow.apache.org/docs/format/CanonicalExtensions.html#parquet-variant
 
