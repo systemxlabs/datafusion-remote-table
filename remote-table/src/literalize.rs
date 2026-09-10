@@ -1,5 +1,5 @@
 use crate::PostgresType;
-use crate::{DFResult, RemoteType};
+use crate::{DFResult, GaussDBType, RemoteType};
 use arrow::array::timezone::Tz;
 use arrow::array::*;
 use arrow::datatypes::*;
@@ -367,7 +367,7 @@ pub trait Literalize: Debug + Send + Sync + Any {
     ) -> DFResult<Vec<String>> {
         let db_type = remote_type.db_type();
         match remote_type {
-            RemoteType::Postgres(PostgresType::Uuid) => {
+            RemoteType::Postgres(PostgresType::Uuid) | RemoteType::GaussDB(GaussDBType::Uuid) => {
                 literalize_array!(array, |v| Ok::<_, DataFusionError>(format!(
                     "'{}'",
                     hex::encode(v)
