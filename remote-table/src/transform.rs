@@ -1,4 +1,4 @@
-use crate::{DFResult, RemoteDbType, RemoteSchemaRef};
+use crate::{DFResult, MdbType, RemoteDbType, RemoteSchemaRef, RemoteType};
 use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
@@ -42,6 +42,44 @@ impl dyn Transform {
     }
 }
 
+/// Whether a filter reads a column whose comparisons mdbtools does not evaluate.
+///
+/// `libmdbodbc.so` applies `WHERE` predicates through `mdb_test_sarg()`, which
+/// has no case for Money, Numeric, Binary, Complex or OLE columns: it prints
+/// "Calling mdb_test_sarg on unknown type" and leaves its result set to the
+/// initial "row matches" value. Pushing such a predicate as `Exact` would drop
+/// no rows remotely and DataFusion would not filter them locally either, so the
+/// predicate is reported as `Inexact` to keep a local `FilterExec` in the plan.
+fn mdb_filter_needs_local_evaluation(filter: &Expr, args: TransformArgs) -> bool {
+    if !matches!(args.db_type, RemoteDbType::Mdb) {
+        return false;
+    }
+
+    let mut needs_local_evaluation = false;
+    filter
+        .apply(|e| {
+            if let Expr::Column(column) = e
+                && let Some(field) = args
+                    .remote_schema
+                    .fields
+                    .iter()
+                    .find(|f| f.name == column.name)
+                && matches!(
+                    field.remote_type,
+                    RemoteType::Mdb(MdbType::Currency)
+                        | RemoteType::Mdb(MdbType::Binary(_))
+                        | RemoteType::Mdb(MdbType::OleObject)
+                )
+            {
+                needs_local_evaluation = true;
+            }
+            Ok(TreeNodeRecursion::Continue)
+        })
+        .expect("won't fail");
+
+    needs_local_evaluation
+}
+
 #[derive(Debug)]
 pub struct DefaultTransform {}
 
@@ -72,6 +110,12 @@ impl Transform for DefaultTransform {
                 Ok(TreeNodeRecursion::Continue)
             })
             .expect("won't fail");
+
+        if pushdown == TableProviderFilterPushDown::Exact
+            && mdb_filter_needs_local_evaluation(filter, args)
+        {
+            return Ok(TableProviderFilterPushDown::Inexact);
+        }
 
         Ok(pushdown)
     }
