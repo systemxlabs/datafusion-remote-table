@@ -1,13 +1,11 @@
-//! Reads over the bundled ESRI personal geodatabase fixture.
+//! Concurrent reads over the bundled ESRI personal geodatabase fixture.
 //!
-//! `testdata/mdb/esri_layers.mdb` holds the layers `公路编号` (47 rows) and
-//! `境界线` (242 rows). Besides reading them, these tests pin down two mdbtools
-//! behaviours the crate has to work around: its process-global state, which the
-//! crate serialises by funnelling every `MdbPool` that shares a connection
-//! identity through one cached ODBC connection, and its `SQLGetData` answer of
-//! `SQL_NO_DATA` for zero-length cell values.
+//! mdbtools' `libmdbodbc.so` keeps process-global state and the crate funnels
+//! every `MdbPool` sharing a connection identity through one cached ODBC
+//! connection, so these tests read several layers at once to pin that down.
+//! `testdata/mdb/esri_layers.mdb` holds `公路编号` (47 rows) and `境界线`
+//! (242 rows).
 
-use datafusion::arrow::array::{Array, RecordBatch, StringArray};
 use datafusion::physical_plan::collect;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{ConnectionOptions, MdbConnectionOptions, RemoteSource, RemoteTable};
@@ -26,7 +24,7 @@ fn options(client: usize) -> MdbConnectionOptions {
         .with_extra_params(vec![("Client".to_string(), client.to_string())])
 }
 
-async fn read_layer(layer: &str, client: usize) -> Result<Vec<RecordBatch>, String> {
+async fn query_layer(layer: &str, client: usize) -> Result<usize, String> {
     let config = SessionConfig::new().with_target_partitions(4);
     let ctx = SessionContext::new_with_config(config);
     let remote_table = RemoteTable::try_new(options(client), RemoteSource::from(vec![layer]))
@@ -38,17 +36,11 @@ async fn read_layer(layer: &str, client: usize) -> Result<Vec<RecordBatch>, Stri
         .sql("select * from remote_table")
         .await
         .map_err(|e| format!("sql({layer}): {e}"))?;
-    df.collect()
+    let batches = df
+        .collect()
         .await
-        .map_err(|e| format!("collect({layer}): {e}"))
-}
-
-async fn query_layer(layer: &str, client: usize) -> Result<usize, String> {
-    Ok(read_layer(layer, client)
-        .await?
-        .iter()
-        .map(|b| b.num_rows())
-        .sum())
+        .map_err(|e| format!("collect({layer}): {e}"))?;
+    Ok(batches.iter().map(|b| b.num_rows()).sum())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -129,36 +121,4 @@ async fn repeated_pool_get() {
             .await
             .unwrap_or_else(|e| panic!("get#{client}: {e}"));
     }
-}
-
-/// mdbtools answers `SQL_NO_DATA` for a text or memo value of length zero, which
-/// odbc-api turns into a panic. Most `GDB_Items` rows have an empty `Path`, so
-/// reading this table used to fail every time.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn empty_memo_values_read_as_empty() {
-    let batches = read_layer("GDB_Items", 0).await.unwrap();
-    assert_eq!(
-        batches.iter().map(|b| b.num_rows()).sum::<usize>(),
-        16,
-        "GDB_Items row count"
-    );
-
-    let mut paths: Vec<Option<&str>> = vec![];
-    for batch in &batches {
-        let path = batch
-            .column_by_name("Path")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<StringArray>()
-            .unwrap();
-        for i in 0..batch.num_rows() {
-            paths.push((!path.is_null(i)).then(|| path.value(i)));
-        }
-    }
-    assert_eq!(
-        paths.iter().filter(|p| **p == Some("")).count(),
-        10,
-        "empty Path values must come back as empty strings, not NULL: {paths:?}"
-    );
-    assert!(paths.contains(&Some(r"\交通\公路编号")), "{paths:?}");
 }

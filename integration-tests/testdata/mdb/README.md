@@ -143,7 +143,7 @@ odbcinst -q -d
 
 ```bash
 # From the project root
-cargo test --package integration-tests --test mdb --test mdb_layers
+cargo test --package integration-tests --test mdb --test mdb_concurrent
 ```
 
 What happens at test time:
