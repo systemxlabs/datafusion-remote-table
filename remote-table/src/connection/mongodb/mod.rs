@@ -125,7 +125,7 @@ impl Connection for MongoDBConnection {
         // schema is the same for every collection - but building a table is
         // where an unusable source should be reported.
         resolve_table(source)?;
-        Ok(Arc::new(schema::remote_schema()))
+        Ok(Arc::clone(&schema::REMOTE_SCHEMA))
     }
 
     async fn query(
