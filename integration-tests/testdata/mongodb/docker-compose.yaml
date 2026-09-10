@@ -1,0 +1,17 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=test
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodb_init.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
