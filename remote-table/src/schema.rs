@@ -684,54 +684,19 @@ impl GaussDBType {
     }
 }
 
-/// BSON types reported for documents read from a MongoDB collection.
+/// The type of a value in a MongoDB collection.
 ///
-/// A collection is exposed as a single `document` column, so inference only
-/// ever produces [`MongoDBType::Document`]. The remaining variants describe
-/// BSON values when a schema is declared explicitly through
-/// `RemoteTable::try_new_with_remote_schema`, and are what the document
-/// conversion uses internally.
+/// MongoDB has no schema, so a collection is exposed as a single column holding
+/// each document as a whole; `Document` is the only type that can appear.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MongoDBType {
-    Double,
-    String,
-    /// Embedded document, surfaced as JSON text.
-    Object,
-    /// Array, surfaced as JSON text.
-    Array,
     /// A whole BSON document, surfaced as a Parquet Variant column.
     Document,
-    Binary,
-    /// ObjectId, surfaced as its 24 character hex string.
-    ObjectId,
-    Boolean,
-    Date,
-    Null,
-    Int32,
-    Int64,
-    /// 128-bit decimal, surfaced as its string form.
-    Decimal128,
-    /// BSON timestamp (internal replication type), surfaced as its string form.
-    Timestamp,
-    /// Regular expression, surfaced as its string form.
-    Regex,
-    /// JavaScript code / symbol, surfaced as its string form.
-    JavaScript,
 }
 
 impl MongoDBType {
     pub fn to_arrow_type(&self) -> DataType {
         match self {
-            MongoDBType::Double => DataType::Float64,
-            MongoDBType::String
-            | MongoDBType::Object
-            | MongoDBType::Array
-            | MongoDBType::ObjectId
-            | MongoDBType::Decimal128
-            | MongoDBType::Timestamp
-            | MongoDBType::Regex
-            | MongoDBType::JavaScript => DataType::Utf8,
-            MongoDBType::Binary => DataType::Binary,
             // A Variant column is an Arrow canonical extension type over the
             // struct the Parquet Variant encoding is made of; the extension
             // name itself lives on the field, see `RemoteField::to_arrow_field`.
@@ -739,11 +704,6 @@ impl MongoDBType {
                 Field::new("metadata", DataType::BinaryView, false),
                 Field::new("value", DataType::BinaryView, false),
             ])),
-            MongoDBType::Boolean => DataType::Boolean,
-            MongoDBType::Date => DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
-            MongoDBType::Null => DataType::Null,
-            MongoDBType::Int32 => DataType::Int32,
-            MongoDBType::Int64 => DataType::Int64,
         }
     }
 }
@@ -777,10 +737,7 @@ impl RemoteField {
             self.remote_type.to_arrow_type(),
             self.nullable,
         );
-        if matches!(
-            &self.remote_type,
-            RemoteType::MongoDB(MongoDBType::Document)
-        ) {
+        if matches!(&self.remote_type, RemoteType::MongoDB(_)) {
             // Mark the column as the canonical Parquet Variant extension type.
             let mut metadata = field.metadata().clone();
             metadata.insert(

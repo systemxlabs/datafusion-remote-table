@@ -1350,81 +1350,8 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbUuid(protobuf::Empty {})),
         },
 
-        RemoteType::MongoDB(MongoDBType::Double) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbDouble(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::String) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbString(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Object) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbObject(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Array) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbArray(
-                protobuf::Empty {},
-            )),
-        },
         RemoteType::MongoDB(MongoDBType::Document) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbDocument(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Binary) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbBinary(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::ObjectId) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbObjectId(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Boolean) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbBoolean(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Date) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbDate(protobuf::Empty {})),
-        },
-        RemoteType::MongoDB(MongoDBType::Null) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbNull(protobuf::Empty {})),
-        },
-        RemoteType::MongoDB(MongoDBType::Int32) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbInt32(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Int64) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbInt64(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Decimal128) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbDecimal128(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Timestamp) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbTimestamp(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::Regex) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbRegex(
-                protobuf::Empty {},
-            )),
-        },
-        RemoteType::MongoDB(MongoDBType::JavaScript) => protobuf::RemoteType {
-            r#type: Some(protobuf::remote_type::Type::MongodbJavascript(
-                protobuf::Empty {},
-            )),
+            r#type: Some(protobuf::remote_type::Type::Mongodb(protobuf::Empty {})),
         },
     }
 }
@@ -1752,32 +1679,7 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         }
         protobuf::remote_type::Type::GaussdbXml(_) => RemoteType::GaussDB(GaussDBType::Xml),
         protobuf::remote_type::Type::GaussdbUuid(_) => RemoteType::GaussDB(GaussDBType::Uuid),
-        protobuf::remote_type::Type::MongodbDouble(_) => RemoteType::MongoDB(MongoDBType::Double),
-        protobuf::remote_type::Type::MongodbString(_) => RemoteType::MongoDB(MongoDBType::String),
-        protobuf::remote_type::Type::MongodbObject(_) => RemoteType::MongoDB(MongoDBType::Object),
-        protobuf::remote_type::Type::MongodbArray(_) => RemoteType::MongoDB(MongoDBType::Array),
-        protobuf::remote_type::Type::MongodbDocument(_) => {
-            RemoteType::MongoDB(MongoDBType::Document)
-        }
-        protobuf::remote_type::Type::MongodbBinary(_) => RemoteType::MongoDB(MongoDBType::Binary),
-        protobuf::remote_type::Type::MongodbObjectId(_) => {
-            RemoteType::MongoDB(MongoDBType::ObjectId)
-        }
-        protobuf::remote_type::Type::MongodbBoolean(_) => RemoteType::MongoDB(MongoDBType::Boolean),
-        protobuf::remote_type::Type::MongodbDate(_) => RemoteType::MongoDB(MongoDBType::Date),
-        protobuf::remote_type::Type::MongodbNull(_) => RemoteType::MongoDB(MongoDBType::Null),
-        protobuf::remote_type::Type::MongodbInt32(_) => RemoteType::MongoDB(MongoDBType::Int32),
-        protobuf::remote_type::Type::MongodbInt64(_) => RemoteType::MongoDB(MongoDBType::Int64),
-        protobuf::remote_type::Type::MongodbDecimal128(_) => {
-            RemoteType::MongoDB(MongoDBType::Decimal128)
-        }
-        protobuf::remote_type::Type::MongodbTimestamp(_) => {
-            RemoteType::MongoDB(MongoDBType::Timestamp)
-        }
-        protobuf::remote_type::Type::MongodbRegex(_) => RemoteType::MongoDB(MongoDBType::Regex),
-        protobuf::remote_type::Type::MongodbJavascript(_) => {
-            RemoteType::MongoDB(MongoDBType::JavaScript)
-        }
+        protobuf::remote_type::Type::Mongodb(_) => RemoteType::MongoDB(MongoDBType::Document),
     })
 }
 
