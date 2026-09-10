@@ -10,7 +10,17 @@ services:
     volumes:
       - ./mongodb_init.js:/docker-entrypoint-initdb.d/init.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      # A bare ping is not enough: the entrypoint serves one from a temporary
+      # instance before running the init script, so "healthy" could mean the
+      # seed data is not there yet. Requiring credentials and the seeded rows
+      # proves both. It still cannot prove the real server is the one answering,
+      # which is what setup_mongodb_db() waits for on the published port.
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh -u root -p password --authenticationDatabase admin --quiet
+          --eval 'db.getSiblingDB("test").simple_table.countDocuments()'
+          | grep -qw 3
       interval: 5s
       timeout: 10s
       retries: 30

@@ -234,6 +234,8 @@ pub async fn setup_dm_db() {
 /// answers.
 pub const MONGODB_URI: &str = "mongodb://root:password@127.0.0.1:27017/?authSource=admin";
 pub const MONGODB_DATABASE: &str = "test";
+/// Must match the published port in `testdata/mongodb/docker-compose.yaml`.
+const MONGODB_ADDR: &str = "127.0.0.1:27017";
 
 static MONGODB_DB: OnceLock<DockerCompose> = OnceLock::new();
 
@@ -247,4 +249,19 @@ pub async fn setup_mongodb_db() {
         compose.up();
         compose
     });
+    wait_mongodb_listening().await;
+}
+
+/// The entrypoint answers its healthcheck from a temporary server that it later
+/// replaces with the real one, so `up --wait` can return before anything is
+/// listening for the tests. Only the real server publishes the port, so wait
+/// for that instead of trusting "healthy" on its own.
+async fn wait_mongodb_listening() {
+    for _ in 0..60 {
+        if std::net::TcpStream::connect(MONGODB_ADDR).is_ok() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    panic!("mongodb never started listening on {MONGODB_ADDR}");
 }
