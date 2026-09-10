@@ -387,7 +387,9 @@ impl TableProvider for RemoteTable {
         }
 
         let remote_schema = if self.transform.is::<DefaultTransform>() {
-            Arc::new(RemoteSchema::empty())
+            self.remote_schema
+                .clone()
+                .unwrap_or_else(|| Arc::new(RemoteSchema::empty()))
         } else {
             let Some(remote_schema) = &self.remote_schema else {
                 return Err(DataFusionError::Plan(
