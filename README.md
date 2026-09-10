@@ -97,7 +97,6 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Date / Time / DateTime
   - [x] Own type enum, options, pool and connection handling; tables are listed through the `MSysObjects` catalog table
 - [x] MongoDB
-  - [x] `_id` (typed from the stored key, including ObjectId)
   - [x] Whole document as a Parquet Variant
 
 ## MongoDB
@@ -116,29 +115,28 @@ let remote_table = RemoteTable::try_new(options, vec!["test", "restaurants"]).aw
 ```
 
 A MongoDB collection is schemaless and can be arbitrarily nested, so it is
-exposed as exactly two columns:
+exposed as a **single** column holding every document as a Parquet
+[Variant](https://github.com/apache/parquet-format/blob/master/VariantEncoding.md):
 
 | Column | Type | Contents |
 |---|---|---|
-| `_id` | the Arrow type of the stored key | the document key; `ObjectId` becomes its 24 character hex string |
-| `document` | a Parquet [Variant](https://github.com/apache/parquet-format/blob/master/VariantEncoding.md) | the whole document, self-describing |
+| `document` | Parquet Variant | the whole document, self-describing |
 
-Only `_id` needs looking at (a sample of `sample_size` documents, 100 by
-default) and the rest of the document is stored as a Variant, which is
-per-value typed and nested natively. Compared with inferring one column per
-field, this keeps the collection faithful — nested documents and arrays are not
-flattened, types are not widened and no value is turned into text — and the
-schema is stable no matter what the documents contain or how the collection
-evolves. A collection is queryable even when it is empty, in which case `_id`
-reports MongoDB's default key type (`ObjectId`).
+There is nothing to infer and nothing is read when the table is built: a
+collection is a bag of documents and that is exactly what is exposed. The
+document key is inside the document, so a collection with an ObjectId key shows
+it as `{"$oid": "..."}`.
 
 The Variant column is an Arrow [canonical extension type][ext]: its Arrow type
 is `Struct<metadata: BinaryView, value: BinaryView>` carrying the
 `arrow.parquet.variant` extension name. Everything works at the Arrow level
-today, but DataFusion 55 has no SQL functions for Variant yet, so reaching into
+today, but DataFusion 55 has no SQL functions for Variant yet, so a query over a
+collection can essentially only project the column or count rows. Reaching into
 a document from SQL needs a UDF or a custom `Transform`; the
 `parquet-variant-compute` crate provides the `variant_get` and
-`variant_to_json` kernels to build on.
+`variant_to_json` kernels to build on, and `variant_get` is also how a
+`_id` column could be derived again later without putting it back in the
+provider.
 
 [ext]: https://arrow.apache.org/docs/format/CanonicalExtensions.html#parquet-variant
 
@@ -152,13 +150,14 @@ back. Two things do not survive, because Variant cannot express them:
 
 - the subtype of a binary value (a UUID is stored as plain bytes);
 - BSON field order, since a Variant object's fields are stored sorted by name.
+  MongoDB treats field order as significant when comparing embedded documents.
 
-Inserts take the `document` column as it is; a non-null `_id` overrides the key
-inside the document, and a null `_id` leaves it to the server to generate.
+Inserts write the document column as it is, so the key comes from the document
+itself, or from the server when it is absent.
 
-Filters are not pushed down — a SQL predicate cannot be unparsed into a BSON
-filter — so DataFusion evaluates them locally, and predicates can only reference
-`_id` because the document itself is opaque to SQL. Limit pushdown and `count()`
+No filter is pushed down — a SQL predicate cannot be unparsed into a BSON filter
+— and with a single opaque column there is no predicate to push anyway.
+DataFusion evaluates whatever it is given locally. Limit pushdown and `count()`
 (via `count_documents`) are supported.
 
 ## Thanks

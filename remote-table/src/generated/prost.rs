@@ -91,8 +91,6 @@ pub struct MongoDbConnectionOptions {
     pub database: ::prost::alloc::string::String,
     #[prost(uint32, tag = "3")]
     pub stream_chunk_size: u32,
-    #[prost(uint32, tag = "4")]
-    pub sample_size: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MdbConnectionOptions {

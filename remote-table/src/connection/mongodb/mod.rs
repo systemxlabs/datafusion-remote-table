@@ -52,7 +52,6 @@ impl Pool for MongoDBPool {
         Ok(Arc::new(MongoDBConnection {
             client: self.client.clone(),
             database: self.options.database.clone(),
-            sample_size: self.options.sample_size,
             pool_connections: self.connections.clone(),
         }))
     }
@@ -69,7 +68,6 @@ impl Pool for MongoDBPool {
 pub struct MongoDBConnection {
     client: Client,
     database: String,
-    sample_size: u32,
     pool_connections: Arc<AtomicUsize>,
 }
 
@@ -109,30 +107,11 @@ impl MongoDBConnection {
 #[async_trait::async_trait]
 impl Connection for MongoDBConnection {
     async fn infer_schema(&self, source: &RemoteSource) -> DFResult<RemoteSchemaRef> {
-        let (database, collection) = resolve_table(source)?;
-        let mut cursor = self
-            .open_cursor(
-                database.as_deref(),
-                &collection,
-                Some(self.sample_size.max(1) as usize),
-            )
-            .await?;
-
-        // Only `_id` is typed, so a small sample is enough. The documents are
-        // not decoded: just enough of each one is read to get the key.
-        let mut id_values = Vec::new();
-        while let Some(document) = cursor.try_next().await.map_err(|e| {
-            DataFusionError::Plan(format!("Failed to sample documents from mongodb: {e:?}"))
-        })? {
-            id_values.push(
-                document
-                    .get(schema::ID_COLUMN)
-                    .cloned()
-                    .unwrap_or(mongodb::bson::Bson::Null),
-            );
-        }
-
-        Ok(Arc::new(schema::infer_remote_schema(&id_values)))
+        // Nothing needs to be read - a collection is a bag of documents, so the
+        // schema is the same for every collection - but building a table is
+        // where an unusable source should be reported.
+        resolve_table(source)?;
+        Ok(Arc::new(schema::remote_schema()))
     }
 
     async fn query(
@@ -183,12 +162,7 @@ impl Connection for MongoDBConnection {
                 if documents.is_empty() {
                     continue;
                 }
-                match row::documents_to_batch(
-                    &documents,
-                    &table_schema,
-                    projection.as_ref(),
-                    chunk_size,
-                ) {
+                match row::documents_to_batch(&documents, &table_schema, projection.as_ref()) {
                     Ok(batch) => yield Ok(batch),
                     Err(e) => {
                         yield Err(e);
@@ -209,12 +183,12 @@ impl Connection for MongoDBConnection {
         _conn_options: &ConnectionOptions,
         _literalizer: Arc<dyn Literalize>,
         table: &[String],
-        remote_schema: RemoteSchemaRef,
+        _remote_schema: RemoteSchemaRef,
         batch: RecordBatch,
     ) -> DFResult<usize> {
         let (database, collection) = split_identifiers(table)?;
         let database = database.unwrap_or_else(|| self.database.clone());
-        let documents = row::batch_to_documents(&batch, &remote_schema)?;
+        let documents = row::batch_to_documents(&batch)?;
         let count = documents.len();
         if count > 0 {
             self.client

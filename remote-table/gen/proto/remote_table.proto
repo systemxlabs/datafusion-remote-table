@@ -50,7 +50,6 @@ message MongoDbConnectionOptions {
   string uri = 1;
   string database = 2;
   uint32 stream_chunk_size = 3;
-  uint32 sample_size = 4;
 }
 
 message MdbConnectionOptions {

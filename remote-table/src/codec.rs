@@ -469,7 +469,6 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                     uri: options.uri.clone(),
                     database: options.database.clone(),
                     stream_chunk_size: options.stream_chunk_size as u32,
-                    sample_size: options.sample_size,
                 },
             )),
         },
@@ -571,9 +570,6 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<Co
                 let mut mongodb_opts = MongoDBConnectionOptions::new(options.uri, options.database);
                 if options.stream_chunk_size > 0 {
                     mongodb_opts.stream_chunk_size = options.stream_chunk_size as usize;
-                }
-                if options.sample_size > 0 {
-                    mongodb_opts.sample_size = options.sample_size;
                 }
                 mongodb_opts
             })

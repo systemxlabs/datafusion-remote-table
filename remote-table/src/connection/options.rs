@@ -443,10 +443,6 @@ pub struct MongoDBConnectionOptions {
     /// part identifier (`[database, collection]`) overrides it per table.
     pub(crate) database: String,
     pub(crate) stream_chunk_size: usize,
-    /// Number of documents sampled when inferring the schema of a collection.
-    /// MongoDB documents are schemaless, so the inferred schema is the union of
-    /// the fields of the sampled documents.
-    pub(crate) sample_size: u32,
 }
 
 impl MongoDBConnectionOptions {
@@ -455,7 +451,6 @@ impl MongoDBConnectionOptions {
             uri: uri.into(),
             database: database.into(),
             stream_chunk_size: 2048,
-            sample_size: 100,
         }
     }
 }

@@ -686,11 +686,11 @@ impl GaussDBType {
 
 /// BSON types reported for documents read from a MongoDB collection.
 ///
-/// A MongoDB collection is exposed as two columns: `_id` (typed from the
-/// documents sampled by `MongoDBConnection::infer_schema`) and a `document`
-/// column holding the whole BSON document. This enum therefore only has to
-/// describe `_id` plus the document column itself; the variants corresponding
-/// to the other BSON types are still used when a schema is declared explicitly.
+/// A collection is exposed as a single `document` column, so inference only
+/// ever produces [`MongoDBType::Document`]. The remaining variants describe
+/// BSON values when a schema is declared explicitly through
+/// `RemoteTable::try_new_with_remote_schema`, and are what the document
+/// conversion uses internally.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MongoDBType {
     Double,

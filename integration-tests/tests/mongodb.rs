@@ -10,7 +10,7 @@ use datafusion_remote_table::{
     ConnectionOptions, MongoDBConnectionOptions, RemoteDbType, RemotePhysicalCodec, RemoteTable,
     connect,
 };
-use integration_tests::utils::{assert_plan_and_result, assert_result, build_conn_options};
+use integration_tests::utils::{assert_plan_and_result, build_conn_options};
 use integration_tests::{MONGODB_DATABASE, MONGODB_URI, setup_mongodb_db};
 use mongodb::bson::{Bson, Document, doc, oid::ObjectId};
 use std::sync::Arc;
@@ -45,27 +45,56 @@ async fn raw_client() -> mongodb::Client {
     mongodb::Client::with_uri_str(MONGODB_URI).await.unwrap()
 }
 
-/// A collection is exposed as exactly two columns: a typed `_id` and the whole
-/// document as a Variant.
+/// Run a query and report both the physical plan and the number of rows, which
+/// is all a single opaque column allows a test to check directly.
+async fn plan_and_rows(source: Vec<&str>, sql: &str) -> (String, usize) {
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    let table = RemoteTable::try_new(options, source).await.unwrap();
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+
+    let exec_plan = ctx
+        .sql(sql)
+        .await
+        .unwrap()
+        .create_physical_plan()
+        .await
+        .unwrap();
+    let plan = format!(
+        "{}",
+        DisplayableExecutionPlan::new(exec_plan.as_ref()).indent(true)
+    );
+    let batches = collect(exec_plan, ctx.task_ctx()).await.unwrap();
+    (plan, batches.iter().map(|batch| batch.num_rows()).sum())
+}
+
+async fn plan_ref(ctx: &SessionContext, sql: &str) -> Arc<dyn ExecutionPlan> {
+    ctx.sql(sql)
+        .await
+        .unwrap()
+        .create_physical_plan()
+        .await
+        .unwrap()
+}
+
+/// A collection is exposed as exactly one column: the whole document.
 #[tokio::test(flavor = "multi_thread")]
-async fn schema_is_id_and_document() {
+async fn schema_is_a_single_variant_column() {
     setup_mongodb_db().await;
 
     let options = build_conn_options(RemoteDbType::MongoDB);
-    for (collection, expected_key_type) in [
-        ("simple_table", DataType::Int32),
-        ("object_id_table", DataType::Utf8),
-        ("supported_data_types", DataType::Utf8),
+    for collection in [
+        "simple_table",
+        "object_id_table",
+        "supported_data_types",
+        "empty_collection",
     ] {
         let table = RemoteTable::try_new(options.clone(), vec![collection])
             .await
             .unwrap();
         assert_eq!(
             schema_of(&table.schema()),
-            vec![
-                ("_id".to_string(), expected_key_type, false),
-                ("document".to_string(), variant_type(), true),
-            ],
+            vec![("document".to_string(), variant_type(), true)],
             "unexpected schema for {collection}"
         );
     }
@@ -125,7 +154,7 @@ async fn documents_round_trip_through_variant() {
         .unwrap();
 
     let inserted = ctx
-        .sql("insert into target select _id, document from source")
+        .sql("insert into target select document from source")
         .await
         .unwrap()
         .collect()
@@ -153,41 +182,7 @@ async fn documents_round_trip_through_variant() {
     assert_eq!(before, after);
 }
 
-/// `_id` is typed from the sampled keys, including MongoDB's default ObjectId.
-#[tokio::test(flavor = "multi_thread")]
-async fn key_values_are_typed() {
-    setup_mongodb_db().await;
-
-    assert_result(
-        RemoteDbType::MongoDB,
-        vec!["simple_table"],
-        "select _id from remote_table order by _id",
-        r#"+-----+
-| _id |
-+-----+
-| 1   |
-| 2   |
-| 3   |
-+-----+"#,
-    )
-    .await;
-
-    assert_result(
-        RemoteDbType::MongoDB,
-        vec!["object_id_table"],
-        "select _id from remote_table order by _id",
-        r#"+--------------------------+
-| _id                      |
-+--------------------------+
-| 507f1f77bcf86cd799439011 |
-| 507f1f77bcf86cd799439012 |
-+--------------------------+"#,
-    )
-    .await;
-}
-
-/// An empty collection has no schema to sample, but the collection is still
-/// queryable: there is nothing to infer because only `_id` is typed.
+/// An empty collection is queryable: the schema does not depend on the data.
 #[tokio::test(flavor = "multi_thread")]
 async fn empty_collection_is_queryable() {
     setup_mongodb_db().await;
@@ -198,11 +193,7 @@ async fn empty_collection_is_queryable() {
         .unwrap();
     assert_eq!(
         schema_of(&table.schema()),
-        vec![
-            // The default key type MongoDB would generate.
-            ("_id".to_string(), DataType::Utf8, false),
-            ("document".to_string(), variant_type(), true),
-        ]
+        vec![("document".to_string(), variant_type(), true)]
     );
 
     let ctx = SessionContext::new();
@@ -233,65 +224,30 @@ async fn streaming_execution() {
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
 
     let result = ctx
-        .sql("select _id from remote_table")
+        .sql("select * from remote_table")
         .await
         .unwrap()
         .collect()
         .await
         .unwrap();
-    let table_str = pretty_format_batches(&result).unwrap().to_string();
-    println!("{table_str}");
-
-    assert_eq!(
-        table_str,
-        r#"+-----+
-| _id |
-+-----+
-| 1   |
-| 2   |
-| 3   |
-+-----+"#
-    );
     assert_eq!(result.len(), 3);
+    assert_eq!(
+        result.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+        3
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn pushdown_limit() {
     setup_mongodb_db().await;
 
-    assert_plan_and_result(
-        RemoteDbType::MongoDB,
-        vec!["simple_table"],
-        "select _id from remote_table limit 1",
-        vec!["CooperativeExec\n  RemoteTableScanExec: source=simple_table, projection=[_id], limit=1\n"],
-        r#"+-----+
-| _id |
-+-----+
-| 1   |
-+-----+"#,
-    )
-    .await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn filters_are_applied_locally() {
-    setup_mongodb_db().await;
-
-    // MongoDB has no SQL unparser, so DataFusion keeps the filter above the scan.
-    assert_plan_and_result(
-        RemoteDbType::MongoDB,
-        vec!["simple_table"],
-        "select _id from remote_table where _id = 1",
-        vec![
-            "FilterExec: _id@0 = 1\n  CooperativeExec\n    RemoteTableScanExec: source=simple_table, projection=[_id]\n",
-        ],
-        r#"+-----+
-| _id |
-+-----+
-| 1   |
-+-----+"#,
-    )
-    .await;
+    let (plan, rows) =
+        plan_and_rows(vec!["simple_table"], "select * from remote_table limit 1").await;
+    assert_eq!(
+        plan,
+        "CooperativeExec\n  RemoteTableScanExec: source=simple_table, limit=1\n"
+    );
+    assert_eq!(rows, 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -352,13 +308,7 @@ async fn physical_plan_serialization() {
 
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
-    let exec_plan = ctx
-        .sql("select _id from remote_table limit 1")
-        .await
-        .unwrap()
-        .create_physical_plan()
-        .await
-        .unwrap();
+    let exec_plan = plan_ref(&ctx, "select * from remote_table limit 1").await;
     let expected = collect(exec_plan.clone(), ctx.task_ctx()).await.unwrap();
 
     let codec = RemotePhysicalCodec::new();
