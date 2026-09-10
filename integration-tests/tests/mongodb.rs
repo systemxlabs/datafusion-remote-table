@@ -12,10 +12,20 @@ use datafusion_remote_table::{
 };
 use integration_tests::utils::{assert_plan_and_result, build_conn_options};
 use integration_tests::{MONGODB_DATABASE, MONGODB_URI, setup_mongodb_db};
-use mongodb::bson::{Bson, Document, doc, oid::ObjectId};
+use parquet_variant::Variant;
+use parquet_variant_compute::{VariantArray, VariantArrayBuilder};
+use parquet_variant_json::VariantToJson;
 use std::sync::Arc;
 
+/// The canonical Variant field, taken from the library itself: if the type the
+/// provider declares for its `document` column ever drifts from this, the
+/// schema assertions below fail.
+fn variant_field() -> Field {
+    VariantArrayBuilder::new(0).build().field("document")
+}
+
 fn schema_of(schema: &SchemaRef) -> Vec<(String, DataType, bool)> {
+    let canonical = variant_field();
     schema
         .fields()
         .iter()
@@ -23,30 +33,41 @@ fn schema_of(schema: &SchemaRef) -> Vec<(String, DataType, bool)> {
             (
                 field.name().clone(),
                 field.data_type().clone(),
-                field.metadata().contains_key("ARROW:extension:name"),
+                field.metadata() == canonical.metadata(),
             )
         })
         .collect()
 }
 
-/// The Arrow type of a Variant column: a plain struct that the
-/// `arrow.parquet.variant` extension name is attached to.
-fn variant_type() -> DataType {
-    DataType::Struct(
-        vec![
-            Field::new("metadata", DataType::BinaryView, false),
-            Field::new("value", DataType::BinaryView, false),
-        ]
-        .into(),
-    )
+/// Read the `document` column of a collection as a Variant array.
+async fn documents_of(ctx: &SessionContext, table: &str) -> VariantArray {
+    let batches = ctx
+        .sql(&format!("select document from {table}"))
+        .await
+        .unwrap()
+        .collect()
+        .await
+        .unwrap();
+    let mut arrays: Vec<VariantArray> = batches
+        .iter()
+        .map(|batch| VariantArray::try_new(batch.column(0).as_ref()).unwrap())
+        .collect();
+    assert_eq!(arrays.len(), 1, "expected a single batch");
+    arrays.pop().unwrap()
 }
 
-async fn raw_client() -> mongodb::Client {
-    mongodb::Client::with_uri_str(MONGODB_URI).await.unwrap()
+/// Render documents as JSON, sorted so that two reads compare independently of
+/// the order the collection returns them in.
+fn as_json(documents: &VariantArray) -> Vec<String> {
+    let mut values: Vec<String> = (0..documents.len())
+        .map(|row| documents.value(row).to_json_string().unwrap())
+        .collect();
+    values.sort();
+    values
 }
 
 /// Run a query and report both the physical plan and the number of rows, which
-/// is all a single opaque column allows a test to check directly.
+/// is all that a single opaque column lets a test check directly.
 async fn plan_and_rows(source: Vec<&str>, sql: &str) -> (String, usize) {
     let options = build_conn_options(RemoteDbType::MongoDB);
     let table = RemoteTable::try_new(options, source).await.unwrap();
@@ -68,13 +89,12 @@ async fn plan_and_rows(source: Vec<&str>, sql: &str) -> (String, usize) {
     (plan, batches.iter().map(|batch| batch.num_rows()).sum())
 }
 
-async fn plan_ref(ctx: &SessionContext, sql: &str) -> Arc<dyn ExecutionPlan> {
-    ctx.sql(sql)
+async fn register(ctx: &SessionContext, name: &str, collection: &str) {
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    let table = RemoteTable::try_new(options, vec![collection])
         .await
-        .unwrap()
-        .create_physical_plan()
-        .await
-        .unwrap()
+        .unwrap();
+    ctx.register_table(name, Arc::new(table)).unwrap();
 }
 
 /// A collection is exposed as exactly one column: the whole document.
@@ -94,65 +114,91 @@ async fn schema_is_a_single_variant_column() {
             .unwrap();
         assert_eq!(
             schema_of(&table.schema()),
-            vec![("document".to_string(), variant_type(), true)],
+            vec![(
+                "document".to_string(),
+                variant_field().data_type().clone(),
+                true
+            )],
             "unexpected schema for {collection}"
         );
+        assert!(!table.schema().field(0).is_nullable());
     }
 }
 
-/// The Variant column has to survive a full round trip: reading a collection
-/// and inserting it elsewhere must reproduce the original BSON documents. The
-/// driver is the reference, so this fails if any BSON type is mangled.
+/// The document column has to survive a full round trip: reading a collection
+/// and inserting it elsewhere must reproduce the same documents.
+///
+/// The assertions also pin down the conversion: BSON types Variant cannot
+/// express stay recognisable in their canonical extended JSON form, and the
+/// ones it can are stored natively with their BSON widths.
 #[tokio::test(flavor = "multi_thread")]
 async fn documents_round_trip_through_variant() {
     setup_mongodb_db().await;
 
-    let keys: Vec<ObjectId> = ["507f1f77bcf86cd799439021", "507f1f77bcf86cd799439022"]
-        .iter()
-        .map(|key| ObjectId::parse_str(key).unwrap())
-        .collect();
+    let ctx = SessionContext::new();
+    register(&ctx, "source", "supported_data_types").await;
+    register(&ctx, "target", "round_trip_target").await;
 
-    let client = raw_client().await;
-    let database = client.database(MONGODB_DATABASE);
-    let source = database.collection::<Document>("supported_data_types");
-    let target = database.collection::<Document>("round_trip_target");
+    let before = documents_of(&ctx, "source").await;
+    assert_eq!(before.len(), 2);
+    let Variant::Object(document) = before.value(0) else {
+        panic!("a document must be an object");
+    };
 
-    let mut before = Vec::new();
-    for key in &keys {
-        before.push(
-            source
-                .find_one(doc! { "_id": *key })
-                .await
-                .unwrap()
-                .unwrap(),
-        );
+    // Numbers keep the width they were stored with.
+    assert!(matches!(document.get("int32_col"), Some(Variant::Int32(2))));
+    assert!(matches!(document.get("int64_col"), Some(Variant::Int64(3))));
+    assert!(matches!(
+        document.get("double_col"),
+        Some(Variant::Double(_))
+    ));
+    assert!(matches!(
+        document.get("bool_col"),
+        Some(Variant::BooleanTrue)
+    ));
+    assert!(matches!(
+        document.get("string_col"),
+        Some(Variant::ShortString(_) | Variant::String(_))
+    ));
+    // Dates are timestamps and binary values stay bytes.
+    assert!(matches!(
+        document.get("date_col"),
+        Some(Variant::TimestampMicros(_) | Variant::TimestampNtzMicros(_))
+    ));
+    assert!(matches!(
+        document.get("binary_col"),
+        Some(Variant::Binary(_))
+    ));
+    // Nested documents and arrays are native, not text.
+    assert!(matches!(
+        document.get("object_col"),
+        Some(Variant::Object(_))
+    ));
+    assert!(matches!(document.get("array_col"), Some(Variant::List(_))));
+    assert!(matches!(document.get("null_col"), Some(Variant::Null)));
+    // The types Variant cannot express use their canonical extended JSON form,
+    // which is where the document key lives too.
+    for wrapper in ["_id", "object_id_col"] {
+        let Some(Variant::Object(value)) = document.get(wrapper) else {
+            panic!("{wrapper} must be wrapped as an object");
+        };
+        assert!(matches!(
+            value.get("$oid"),
+            Some(Variant::ShortString(_) | Variant::String(_))
+        ));
     }
-    // Every BSON type the fixture uses must actually be present.
+    let Some(Variant::Object(decimal)) = document.get("decimal_col") else {
+        panic!("decimal must be wrapped as an object");
+    };
     assert!(matches!(
-        before[0].get("object_id_col"),
-        Some(Bson::ObjectId(_))
+        decimal.get("$numberDecimal"),
+        Some(Variant::ShortString(_) | Variant::String(_))
     ));
-    assert!(matches!(
-        before[0].get("decimal_col"),
-        Some(Bson::Decimal128(_))
-    ));
-    assert!(matches!(before[0].get("date_col"), Some(Bson::DateTime(_))));
-    assert!(matches!(before[0].get("binary_col"), Some(Bson::Binary(_))));
+
+    let before_json = as_json(&before);
+    println!("source documents: {before_json:#?}");
 
     // Copy through the provider: read as Variant, write back as BSON.
-    let options = build_conn_options(RemoteDbType::MongoDB);
-    let source_table = RemoteTable::try_new(options.clone(), vec!["supported_data_types"])
-        .await
-        .unwrap();
-    let target_table = RemoteTable::try_new(options, vec!["round_trip_target"])
-        .await
-        .unwrap();
-    let ctx = SessionContext::new();
-    ctx.register_table("source", Arc::new(source_table))
-        .unwrap();
-    ctx.register_table("target", Arc::new(target_table))
-        .unwrap();
-
     let inserted = ctx
         .sql("insert into target select document from source")
         .await
@@ -169,17 +215,8 @@ async fn documents_round_trip_through_variant() {
 +-------+"#
     );
 
-    let mut after = Vec::new();
-    for key in &keys {
-        after.push(
-            target
-                .find_one(doc! { "_id": *key })
-                .await
-                .unwrap()
-                .unwrap(),
-        );
-    }
-    assert_eq!(before, after);
+    let after = documents_of(&ctx, "target").await;
+    assert_eq!(as_json(&after), before_json);
 }
 
 /// An empty collection is queryable: the schema does not depend on the data.
@@ -193,7 +230,11 @@ async fn empty_collection_is_queryable() {
         .unwrap();
     assert_eq!(
         schema_of(&table.schema()),
-        vec![("document".to_string(), variant_type(), true)]
+        vec![(
+            "document".to_string(),
+            variant_field().data_type().clone(),
+            true
+        )]
     );
 
     let ctx = SessionContext::new();
@@ -308,7 +349,13 @@ async fn physical_plan_serialization() {
 
     let ctx = SessionContext::new();
     ctx.register_table("remote_table", Arc::new(table)).unwrap();
-    let exec_plan = plan_ref(&ctx, "select * from remote_table limit 1").await;
+    let exec_plan = ctx
+        .sql("select * from remote_table limit 1")
+        .await
+        .unwrap()
+        .create_physical_plan()
+        .await
+        .unwrap();
     let expected = collect(exec_plan.clone(), ctx.task_ctx()).await.unwrap();
 
     let codec = RemotePhysicalCodec::new();

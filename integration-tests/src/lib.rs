@@ -229,7 +229,9 @@ pub async fn setup_dm_db() {
 }
 
 /// MongoDB test connection string. The compose file creates the root user and
-/// the `test` database, and seeds it from `testdata/mongodb/mongodb_init.js`.
+/// the `test` database, seeds it from `testdata/mongodb/mongodb_init.js`, and
+/// its healthcheck makes `docker compose up --wait` block until the server
+/// answers.
 pub const MONGODB_URI: &str = "mongodb://root:password@127.0.0.1:27017/?authSource=admin";
 pub const MONGODB_DATABASE: &str = "test";
 
@@ -245,30 +247,4 @@ pub async fn setup_mongodb_db() {
         compose.up();
         compose
     });
-    wait_mongodb_ready().await;
-}
-
-/// The compose healthcheck already blocks `up --wait`, but the driver ping keeps
-/// the wait independent of the compose implementation.
-async fn wait_mongodb_ready() {
-    let client = mongodb::Client::with_uri_str(MONGODB_URI)
-        .await
-        .expect("failed to create mongodb client");
-
-    let mut retry = 0;
-    loop {
-        match client
-            .database("admin")
-            .run_command(mongodb::bson::doc! { "ping": 1 })
-            .await
-        {
-            Ok(_) => break,
-            Err(err) => eprintln!("mongodb connection error: {err:?}"),
-        }
-        retry += 1;
-        if retry > 20 {
-            panic!("mongodb container still not ready after 200 seconds");
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-    }
 }

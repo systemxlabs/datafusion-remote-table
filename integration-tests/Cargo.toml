@@ -14,4 +14,10 @@ uuid = { version = "1.23.2", features = ["v4"] }
 rstest = "0.26"
 odbc-api = { workspace = true }
 env_logger = "0.11"
-mongodb = { version = "3.9", default-features = false, features = ["bson-3", "rustls-tls", "dns-resolver", "compat-3-3-0"] }
+
+[dev-dependencies]
+# Renders a Variant column as JSON so tests can compare documents without
+# decoding BSON themselves.
+parquet-variant-compute = "59.2"
+parquet-variant = "59.2"
+parquet-variant-json = "59.2"
