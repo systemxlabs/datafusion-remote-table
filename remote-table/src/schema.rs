@@ -13,6 +13,7 @@ pub enum RemoteType {
     Sqlite(SqliteType),
     Dm(DmType),
     Mdb(MdbType),
+    Access(AccessType),
     GaussDB(GaussDBType),
 }
 
@@ -25,6 +26,7 @@ impl RemoteType {
             RemoteType::Sqlite(sqlite_type) => sqlite_type.to_arrow_type(),
             RemoteType::Dm(dm_type) => dm_type.to_arrow_type(),
             RemoteType::Mdb(mdb_type) => mdb_type.to_arrow_type(),
+            RemoteType::Access(access_type) => access_type.to_arrow_type(),
             RemoteType::GaussDB(gdb_type) => gdb_type.to_arrow_type(),
         }
     }
@@ -37,6 +39,7 @@ impl RemoteType {
             RemoteType::Sqlite(_) => RemoteDbType::Sqlite,
             RemoteType::Dm(_) => RemoteDbType::Dm,
             RemoteType::Mdb(_) => RemoteDbType::Mdb,
+            RemoteType::Access(_) => RemoteDbType::Access,
             RemoteType::GaussDB(_) => RemoteDbType::GaussDB,
         }
     }
@@ -490,6 +493,84 @@ impl MdbType {
     pub fn column_size(&self) -> Option<i32> {
         match self {
             MdbType::Text(len) | MdbType::Binary(len) => len.map(|l| l as i32),
+            _ => None,
+        }
+    }
+}
+
+/// Microsoft Access `.accdb` (ACE engine) type mapping.
+///
+/// Mirrors [`MdbType`] because the same ODBC driver reports the same column
+/// types for both file formats, but each backend keeps its own type enum so a
+/// column of an `.accdb` source is never described as an MDB type in schemas,
+/// plans or the remote table API.
+#[derive(Debug, Clone)]
+pub enum AccessType {
+    Bit,
+    TinyInt,
+    SmallInt,
+    Integer,
+    Real,
+    Double,
+    Currency,
+    Text(Option<u16>),
+    Memo,
+    Binary(Option<u16>),
+    OleObject,
+    Guid,
+    DateTime,
+    Date,
+    Time,
+}
+
+impl AccessType {
+    pub fn to_arrow_type(&self) -> DataType {
+        match self {
+            AccessType::Bit => DataType::Boolean,
+            AccessType::TinyInt => DataType::Int8,
+            AccessType::SmallInt => DataType::Int16,
+            AccessType::Integer => DataType::Int32,
+            AccessType::Real => DataType::Float32,
+            AccessType::Double => DataType::Float64,
+            AccessType::Currency => DataType::Decimal128(19, 4),
+            AccessType::Text(_) => DataType::Utf8,
+            AccessType::Memo => DataType::Utf8,
+            AccessType::Binary(_) => DataType::Binary,
+            AccessType::OleObject => DataType::Binary,
+            AccessType::Guid => DataType::FixedSizeBinary(16),
+            AccessType::DateTime => DataType::Timestamp(TimeUnit::Microsecond, None),
+            AccessType::Date => DataType::Date32,
+            AccessType::Time => DataType::Time64(TimeUnit::Microsecond),
+        }
+    }
+
+    /// Human-readable Access type name (e.g. "Long Integer", "Text (100)", "OLE")
+    pub fn type_name(&self) -> String {
+        match self {
+            AccessType::Bit => "Bit".to_string(),
+            AccessType::TinyInt => "Byte".to_string(),
+            AccessType::SmallInt => "Small Integer".to_string(),
+            AccessType::Integer => "Long Integer".to_string(),
+            AccessType::Real => "Real".to_string(),
+            AccessType::Double => "Double".to_string(),
+            AccessType::Currency => "Currency".to_string(),
+            AccessType::Text(Some(len)) => format!("Text ({})", len),
+            AccessType::Text(None) => "Text".to_string(),
+            AccessType::Memo => "Memo".to_string(),
+            AccessType::Binary(Some(len)) => format!("Binary ({})", len),
+            AccessType::Binary(None) => "Binary".to_string(),
+            AccessType::OleObject => "OLE".to_string(),
+            AccessType::Guid => "GUID".to_string(),
+            AccessType::DateTime => "DateTime".to_string(),
+            AccessType::Date => "Date".to_string(),
+            AccessType::Time => "Time".to_string(),
+        }
+    }
+
+    /// For Access column_size: return length for Text/Binary types, None otherwise
+    pub fn column_size(&self) -> Option<i32> {
+        match self {
+            AccessType::Text(len) | AccessType::Binary(len) => len.map(|l| l as i32),
             _ => None,
         }
     }

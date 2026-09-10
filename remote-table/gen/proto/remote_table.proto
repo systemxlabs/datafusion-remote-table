@@ -40,6 +40,8 @@ message ConnectionOptions {
     DmConnectionOptions dm = 5;
     MdbConnectionOptions mdb = 6;
     GaussDBConnectionOptions gaussdb = 7;
+    // Microsoft Access .accdb (ACE engine).
+    AccessConnectionOptions access = 8;
   }
 }
 
@@ -49,12 +51,20 @@ message MdbConnectionOptions {
   uint32 stream_chunk_size = 3;
   optional string uid = 4;
   optional string pwd = 5;
-  repeated MdbExtraParam extra_params = 6;
+  // ODBC connection attributes passed through verbatim. Serialized in key
+  // order so encoded plans are byte-stable.
+  map<string, string> extra_params = 6;
 }
 
-message MdbExtraParam {
-  string key = 1;
-  string value = 2;
+message AccessConnectionOptions {
+  string path = 1;
+  string driver = 2;
+  uint32 stream_chunk_size = 3;
+  optional string uid = 4;
+  optional string pwd = 5;
+  // ODBC connection attributes passed through verbatim. Serialized in key
+  // order so encoded plans are byte-stable.
+  map<string, string> extra_params = 6;
 }
 
 message RemoteSource {
@@ -280,6 +290,21 @@ message RemoteType {
     Empty mdb_date_time = 513;
     Empty mdb_date = 514;
     Empty mdb_time = 515;
+    Empty access_bit = 701;
+    Empty access_tiny_int = 702;
+    Empty access_small_int = 703;
+    Empty access_integer = 704;
+    Empty access_real = 705;
+    Empty access_double = 706;
+    Empty access_currency = 707;
+    AccessText access_text = 708;
+    Empty access_memo = 709;
+    AccessBinary access_binary = 710;
+    Empty access_ole_object = 711;
+    Empty access_guid = 712;
+    Empty access_date_time = 713;
+    Empty access_date = 714;
+    Empty access_time = 715;
     Empty gaussdb_int2 = 601;
     Empty gaussdb_int4 = 602;
     Empty gaussdb_int8 = 603;
@@ -316,6 +341,14 @@ message RemoteType {
 }
 
 message MdbText {
+  optional uint32 length = 1;
+}
+
+message AccessText {
+  optional uint32 length = 1;
+}
+
+message AccessBinary {
   optional uint32 length = 1;
 }
 

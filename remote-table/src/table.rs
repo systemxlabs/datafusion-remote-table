@@ -18,7 +18,12 @@ use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
 pub enum SourceCommand {
-    /// List all user tables/views in an MDB file.
+    /// List all user tables/views in an `.mdb` (Jet engine) file.
+    ///
+    /// There is no equivalent for `.accdb` sources: an ACE file is queried with
+    /// the [`MSysObjects` catalog
+    /// table](https://learn.microsoft.com/en-us/office/client-developer/access/desktop-database-reference/msysobjects-system-table)
+    /// like any other source.
     ListMdbTables,
 }
 

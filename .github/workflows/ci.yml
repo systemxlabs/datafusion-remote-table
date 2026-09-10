@@ -36,6 +36,9 @@ jobs:
       - name: Build with only mdb
         run: cargo check -p datafusion-remote-table --no-default-features --features mdb
 
+      - name: Build with only access
+        run: cargo check -p datafusion-remote-table --no-default-features --features access
+
       - name: Build with only gaussdb
         run: cargo check -p datafusion-remote-table --no-default-features --features gaussdb
 
@@ -80,7 +83,7 @@ jobs:
 
       - name: Run integration tests
         # There is no easy way to install dm odbc driver, so skip dm integration tests
-        run: cargo test -p integration-tests --test common --test sqlite --test postgres --test mysql --test oracle --test mdb --test gaussdb
+        run: cargo test -p integration-tests --test common --test sqlite --test postgres --test mysql --test oracle --test mdb --test access --test gaussdb
 
   lints:
     name: Lints

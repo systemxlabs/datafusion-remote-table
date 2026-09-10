@@ -4,9 +4,9 @@ use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
-    ConnectionOptions, DmConnectionOptions, MdbConnectionOptions, MysqlConnectionOptions,
-    OracleConnectionOptions, PostgresConnectionOptions, RemoteDbType, RemoteSource, RemoteTable,
-    SqliteConnectionOptions,
+    AccessConnectionOptions, ConnectionOptions, DmConnectionOptions, MdbConnectionOptions,
+    MysqlConnectionOptions, OracleConnectionOptions, PostgresConnectionOptions, RemoteDbType,
+    RemoteSource, RemoteTable, SqliteConnectionOptions,
 };
 use std::sync::Arc;
 
@@ -142,6 +142,9 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
         RemoteDbType::Mdb => {
             ConnectionOptions::Mdb(MdbConnectionOptions::new(crate::setup_mdb().to_path_buf()))
         }
+        RemoteDbType::Access => ConnectionOptions::Access(AccessConnectionOptions::new(
+            crate::setup_accdb().to_path_buf(),
+        )),
         RemoteDbType::GaussDB => {
             use datafusion_remote_table::GaussDBConnectionOptions;
             ConnectionOptions::GaussDB(

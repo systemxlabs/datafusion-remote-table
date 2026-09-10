@@ -1,3 +1,4 @@
+use crate::AccessConnectionOptions;
 use crate::DmConnectionOptions;
 use crate::GaussDBConnectionOptions;
 use crate::GaussDBType;
@@ -9,9 +10,10 @@ use crate::PostgresConnectionOptions;
 use crate::SqliteConnectionOptions;
 use crate::generated::prost as protobuf;
 use crate::{
-    ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType, Literalize, MdbType,
-    MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource,
-    RemoteTableInsertExec, RemoteTableScanExec, RemoteType, SourceCommand, SqliteType, Transform,
+    AccessType, ConnectionOptions, DFResult, DefaultLiteralizer, DefaultTransform, DmType,
+    Literalize, MdbType, MysqlType, OracleType, PostgresType, RemoteField, RemoteSchema,
+    RemoteSchemaRef, RemoteSource, RemoteTableInsertExec, RemoteTableScanExec, RemoteType,
+    SourceCommand, SqliteType, Transform,
 };
 use arrow::datatypes::SchemaRef;
 use datafusion_common::DataFusionError;
@@ -289,6 +291,70 @@ impl PhysicalExtensionCodec for RemotePhysicalCodec {
     }
 }
 
+fn serialize_mdb_options(options: &MdbConnectionOptions) -> protobuf::MdbConnectionOptions {
+    protobuf::MdbConnectionOptions {
+        path: options.path.to_str().unwrap_or("").to_string(),
+        driver: options.driver.clone(),
+        stream_chunk_size: options.stream_chunk_size as u32,
+        uid: options.uid.clone(),
+        pwd: options.pwd.clone(),
+        extra_params: options.extra_params.clone(),
+    }
+}
+
+fn deserialize_mdb_options(options: protobuf::MdbConnectionOptions) -> MdbConnectionOptions {
+    let mut mdb_options =
+        MdbConnectionOptions::new(std::path::Path::new(&options.path).to_path_buf());
+    if !options.driver.is_empty() {
+        mdb_options.driver = options.driver;
+    }
+    if options.stream_chunk_size > 0 {
+        mdb_options.stream_chunk_size = options.stream_chunk_size as usize;
+    }
+    if let Some(uid) = options.uid {
+        mdb_options.uid = Some(uid);
+    }
+    if let Some(pwd) = options.pwd {
+        mdb_options.pwd = Some(pwd);
+    }
+    mdb_options.extra_params = options.extra_params;
+    mdb_options
+}
+
+fn serialize_access_options(
+    options: &AccessConnectionOptions,
+) -> protobuf::AccessConnectionOptions {
+    protobuf::AccessConnectionOptions {
+        path: options.path.to_str().unwrap_or("").to_string(),
+        driver: options.driver.clone(),
+        stream_chunk_size: options.stream_chunk_size as u32,
+        uid: options.uid.clone(),
+        pwd: options.pwd.clone(),
+        extra_params: options.extra_params.clone(),
+    }
+}
+
+fn deserialize_access_options(
+    options: protobuf::AccessConnectionOptions,
+) -> AccessConnectionOptions {
+    let mut access_options =
+        AccessConnectionOptions::new(std::path::Path::new(&options.path).to_path_buf());
+    if !options.driver.is_empty() {
+        access_options.driver = options.driver;
+    }
+    if options.stream_chunk_size > 0 {
+        access_options.stream_chunk_size = options.stream_chunk_size as usize;
+    }
+    if let Some(uid) = options.uid {
+        access_options.uid = Some(uid);
+    }
+    if let Some(pwd) = options.pwd {
+        access_options.pwd = Some(pwd);
+    }
+    access_options.extra_params = options.extra_params;
+    access_options
+}
+
 fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::ConnectionOptions {
     match options {
         ConnectionOptions::Postgres(options) => protobuf::ConnectionOptions {
@@ -369,21 +435,12 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
         },
         ConnectionOptions::Mdb(options) => protobuf::ConnectionOptions {
             connection_options: Some(protobuf::connection_options::ConnectionOptions::Mdb(
-                protobuf::MdbConnectionOptions {
-                    path: options.path.to_str().unwrap_or("").to_string(),
-                    driver: options.driver.clone(),
-                    stream_chunk_size: options.stream_chunk_size as u32,
-                    uid: options.uid.clone(),
-                    pwd: options.pwd.clone(),
-                    extra_params: options
-                        .extra_params
-                        .iter()
-                        .map(|(k, v)| protobuf::MdbExtraParam {
-                            key: k.clone(),
-                            value: v.clone(),
-                        })
-                        .collect(),
-                },
+                serialize_mdb_options(options),
+            )),
+        },
+        ConnectionOptions::Access(options) => protobuf::ConnectionOptions {
+            connection_options: Some(protobuf::connection_options::ConnectionOptions::Access(
+                serialize_access_options(options),
             )),
         },
         ConnectionOptions::GaussDB(options) => protobuf::ConnectionOptions {
@@ -470,28 +527,10 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<Co
             })
         }
         Some(protobuf::connection_options::ConnectionOptions::Mdb(options)) => {
-            ConnectionOptions::Mdb({
-                let mut mdb_opts =
-                    MdbConnectionOptions::new(std::path::Path::new(&options.path).to_path_buf());
-                if !options.driver.is_empty() {
-                    mdb_opts.driver = options.driver;
-                }
-                if options.stream_chunk_size > 0 {
-                    mdb_opts.stream_chunk_size = options.stream_chunk_size as usize;
-                }
-                if let Some(uid) = options.uid {
-                    mdb_opts.uid = Some(uid);
-                }
-                if let Some(pwd) = options.pwd {
-                    mdb_opts.pwd = Some(pwd);
-                }
-                mdb_opts.extra_params = options
-                    .extra_params
-                    .into_iter()
-                    .map(|p| (p.key, p.value))
-                    .collect();
-                mdb_opts
-            })
+            ConnectionOptions::Mdb(deserialize_mdb_options(options))
+        }
+        Some(protobuf::connection_options::ConnectionOptions::Access(options)) => {
+            ConnectionOptions::Access(deserialize_access_options(options))
         }
         Some(protobuf::connection_options::ConnectionOptions::Gaussdb(options)) => {
             ConnectionOptions::GaussDB({
@@ -1084,6 +1123,73 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         RemoteType::Mdb(MdbType::Time) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::MdbTime(protobuf::Empty {})),
         },
+        RemoteType::Access(AccessType::Bit) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessBit(protobuf::Empty {})),
+        },
+        RemoteType::Access(AccessType::TinyInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessTinyInt(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::SmallInt) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessSmallInt(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::Integer) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessInteger(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::Real) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessReal(protobuf::Empty {})),
+        },
+        RemoteType::Access(AccessType::Double) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessDouble(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::Currency) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessCurrency(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::Text(len)) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessText(
+                protobuf::AccessText {
+                    length: len.map(|l| l as u32),
+                },
+            )),
+        },
+        RemoteType::Access(AccessType::Memo) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessMemo(protobuf::Empty {})),
+        },
+        RemoteType::Access(AccessType::Binary(len)) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessBinary(
+                protobuf::AccessBinary {
+                    length: len.map(|l| l as u32),
+                },
+            )),
+        },
+        RemoteType::Access(AccessType::OleObject) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessOleObject(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::Guid) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessGuid(protobuf::Empty {})),
+        },
+        RemoteType::Access(AccessType::DateTime) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessDateTime(
+                protobuf::Empty {},
+            )),
+        },
+        RemoteType::Access(AccessType::Date) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessDate(protobuf::Empty {})),
+        },
+        RemoteType::Access(AccessType::Time) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::AccessTime(protobuf::Empty {})),
+        },
         RemoteType::GaussDB(GaussDBType::Int2) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbInt2(protobuf::Empty {})),
         },
@@ -1468,6 +1574,27 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         protobuf::remote_type::Type::MdbDateTime(_) => RemoteType::Mdb(MdbType::DateTime),
         protobuf::remote_type::Type::MdbDate(_) => RemoteType::Mdb(MdbType::Date),
         protobuf::remote_type::Type::MdbTime(_) => RemoteType::Mdb(MdbType::Time),
+        protobuf::remote_type::Type::AccessBit(_) => RemoteType::Access(AccessType::Bit),
+        protobuf::remote_type::Type::AccessTinyInt(_) => RemoteType::Access(AccessType::TinyInt),
+        protobuf::remote_type::Type::AccessSmallInt(_) => RemoteType::Access(AccessType::SmallInt),
+        protobuf::remote_type::Type::AccessInteger(_) => RemoteType::Access(AccessType::Integer),
+        protobuf::remote_type::Type::AccessReal(_) => RemoteType::Access(AccessType::Real),
+        protobuf::remote_type::Type::AccessDouble(_) => RemoteType::Access(AccessType::Double),
+        protobuf::remote_type::Type::AccessCurrency(_) => RemoteType::Access(AccessType::Currency),
+        protobuf::remote_type::Type::AccessText(protobuf::AccessText { length }) => {
+            RemoteType::Access(AccessType::Text(length.map(|l| l as u16)))
+        }
+        protobuf::remote_type::Type::AccessMemo(_) => RemoteType::Access(AccessType::Memo),
+        protobuf::remote_type::Type::AccessBinary(protobuf::AccessBinary { length }) => {
+            RemoteType::Access(AccessType::Binary(length.map(|l| l as u16)))
+        }
+        protobuf::remote_type::Type::AccessOleObject(_) => {
+            RemoteType::Access(AccessType::OleObject)
+        }
+        protobuf::remote_type::Type::AccessGuid(_) => RemoteType::Access(AccessType::Guid),
+        protobuf::remote_type::Type::AccessDateTime(_) => RemoteType::Access(AccessType::DateTime),
+        protobuf::remote_type::Type::AccessDate(_) => RemoteType::Access(AccessType::Date),
+        protobuf::remote_type::Type::AccessTime(_) => RemoteType::Access(AccessType::Time),
         protobuf::remote_type::Type::GaussdbInt2(_) => RemoteType::GaussDB(GaussDBType::Int2),
         protobuf::remote_type::Type::GaussdbInt4(_) => RemoteType::GaussDB(GaussDBType::Int4),
         protobuf::remote_type::Type::GaussdbInt8(_) => RemoteType::GaussDB(GaussDBType::Int8),
