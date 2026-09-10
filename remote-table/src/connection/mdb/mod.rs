@@ -21,6 +21,7 @@ use log::debug;
 use odbc_api::Cursor;
 use odbc_api::Environment;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -136,9 +137,23 @@ impl Pool for MdbPool {
                     ODBC_ENV.get_or_init(|| Environment::new().expect("failed to create ODBC env"));
                 let connection_str = self.options.connection_string();
                 debug!("[remote-table] mdb connection string: {connection_str}");
+                // mdbtools' SQLDriverConnect ignores cbConnStrIn and scans for a
+                // NUL terminator instead, so it reads heap garbage past the Rust
+                // `&str` odbc-api passes and corrupts the DBQ value. Borrowing the
+                // string from a CString puts the terminator right after it, which
+                // is what the driver reads. `c_connection_str` must outlive the
+                // call.
+                let c_connection_str = CString::new(connection_str).map_err(|e| {
+                    DataFusionError::Execution(format!(
+                        "mdb connection string contains an interior NUL byte: {e}"
+                    ))
+                })?;
+                let connection_str = c_connection_str
+                    .to_str()
+                    .expect("connection string came from a String, so it is valid UTF-8");
                 let connection = env
                     .connect_with_connection_string(
-                        &connection_str,
+                        connection_str,
                         odbc_api::ConnectionOptions::default(),
                     )
                     .map_err(|e| {

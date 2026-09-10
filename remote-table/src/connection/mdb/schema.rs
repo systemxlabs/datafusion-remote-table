@@ -48,7 +48,11 @@ pub(super) fn build_remote_schema(mut cursor: CursorImpl<StatementImpl>) -> DFRe
         // U+FFFD for invalid input. It also handles the wide branch (Windows /
         // odbc-api `wide` feature) where col_desc.name is Vec<u16>.
         let col_name = sql_chars_to_string_lossy(&col_desc.name);
-        let col_nullable = col_desc.nullability.could_be_nullable();
+        // mdbtools reports nullability as `!col->is_fixed`, i.e. it describes
+        // the physical storage layout, not whether the column can hold NULL.
+        // Columns it calls NOT NULL routinely contain NULLs, which trips
+        // Arrow's non-nullable checks. Treat every MDB column as nullable.
+        let col_nullable = true;
 
         let remote_type = RemoteType::Mdb(mdb_type_to_remote_type(col_desc.data_type)?);
         remote_fields.push(RemoteField::new(col_name, remote_type, col_nullable));
