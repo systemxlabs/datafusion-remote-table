@@ -253,3 +253,121 @@ async fn list_tables_projection_and_limit() {
 +-------------------------------+"#
     );
 }
+
+#[rstest::rstest]
+#[case("SELECT * FROM Products WHERE UnitPrice > 20".into())]
+#[case(vec!["Products"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn filter_on_currency_column(#[case] source: RemoteSource) {
+    // UnitPrice is a Jet Currency column. mdbtools' mdb_test_sarg() has no case
+    // for MONEY, so the pushed predicate filters nothing remotely; the filter is
+    // classified as inexact and DataFusion must apply it locally.
+    assert_plan_and_result(
+        RemoteDbType::Mdb,
+        source,
+        "select \"ProductID\", \"ProductName\", \"UnitPrice\" from remote_table \
+         where \"UnitPrice\" > 20 order by \"ProductID\" limit 6",
+        vec![
+            "SortPreservingMergeExec: [ProductID@0 ASC NULLS LAST], fetch=6\n  SortExec: TopK(fetch=6), expr=[ProductID@0 ASC NULLS LAST], preserve_partitioning=[true]\n    FilterExec: UnitPrice@2 > 20.0000\n      RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n        RemoteTableScanExec: source=query, projection=[ProductID, ProductName, UnitPrice]\n",
+            "SortPreservingMergeExec: [ProductID@0 ASC NULLS LAST], fetch=6\n  SortExec: TopK(fetch=6), expr=[ProductID@0 ASC NULLS LAST], preserve_partitioning=[true]\n    FilterExec: UnitPrice@2 > 20.0000\n      RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n        RemoteTableScanExec: source=Products, projection=[ProductID, ProductName, UnitPrice], filters=[(\"UnitPrice\" > 20.0000)]\n",
+        ],
+        r#"+-----------+---------------------------------+-----------+
+| ProductID | ProductName                     | UnitPrice |
++-----------+---------------------------------+-----------+
+| 4         | Chef Anton's Cajun Seasoning    | 22.0000   |
+| 5         | Chef Anton's Gumbo Mix          | 21.3500   |
+| 6         | Grandma's Boysenberry Spread    | 25.0000   |
+| 7         | Uncle Bob's Organic Dried Pears | 30.0000   |
+| 8         | Northwoods Cranberry Sauce      | 40.0000   |
+| 9         | Mishi Kobe Niku                 | 97.0000   |
++-----------+---------------------------------+-----------+"#,
+    )
+    .await;
+}
+
+#[rstest::rstest]
+#[case("SELECT * FROM Products WHERE UnitPrice > 20".into())]
+#[case(vec!["Products"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn filter_on_currency_column_with_limit(#[case] source: RemoteSource) {
+    // The predicate cannot be evaluated by the driver, so the limit must not be
+    // pushed into the scan either: the scan would otherwise truncate the table
+    // before the local filter removes the non-matching rows.
+    assert_plan_and_result(
+        RemoteDbType::Mdb,
+        source,
+        "select \"ProductID\", \"UnitPrice\" from remote_table \
+         where \"UnitPrice\" > 20 order by \"ProductID\" limit 2",
+        vec![
+            "SortPreservingMergeExec: [ProductID@0 ASC NULLS LAST], fetch=2\n  SortExec: TopK(fetch=2), expr=[ProductID@0 ASC NULLS LAST], preserve_partitioning=[true]\n    FilterExec: UnitPrice@1 > 20.0000\n      RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n        RemoteTableScanExec: source=query, projection=[ProductID, UnitPrice]\n",
+            "SortPreservingMergeExec: [ProductID@0 ASC NULLS LAST], fetch=2\n  SortExec: TopK(fetch=2), expr=[ProductID@0 ASC NULLS LAST], preserve_partitioning=[true]\n    FilterExec: UnitPrice@1 > 20.0000\n      RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n        RemoteTableScanExec: source=Products, projection=[ProductID, UnitPrice], filters=[(\"UnitPrice\" > 20.0000)]\n",
+        ],
+        r#"+-----------+-----------+
+| ProductID | UnitPrice |
++-----------+-----------+
+| 4         | 22.0000   |
+| 5         | 21.3500   |
++-----------+-----------+"#,
+    )
+    .await;
+}
+
+#[rstest::rstest]
+#[case("SELECT * FROM Products WHERE ProductName LIKE 'Ch%'".into())]
+#[case(vec!["Products"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn filter_on_text_column(#[case] source: RemoteSource) {
+    // Text comparisons are supported by mdb_test_sarg(), so the filter stays
+    // pushed down (no local FilterExec) and results are still correct.
+    assert_plan_and_result(
+        RemoteDbType::Mdb,
+        source,
+        "select \"ProductID\", \"ProductName\" from remote_table \
+         where \"ProductName\" like 'Ch%' order by \"ProductID\"",
+        vec![
+            "SortPreservingMergeExec: [ProductID@0 ASC NULLS LAST]\n  SortExec: expr=[ProductID@0 ASC NULLS LAST], preserve_partitioning=[true]\n    FilterExec: ProductName@1 LIKE Ch%\n      RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n        RemoteTableScanExec: source=query, projection=[ProductID, ProductName]\n",
+            "SortExec: expr=[ProductID@0 ASC NULLS LAST], preserve_partitioning=[false]\n  CooperativeExec\n    RemoteTableScanExec: source=Products, projection=[ProductID, ProductName], filters=[\"ProductName\" LIKE 'Ch%']\n",
+        ],
+        r#"+-----------+------------------------------+
+| ProductID | ProductName                  |
++-----------+------------------------------+
+| 1         | Chai                         |
+| 2         | Chang                        |
+| 4         | Chef Anton's Cajun Seasoning |
+| 5         | Chef Anton's Gumbo Mix       |
+| 39        | Chartreuse verte             |
+| 48        | Chocolade                    |
++-----------+------------------------------+"#,
+    )
+    .await;
+}
+
+#[rstest::rstest]
+#[case("SELECT * FROM Orders WHERE OrderID > 11070".into())]
+#[case(vec!["Orders"].into())]
+#[tokio::test(flavor = "multi_thread")]
+async fn filter_on_integer_column(#[case] source: RemoteSource) {
+    // Integer comparisons are supported by mdb_test_sarg().
+    assert_plan_and_result(
+        RemoteDbType::Mdb,
+        source,
+        "select \"OrderID\", \"CustomerID\", \"ShipVia\" from remote_table \
+         where \"OrderID\" > 11070 order by \"OrderID\"",
+        vec![
+            "SortPreservingMergeExec: [OrderID@0 ASC NULLS LAST]\n  SortExec: expr=[OrderID@0 ASC NULLS LAST], preserve_partitioning=[true]\n    FilterExec: OrderID@0 > 11070\n      RepartitionExec: partitioning=RoundRobinBatch(12), input_partitions=1\n        RemoteTableScanExec: source=query, projection=[OrderID, CustomerID, ShipVia]\n",
+            "SortExec: expr=[OrderID@0 ASC NULLS LAST], preserve_partitioning=[false]\n  CooperativeExec\n    RemoteTableScanExec: source=Orders, projection=[OrderID, CustomerID, ShipVia], filters=[(\"OrderID\" > 11070)]\n",
+        ],
+        r#"+---------+------------+---------+
+| OrderID | CustomerID | ShipVia |
++---------+------------+---------+
+| 11071   | LILAS      | 1       |
+| 11072   | ERNSH      | 2       |
+| 11073   | PERIC      | 2       |
+| 11074   | SIMOB      | 2       |
+| 11075   | RICSU      | 2       |
+| 11076   | BONAP      | 2       |
+| 11077   | RATTC      | 2       |
++---------+------------+---------+"#,
+    )
+    .await;
+}
