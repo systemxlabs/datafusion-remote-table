@@ -110,6 +110,47 @@ pub fn setup_mdb() -> &'static Path {
     })
 }
 
+static ACCDB_DB: OnceLock<PathBuf> = OnceLock::new();
+
+/// Returns the path to the ACCDB (Access 2007+ / ACE engine) test database file.
+///
+/// Downloads `data/ASampleDatabase.accdb` (544,768 bytes) from the same pinned
+/// commit of the mdbtools/mdbtestdata repo used by [`setup_mdb`]. The file is
+/// cached at `target/ASampleDatabase.accdb`; subsequent invocations reuse the
+/// cached copy when its size matches `EXPECTED_SIZE`.
+///
+/// mdbtools' own test suite exercises this file through the `MDBTools` ODBC
+/// driver, so it covers the ACE code path that `nwind.mdb` (JET3) does not.
+pub fn setup_accdb() -> &'static Path {
+    const URL: &str = "https://raw.githubusercontent.com/mdbtools/mdbtestdata/\
+        5ebf2d685ec628df72f4774b78abee96a866b837/data/ASampleDatabase.accdb";
+    const EXPECTED_SIZE: u64 = 544_768;
+
+    ACCDB_DB.get_or_init(|| {
+        let db_path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../target/ASampleDatabase.accdb"
+        ));
+        let needs_download = std::fs::metadata(&db_path)
+            .map(|m| m.len() != EXPECTED_SIZE)
+            .unwrap_or(true);
+        if needs_download {
+            let status = std::process::Command::new("curl")
+                .args(["-fsSL", "--retry", "3", "-o"])
+                .arg(&db_path)
+                .arg(URL)
+                .status()
+                .expect(
+                    "failed to invoke curl to fetch ASampleDatabase.accdb (is curl installed?)",
+                );
+            if !status.success() {
+                panic!("Failed to download ACCDB fixture from {URL}");
+            }
+        }
+        db_path
+    })
+}
+
 static GAUSSDB_DB: OnceLock<DockerCompose> = OnceLock::new();
 pub async fn setup_gaussdb_db() {
     let _ = GAUSSDB_DB.get_or_init(|| {
