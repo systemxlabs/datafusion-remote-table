@@ -20,6 +20,7 @@ use futures::lock::Mutex;
 use log::debug;
 use odbc_api::Cursor;
 use odbc_api::Environment;
+use odbc_api::handles::{AsStatementRef, Statement};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::path::PathBuf;
@@ -263,6 +264,11 @@ impl Connection for MdbConnection {
                     ))
                 })?;
 
+            // mdbtools answers SQL_NO_DATA for zero-length text and memo values,
+            // which odbc-api turns into a panic. Handing the raw handle to the
+            // row reader lets it treat that as an empty cell instead.
+            let hstmt = cursor.as_stmt_ref().as_sys();
+
             let mut exhausted = false;
 
             loop {
@@ -275,7 +281,7 @@ impl Connection for MdbConnection {
                 while row_count < chunk_size {
                     match cursor.next_row() {
                         Ok(Some(row)) => {
-                            append_row_to_builders(&mut builders, row, &table_schema)?;
+                            append_row_to_builders(&mut builders, row, hstmt, &table_schema)?;
                             row_count += 1;
                         }
                         Ok(None) => {

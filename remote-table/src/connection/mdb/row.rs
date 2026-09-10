@@ -10,8 +10,73 @@ use chrono::{NaiveDate, NaiveTime, Timelike};
 use datafusion_common::DataFusionError;
 use datafusion_common::project_schema;
 use odbc_api::decimal_text_to_i128;
+use odbc_api::sys;
 
 use crate::connection::projections_contains;
+
+/// Reads one variable-length column straight through `SQLGetData`.
+///
+/// odbc-api's `CursorRow::get_text` / `get_binary` turn `SQL_NO_DATA` into a
+/// panic, but mdbtools answers exactly that for a zero-length text, memo or OLE
+/// value: `to_c_char` and the `MDB_OLE` case both compare the read position
+/// against the value length, and `0 >= 0` holds before anything is copied.
+/// Here `SQL_NO_DATA` just means "nothing left to read", so the bytes gathered
+/// so far are returned — an empty cell rather than a failed query.
+///
+/// Returns `false` when the cell is NULL, `true` otherwise (possibly empty).
+fn read_variable_column(
+    hstmt: sys::HStmt,
+    col_idx: u16,
+    c_type: sys::CDataType,
+    out: &mut Vec<u8>,
+) -> DFResult<bool> {
+    // mdbtools terminates character data but not OLE payloads, so the usable
+    // window is one byte smaller for characters.
+    let terminator = usize::from(c_type == sys::CDataType::Char);
+    out.clear();
+    let mut window = vec![0u8; 4096];
+    loop {
+        let mut indicator: sys::Len = 0;
+        // Safety: `hstmt` is the live statement handle of the cursor being read,
+        // and `window` is a valid mutable buffer of the length passed.
+        let ret = unsafe {
+            sys::SQLGetData(
+                hstmt,
+                col_idx,
+                c_type,
+                window.as_mut_ptr() as sys::Pointer,
+                window.len() as sys::Len,
+                &mut indicator,
+            )
+        };
+        if indicator == sys::NULL_DATA {
+            out.clear();
+            return Ok(false);
+        }
+        match ret {
+            sys::SqlReturn::SUCCESS | sys::SqlReturn::SUCCESS_WITH_INFO => {}
+            sys::SqlReturn::NO_DATA => return Ok(true),
+            other => {
+                return Err(DataFusionError::Execution(format!(
+                    "SQLGetData failed for column {col_idx}: {other:?}"
+                )));
+            }
+        }
+        let Ok(available) = usize::try_from(indicator) else {
+            return Err(DataFusionError::Execution(format!(
+                "SQLGetData reported an unexpected length {indicator} for column {col_idx}"
+            )));
+        };
+        let capacity = window.len() - terminator;
+        out.extend_from_slice(&window[..available.min(capacity)]);
+        if available <= capacity {
+            return Ok(true);
+        }
+        // The value did not fit; `available` is the full size, so one more call
+        // with a window that large drains it.
+        window.resize(available + terminator, 0);
+    }
+}
 
 macro_rules! read_data {
     ($builder:expr, $field:expr, $builder_ty:ty, $row:expr, $col_idx:expr, $value_ty:ty, $convert:expr) => {{
@@ -38,7 +103,7 @@ macro_rules! read_data {
 }
 
 macro_rules! read_text {
-    ($builder:expr, $field:expr, $builder_ty:ty, $row:expr, $col_idx:expr, $buf:expr, $convert:expr) => {{
+    ($builder:expr, $field:expr, $builder_ty:ty, $hstmt:expr, $col_idx:expr, $buf:expr, $convert:expr) => {{
         let builder = $builder
             .as_any_mut()
             .downcast_mut::<$builder_ty>()
@@ -49,10 +114,13 @@ macro_rules! read_text {
                     $field,
                 )
             });
-        $buf.clear();
-        let is_not_null = $row.get_text($col_idx, $buf).map_err(|e| {
-            DataFusionError::Execution(format!("Failed to get value for field {:?}: {e:?}", $field))
-        })?;
+        let is_not_null = read_variable_column($hstmt, $col_idx, sys::CDataType::Char, $buf)
+            .map_err(|e| {
+                DataFusionError::Execution(format!(
+                    "Failed to get value for field {:?}: {e:?}",
+                    $field
+                ))
+            })?;
         if is_not_null {
             // mdbtools returns text in the MDB file's code page (CP1252/CP936/etc.),
             // not UTF-8. from_utf8_lossy keeps the printable bytes and substitutes
@@ -68,6 +136,7 @@ macro_rules! read_text {
 pub(super) fn append_row_to_builders(
     builders: &mut [Box<dyn arrow::array::ArrayBuilder>],
     mut row: odbc_api::CursorRow,
+    hstmt: sys::HStmt,
     table_schema: &SchemaRef,
 ) -> DFResult<()> {
     // Reuse one Vec per ODBC cell type across all columns/rows in this call so
@@ -160,7 +229,7 @@ pub(super) fn append_row_to_builders(
                     builder,
                     field,
                     Decimal128Builder,
-                    row,
+                    hstmt,
                     odbc_col_idx,
                     &mut text_buf,
                     |v: String| {
@@ -176,7 +245,7 @@ pub(super) fn append_row_to_builders(
                     builder,
                     field,
                     StringBuilder,
-                    row,
+                    hstmt,
                     odbc_col_idx,
                     &mut text_buf,
                     |v: String| Ok::<_, DataFusionError>(v)
@@ -187,7 +256,7 @@ pub(super) fn append_row_to_builders(
                     builder,
                     field,
                     StringViewBuilder,
-                    row,
+                    hstmt,
                     odbc_col_idx,
                     &mut text_buf,
                     |v: String| Ok::<_, DataFusionError>(v)
@@ -200,8 +269,13 @@ pub(super) fn append_row_to_builders(
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to FixedSizeBinaryBuilder for {field:?}")
                     });
-                binary_buf.clear();
-                let is_not_null = row.get_binary(odbc_col_idx, &mut binary_buf).map_err(|e| {
+                let is_not_null = read_variable_column(
+                    hstmt,
+                    odbc_col_idx,
+                    sys::CDataType::Binary,
+                    &mut binary_buf,
+                )
+                .map_err(|e| {
                     DataFusionError::Execution(format!(
                         "Failed to get value for field {:?}: {e:?}",
                         field
@@ -220,8 +294,13 @@ pub(super) fn append_row_to_builders(
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to BinaryBuilder for {field:?}")
                     });
-                binary_buf.clear();
-                let is_not_null = row.get_binary(odbc_col_idx, &mut binary_buf).map_err(|e| {
+                let is_not_null = read_variable_column(
+                    hstmt,
+                    odbc_col_idx,
+                    sys::CDataType::Binary,
+                    &mut binary_buf,
+                )
+                .map_err(|e| {
                     DataFusionError::Execution(format!(
                         "Failed to get value for field {:?}: {e:?}",
                         field
@@ -240,8 +319,13 @@ pub(super) fn append_row_to_builders(
                     .unwrap_or_else(|| {
                         panic!("Failed to downcast builder to BinaryViewBuilder for {field:?}")
                     });
-                binary_buf.clear();
-                let is_not_null = row.get_binary(odbc_col_idx, &mut binary_buf).map_err(|e| {
+                let is_not_null = read_variable_column(
+                    hstmt,
+                    odbc_col_idx,
+                    sys::CDataType::Binary,
+                    &mut binary_buf,
+                )
+                .map_err(|e| {
                     DataFusionError::Execution(format!(
                         "Failed to get value for field {:?}: {e:?}",
                         field
@@ -269,7 +353,7 @@ pub(super) fn append_row_to_builders(
                     builder,
                     field,
                     Time64MicrosecondBuilder,
-                    row,
+                    hstmt,
                     odbc_col_idx,
                     &mut text_buf,
                     |value: String| {
