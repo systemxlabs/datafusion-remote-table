@@ -85,6 +85,11 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Int2[] / Int4[] / Int8[]
   - [x] Float4[] / Float8[]
   - [x] Varchar[] / Text[] / Bool[]
+- [x] MDB (Microsoft Access, via the MDBTools ODBC driver)
+  - [x] Byte / Small Integer / Long Integer / Bit
+  - [x] Real / Double / Currency
+  - [x] Text / Memo / Binary / OLE / Guid
+  - [x] Date / Time / DateTime
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)

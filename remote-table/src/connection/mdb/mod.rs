@@ -144,18 +144,19 @@ impl Pool for MdbPool {
                 // exists). `CString` owns a NUL-terminated buffer, and `to_str`
                 // borrows exactly its length, so the driver stops at the
                 // terminator we own.
-                let connection_str = CString::new(self.options.connection_string()).map_err(|e| {
-                    DataFusionError::Execution(format!(
-                        "mdb connection string contains a NUL byte: {e}"
-                    ))
-                })?;
+                let connection_str =
+                    CString::new(self.options.connection_string()).map_err(|e| {
+                        DataFusionError::Execution(format!(
+                            "mdb connection string contains a NUL byte: {e}"
+                        ))
+                    })?;
                 let connection_str = connection_str
                     .to_str()
                     .expect("connection string built from a Rust String is valid UTF-8");
                 debug!("[remote-table] mdb connection string: {connection_str}");
                 let connection = env
                     .connect_with_connection_string(
-                        &connection_str,
+                        connection_str,
                         odbc_api::ConnectionOptions::default(),
                     )
                     .map_err(|e| {
