@@ -1,4 +1,5 @@
 use super::schema::{DOCUMENT_COLUMN, ID_COLUMN};
+use super::variant;
 use crate::{DFResult, MongoDBType, RemoteSchema, RemoteType};
 use arrow::array::{
     Array, ArrayBuilder, ArrayRef, AsArray, BinaryBuilder, BooleanBuilder, Float64Builder,
@@ -12,13 +13,14 @@ use arrow::datatypes::{
 };
 use datafusion_common::{DataFusionError, project_schema};
 use mongodb::bson::spec::BinarySubtype;
-use mongodb::bson::{Binary, Bson, DateTime, Decimal128, Document, RawDocumentBuf, oid::ObjectId};
+use mongodb::bson::{Binary, Bson, DateTime, Decimal128, Document, oid::ObjectId};
+use parquet_variant::Variant;
 use std::str::FromStr;
 
-/// Convert a chunk of raw documents into one record batch: `_id` plus the
-/// whole BSON document.
+/// Convert a chunk of documents into one record batch: the typed key plus the
+/// document itself as a Variant column.
 pub(crate) fn documents_to_batch(
-    documents: &[RawDocumentBuf],
+    documents: &[Document],
     table_schema: &SchemaRef,
     projection: Option<&Vec<usize>>,
     capacity: usize,
@@ -29,52 +31,33 @@ pub(crate) fn documents_to_batch(
         None => (0..table_schema.fields().len()).collect(),
     };
 
-    let mut builders: Vec<Box<dyn ArrayBuilder>> = indices
-        .iter()
-        .map(|index| make_builder(table_schema.field(*index).data_type(), capacity.max(1)))
-        .collect();
-
-    for document in documents {
-        for (builder_index, field_index) in indices.iter().enumerate() {
-            let field = table_schema.field(*field_index);
-            let builder = &mut builders[builder_index];
-            if field.name() == DOCUMENT_COLUMN {
-                downcast::<BinaryBuilder>(builder, field.data_type(), field.name())?
-                    .append_value(document.as_bytes());
-            } else {
-                let value = document
-                    .get(field.name())
-                    .map_err(|e| {
-                        DataFusionError::Execution(format!(
-                            "Failed to read {:?} from a mongodb document: {e:?}",
-                            field.name()
-                        ))
-                    })?
-                    .map(Bson::try_from)
-                    .transpose()
-                    .map_err(|e| {
-                        DataFusionError::Execution(format!(
-                            "Failed to convert {:?} to BSON: {e:?}",
-                            field.name()
-                        ))
-                    })?;
-                append_value(builder, value.as_ref(), field.data_type(), field.name())?;
-            }
+    let mut columns: Vec<ArrayRef> = Vec::with_capacity(indices.len());
+    for field_index in indices {
+        let field = table_schema.field(field_index);
+        if field.name() == DOCUMENT_COLUMN {
+            columns.push(variant::documents_to_variant_array(documents)?);
+            continue;
         }
+        let mut builder = make_builder(field.data_type(), capacity.max(1));
+        for document in documents {
+            append_value(
+                &mut builder,
+                document.get(field.name()),
+                field.data_type(),
+                field.name(),
+            )?;
+        }
+        columns.push(builder.finish());
     }
 
-    let columns: Vec<ArrayRef> = builders
-        .into_iter()
-        .map(|mut builder| builder.finish())
-        .collect();
     let options = RecordBatchOptions::new().with_row_count(Some(documents.len()));
     RecordBatch::try_new_with_options(projected_schema, columns, &options).map_err(Into::into)
 }
 
-/// Convert a record batch of `(_id, document)` rows back into BSON documents.
+/// Convert a record batch of `(key, document)` rows back into BSON documents.
 ///
-/// A non-null `_id` overrides the key already present in the document; a null
-/// `_id` leaves the document untouched so that the server generates one.
+/// A non-null key overrides the `_id` already present in the document; a null
+/// key leaves the document untouched so that the server generates one.
 pub(crate) fn batch_to_documents(
     batch: &RecordBatch,
     remote_schema: &RemoteSchema,
@@ -92,20 +75,26 @@ pub(crate) fn batch_to_documents(
         .fields
         .iter()
         .position(|field| field.name == ID_COLUMN);
-    let documents = batch.column(document_index).as_binary::<i32>();
+
+    // The document column is a Variant: a struct of a shared metadata buffer
+    // and one value buffer per row.
+    let struct_array = batch.column(document_index).as_struct();
+    let metadata = struct_array.column(0).as_binary_view();
+    let values = struct_array.column(1).as_binary_view();
 
     let mut result = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
-        if documents.is_null(row) {
+        if struct_array.is_null(row) {
             return Err(DataFusionError::Execution(format!(
                 "MongoDB insert requires a non-null {DOCUMENT_COLUMN:?} value, got null in row {row}"
             )));
         }
-        let mut document = Document::from_reader(documents.value(row)).map_err(|e| {
+        let variant = Variant::try_new(metadata.value(row), values.value(row)).map_err(|e| {
             DataFusionError::Execution(format!(
-                "Failed to decode the {DOCUMENT_COLUMN:?} column as BSON: {e:?}"
+                "Failed to decode the {DOCUMENT_COLUMN:?} column as a Variant: {e:?}"
             ))
         })?;
+        let mut document = variant::variant_to_document(&variant)?;
         if let Some(id_index) = id_index {
             let id = batch.column(id_index);
             if !id.is_null(row) {

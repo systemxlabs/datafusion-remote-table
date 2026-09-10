@@ -19,7 +19,7 @@ dm = ["dep:odbc-api"]
 mdb = ["dep:odbc-api"]
 access = ["dep:odbc-api"]
 gaussdb = ["dep:bb8", "dep:bb8-gaussdb"]
-mongodb = ["dep:mongodb", "dep:bson"]
+mongodb = ["dep:mongodb", "dep:bson", "dep:parquet-variant", "dep:parquet-variant-compute"]
 
 [dependencies]
 arrow = { workspace = true }
@@ -74,6 +74,10 @@ mongodb = { version = "3.9", default-features = false, features = ["bson-3", "ru
 # Only present to switch on `serde_json-1` for the `bson` crate that `mongodb`
 # re-exports; it makes `Bson::try_from(serde_json::Value)` (extended JSON) available.
 bson = { version = "3.1", default-features = false, features = ["serde_json-1"], optional = true }
+# Parquet Variant: a self-describing binary encoding for semi-structured data,
+# used to store the MongoDB document column.
+parquet-variant = { version = "59.2", optional = true }
+parquet-variant-compute = { version = "59.2", optional = true }
 
 [dev-dependencies]
 datafusion = { workspace = true }

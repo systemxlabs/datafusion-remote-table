@@ -98,7 +98,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Own type enum, options, pool and connection handling; tables are listed through the `MSysObjects` catalog table
 - [x] MongoDB
   - [x] `_id` (typed from the stored key, including ObjectId)
-  - [x] Whole document as raw BSON bytes
+  - [x] Whole document as a Parquet Variant
 
 ## MongoDB
 
@@ -121,27 +121,45 @@ exposed as exactly two columns:
 | Column | Type | Contents |
 |---|---|---|
 | `_id` | the Arrow type of the stored key | the document key; `ObjectId` becomes its 24 character hex string |
-| `document` | `Binary` | the whole document as raw BSON bytes |
+| `document` | a Parquet [Variant](https://github.com/apache/parquet-format/blob/master/VariantEncoding.md) | the whole document, self-describing |
 
-Only `_id` is typed (from a sample of `sample_size` documents, 100 by default)
-and the rest of the document is kept verbatim. Compared with inferring one
-column per field, this keeps the collection faithful - every BSON type, nested
-document and array survives, and field order is untouched - and the schema is
-stable no matter what the documents contain or how the collection evolves. A
-collection is queryable even when it is empty, in which case `_id` reports
-MongoDB's default key type (`ObjectId`).
+Only `_id` needs looking at (a sample of `sample_size` documents, 100 by
+default) and the rest of the document is stored as a Variant, which is
+per-value typed and nested natively. Compared with inferring one column per
+field, this keeps the collection faithful — nested documents and arrays are not
+flattened, types are not widened and no value is turned into text — and the
+schema is stable no matter what the documents contain or how the collection
+evolves. A collection is queryable even when it is empty, in which case `_id`
+reports MongoDB's default key type (`ObjectId`).
 
-Inserts take the `document` column verbatim; a non-null `_id` overrides the key
+The Variant column is an Arrow [canonical extension type][ext]: its Arrow type
+is `Struct<metadata: BinaryView, value: BinaryView>` carrying the
+`arrow.parquet.variant` extension name. Everything works at the Arrow level
+today, but DataFusion 55 has no SQL functions for Variant yet, so reaching into
+a document from SQL needs a UDF or a custom `Transform`; the
+`parquet-variant-compute` crate provides the `variant_get` and
+`variant_to_json` kernels to build on.
+
+[ext]: https://arrow.apache.org/docs/format/CanonicalExtensions.html#parquet-variant
+
+Every BSON type Variant can express is stored natively: numbers keep their
+width (`int32` stays `Int32`, `int64` stays `Int64`), dates become UTC
+timestamps, binary values are stored as bytes. The MongoDB specific types —
+ObjectId, regular expressions, the internal BSON timestamp, min/max keys,
+JavaScript, symbols and `decimal128` — are stored as their canonical extended
+JSON object (for example `{"$oid": "..."}`), which is also how they are read
+back. Two things do not survive, because Variant cannot express them:
+
+- the subtype of a binary value (a UUID is stored as plain bytes);
+- BSON field order, since a Variant object's fields are stored sorted by name.
+
+Inserts take the `document` column as it is; a non-null `_id` overrides the key
 inside the document, and a null `_id` leaves it to the server to generate.
 
 Filters are not pushed down — a SQL predicate cannot be unparsed into a BSON
 filter — so DataFusion evaluates them locally, and predicates can only reference
 `_id` because the document itself is opaque to SQL. Limit pushdown and `count()`
 (via `count_documents`) are supported.
-
-To work with the fields inside a document, either decode the `document` column
-in a custom `Transform` (`remote-table/src/transform.rs`), or declare the schema
-explicitly with `RemoteTable::try_new_with_remote_schema`.
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)

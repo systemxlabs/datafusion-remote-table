@@ -1,6 +1,7 @@
 mod command;
 mod row;
 mod schema;
+mod variant;
 
 pub(crate) use command::rewrite_mongo_query;
 pub(crate) use command::select_all_mongo_command;
@@ -17,7 +18,7 @@ use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::TryStreamExt;
 use log::debug;
-use mongodb::bson::{Bson, Document, RawDocumentBuf};
+use mongodb::bson::Document;
 use mongodb::options::ClientOptions;
 use mongodb::{Client, Cursor};
 use std::sync::Arc;
@@ -88,13 +89,13 @@ impl MongoDBConnection {
         database: Option<&str>,
         collection: &str,
         limit: Option<usize>,
-    ) -> DFResult<Cursor<RawDocumentBuf>> {
+    ) -> DFResult<Cursor<Document>> {
         let database = self.database_name(database);
         debug!(
             "[remote-table] executing mongodb find: database={database}, collection={collection}, limit={limit:?}"
         );
         let db = self.client.database(database);
-        let collection = db.collection::<RawDocumentBuf>(collection);
+        let collection = db.collection::<Document>(collection);
         let mut find = collection.find(Document::new());
         if let Some(limit) = limit {
             find = find.limit(limit as i64);
@@ -123,19 +124,12 @@ impl Connection for MongoDBConnection {
         while let Some(document) = cursor.try_next().await.map_err(|e| {
             DataFusionError::Plan(format!("Failed to sample documents from mongodb: {e:?}"))
         })? {
-            let value = document
-                .get(schema::ID_COLUMN)
-                .map_err(|e| {
-                    DataFusionError::Plan(format!(
-                        "Failed to read _id from a sampled mongodb document: {e:?}"
-                    ))
-                })?
-                .map(Bson::try_from)
-                .transpose()
-                .map_err(|e| {
-                    DataFusionError::Plan(format!("Failed to convert _id to BSON: {e:?}"))
-                })?;
-            id_values.push(value.unwrap_or(Bson::Null));
+            id_values.push(
+                document
+                    .get(schema::ID_COLUMN)
+                    .cloned()
+                    .unwrap_or(mongodb::bson::Bson::Null),
+            );
         }
 
         Ok(Arc::new(schema::infer_remote_schema(&id_values)))
@@ -170,7 +164,7 @@ impl Connection for MongoDBConnection {
             let mut cursor = Box::pin(cursor);
             let mut exhausted = false;
             while !exhausted {
-                let mut documents: Vec<RawDocumentBuf> = Vec::with_capacity(chunk_size);
+                let mut documents: Vec<Document> = Vec::with_capacity(chunk_size);
                 while documents.len() < chunk_size {
                     match cursor.try_next().await {
                         Ok(Some(document)) => documents.push(document),

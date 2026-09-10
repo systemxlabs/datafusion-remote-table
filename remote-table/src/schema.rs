@@ -699,7 +699,7 @@ pub enum MongoDBType {
     Object,
     /// Array, surfaced as JSON text.
     Array,
-    /// A whole BSON document, surfaced as raw BSON bytes.
+    /// A whole BSON document, surfaced as a Parquet Variant column.
     Document,
     Binary,
     /// ObjectId, surfaced as its 24 character hex string.
@@ -731,7 +731,14 @@ impl MongoDBType {
             | MongoDBType::Timestamp
             | MongoDBType::Regex
             | MongoDBType::JavaScript => DataType::Utf8,
-            MongoDBType::Binary | MongoDBType::Document => DataType::Binary,
+            MongoDBType::Binary => DataType::Binary,
+            // A Variant column is an Arrow canonical extension type over the
+            // struct the Parquet Variant encoding is made of; the extension
+            // name itself lives on the field, see `RemoteField::to_arrow_field`.
+            MongoDBType::Document => DataType::Struct(Fields::from(vec![
+                Field::new("metadata", DataType::BinaryView, false),
+                Field::new("value", DataType::BinaryView, false),
+            ])),
             MongoDBType::Boolean => DataType::Boolean,
             MongoDBType::Date => DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
             MongoDBType::Null => DataType::Null,
@@ -765,11 +772,25 @@ impl RemoteField {
     }
 
     pub fn to_arrow_field(&self) -> Field {
-        Field::new(
+        let field = Field::new(
             self.name.clone(),
             self.remote_type.to_arrow_type(),
             self.nullable,
-        )
+        );
+        if matches!(
+            &self.remote_type,
+            RemoteType::MongoDB(MongoDBType::Document)
+        ) {
+            // Mark the column as the canonical Parquet Variant extension type.
+            let mut metadata = field.metadata().clone();
+            metadata.insert(
+                "ARROW:extension:name".to_string(),
+                "arrow.parquet.variant".to_string(),
+            );
+            metadata.insert("ARROW:extension:metadata".to_string(), String::new());
+            return field.with_metadata(metadata);
+        }
+        field
     }
 }
 

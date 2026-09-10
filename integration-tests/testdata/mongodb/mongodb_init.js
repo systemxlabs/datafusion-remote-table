@@ -20,11 +20,12 @@ test.object_id_table.insertMany([
 ]);
 
 // Documents that use every supported BSON type, including nested documents and
-// arrays, to check that the raw document column round-trips faithfully.
+// arrays, to check that the Variant document column round-trips faithfully.
+// Keyed by ObjectId so that they can be copied into the empty collection below.
 test.supported_data_types.drop();
 test.supported_data_types.insertMany([
   {
-    _id: 1,
+    _id: ObjectId('507f1f77bcf86cd799439021'),
     double_col: 1.5,
     int32_col: 2,
     int64_col: NumberLong(3),
@@ -39,7 +40,7 @@ test.supported_data_types.insertMany([
     null_col: null,
   },
   {
-    _id: 2,
+    _id: ObjectId('507f1f77bcf86cd799439022'),
     double_col: null,
     int32_col: null,
     int64_col: null,
@@ -55,5 +56,7 @@ test.supported_data_types.insertMany([
   },
 ]);
 
-// Starts empty: the insert tests declare the schema explicitly.
-test.insert_supported_data_types.drop();
+// Empty collections: `empty_collection` is read as-is, `round_trip_target`
+// receives the documents copied over by the round trip test.
+test.empty_collection.drop();
+test.round_trip_target.drop();

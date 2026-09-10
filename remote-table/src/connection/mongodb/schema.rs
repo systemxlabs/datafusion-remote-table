@@ -6,13 +6,13 @@ pub(crate) const DOCUMENT_COLUMN: &str = "document";
 /// Column holding the document key.
 pub(crate) const ID_COLUMN: &str = "_id";
 
-/// Build the two column schema of a collection: `_id` and the raw document.
+/// Build the two column schema of a collection: `_id` and the document.
 ///
 /// A MongoDB collection is schemaless and can be arbitrarily nested, so only
-/// `_id` is typed (from the sampled documents) and the rest of the document is
-/// exposed as one column of raw BSON bytes. Unlike inferring a column per
-/// field, this keeps the collection faithful and the schema stable no matter
-/// what the documents contain.
+/// `_id` is typed (from the sampled keys) and the rest of the document is
+/// exposed as one Variant column. Unlike inferring a column per field, this
+/// keeps the collection faithful and the schema stable no matter what the
+/// documents contain.
 pub(crate) fn infer_remote_schema(id_values: &[Bson]) -> RemoteSchema {
     let mut id_type: Option<MongoDBType> = None;
     for value in id_values {
