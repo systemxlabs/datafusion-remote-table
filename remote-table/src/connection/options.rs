@@ -1,6 +1,7 @@
 use crate::RemoteDbType;
 use derive_getters::Getters;
 use derive_with::With;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -11,7 +12,10 @@ pub enum ConnectionOptions {
     Mysql(MysqlConnectionOptions),
     Sqlite(SqliteConnectionOptions),
     Dm(DmConnectionOptions),
+    /// Microsoft Access `.mdb` files (Jet engine).
     Mdb(MdbConnectionOptions),
+    /// Microsoft Access `.accdb` files (ACE engine).
+    Access(AccessConnectionOptions),
     GaussDB(GaussDBConnectionOptions),
 }
 
@@ -24,6 +28,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(options) => options.stream_chunk_size,
             ConnectionOptions::Dm(options) => options.stream_chunk_size,
             ConnectionOptions::Mdb(options) => options.stream_chunk_size,
+            ConnectionOptions::Access(options) => options.stream_chunk_size,
             ConnectionOptions::GaussDB(options) => options.stream_chunk_size,
         }
     }
@@ -36,6 +41,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(_) => RemoteDbType::Sqlite,
             ConnectionOptions::Dm(_) => RemoteDbType::Dm,
             ConnectionOptions::Mdb(_) => RemoteDbType::Mdb,
+            ConnectionOptions::Access(_) => RemoteDbType::Access,
             ConnectionOptions::GaussDB(_) => RemoteDbType::GaussDB,
         }
     }
@@ -54,6 +60,7 @@ impl ConnectionOptions {
             ConnectionOptions::Sqlite(options) => ConnectionOptions::Sqlite(options),
             ConnectionOptions::Dm(options) => ConnectionOptions::Dm(options),
             ConnectionOptions::Mdb(options) => ConnectionOptions::Mdb(options),
+            ConnectionOptions::Access(options) => ConnectionOptions::Access(options),
             ConnectionOptions::GaussDB(options) => ConnectionOptions::GaussDB(options),
         }
     }
@@ -252,10 +259,13 @@ pub struct MdbConnectionOptions {
     pub stream_chunk_size: usize,
     pub uid: Option<String>,
     pub pwd: Option<String>,
-    /// Extra `key=value;` fragments appended verbatim. Use this for driver-specific
-    /// parameters not covered by the typed fields (e.g. `SystemDB`, `Exclusive=1`,
-    /// `IMEX=1` for the Microsoft Access ODBC driver on Windows).
-    pub extra_params: Vec<(String, String)>,
+    /// ODBC connection attributes, appended as `;key=value`. Use this for
+    /// driver-specific parameters not covered by the typed fields (e.g.
+    /// `SystemDB`, `Exclusive=1`, `IMEX=1` for the Microsoft Access ODBC driver
+    /// on Windows). A map, because a connection string is a set of attributes:
+    /// the order of different keywords is not significant, and repeating a
+    /// keyword is driver-defined behaviour that this type does not express.
+    pub extra_params: HashMap<String, String>,
 }
 
 impl MdbConnectionOptions {
@@ -266,7 +276,7 @@ impl MdbConnectionOptions {
             stream_chunk_size: 2048,
             uid: None,
             pwd: None,
-            extra_params: Vec::new(),
+            extra_params: HashMap::new(),
         }
     }
 
@@ -277,7 +287,7 @@ impl MdbConnectionOptions {
             stream_chunk_size: 2048,
             uid: None,
             pwd: None,
-            extra_params: Vec::new(),
+            extra_params: HashMap::new(),
         }
     }
 
@@ -303,6 +313,76 @@ impl MdbConnectionOptions {
 impl From<MdbConnectionOptions> for ConnectionOptions {
     fn from(options: MdbConnectionOptions) -> Self {
         ConnectionOptions::Mdb(options)
+    }
+}
+
+/// Options for a Microsoft Access `.accdb` (ACE engine) source.
+///
+/// This is its own type, with its own fields, pool and connection handling;
+/// what it shares with [`MdbConnectionOptions`] is only the shape of the
+/// connection parameters, because both formats are read through the same ODBC
+/// driver.
+#[derive(Debug, Clone, With, Getters)]
+pub struct AccessConnectionOptions {
+    pub path: PathBuf,
+    pub driver: String,
+    pub stream_chunk_size: usize,
+    pub uid: Option<String>,
+    pub pwd: Option<String>,
+    /// ODBC connection attributes, appended as `;key=value`. Use this for
+    /// driver-specific parameters not covered by the typed fields (e.g.
+    /// `SystemDB`, `Exclusive=1`, `IMEX=1` for the Microsoft Access ODBC driver
+    /// on Windows). A map, because a connection string is a set of attributes:
+    /// the order of different keywords is not significant, and repeating a
+    /// keyword is driver-defined behaviour that this type does not express.
+    pub extra_params: HashMap<String, String>,
+}
+
+impl AccessConnectionOptions {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            driver: "MDBTools".to_string(),
+            stream_chunk_size: 2048,
+            uid: None,
+            pwd: None,
+            extra_params: HashMap::new(),
+        }
+    }
+
+    pub fn new_with_driver(path: PathBuf, driver: impl Into<String>) -> Self {
+        Self {
+            path,
+            driver: driver.into(),
+            stream_chunk_size: 2048,
+            uid: None,
+            pwd: None,
+            extra_params: HashMap::new(),
+        }
+    }
+
+    /// Build the ODBC connection string. The default `Driver={...};DBQ=...` form
+    /// works for the mdbtools (Linux) driver. For the Microsoft Access ODBC driver
+    /// on Windows, set `uid`/`pwd` or add entries to `extra_params` (e.g.
+    /// `SystemDB`, `Exclusive`, `IMEX`).
+    pub fn connection_string(&self) -> String {
+        let mut s = format!("Driver={{{}}};DBQ={}", self.driver, self.path.display());
+        if let Some(uid) = &self.uid {
+            s.push_str(&format!(";UID={uid}"));
+        }
+        if let Some(pwd) = &self.pwd {
+            s.push_str(&format!(";PWD={pwd}"));
+        }
+        for (k, v) in &self.extra_params {
+            s.push_str(&format!(";{k}={v}"));
+        }
+        s
+    }
+}
+
+impl From<AccessConnectionOptions> for ConnectionOptions {
+    fn from(options: AccessConnectionOptions) -> Self {
+        ConnectionOptions::Access(options)
     }
 }
 

@@ -1,3 +1,5 @@
+#[cfg(feature = "access")]
+mod access;
 #[cfg(feature = "dm")]
 mod dm;
 #[cfg(feature = "gaussdb")]
@@ -14,6 +16,8 @@ mod postgres;
 #[cfg(feature = "sqlite")]
 mod sqlite;
 
+#[cfg(feature = "access")]
+pub use access::*;
 #[cfg(feature = "dm")]
 pub use dm::*;
 #[cfg(feature = "gaussdb")]
@@ -44,7 +48,7 @@ use log::debug;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-#[cfg(any(feature = "dm", feature = "mdb"))]
+#[cfg(any(feature = "dm", feature = "mdb", feature = "access"))]
 pub static ODBC_ENV: std::sync::OnceLock<odbc_api::Environment> = std::sync::OnceLock::new();
 
 #[async_trait::async_trait]
@@ -208,6 +212,19 @@ pub async fn connect(options: &ConnectionOptions) -> DFResult<Arc<dyn Pool>> {
                 ))
             }
         }
+        ConnectionOptions::Access(options) => {
+            #[cfg(feature = "access")]
+            {
+                let pool = connect_access(options)?;
+                Ok(Arc::new(pool))
+            }
+            #[cfg(not(feature = "access"))]
+            {
+                Err(DataFusionError::Internal(
+                    "Please enable the access feature".to_string(),
+                ))
+            }
+        }
         ConnectionOptions::GaussDB(options) => {
             #[cfg(feature = "gaussdb")]
             {
@@ -231,14 +248,18 @@ pub enum RemoteDbType {
     Oracle,
     Sqlite,
     Dm,
+    /// Microsoft Access `.mdb` files (Jet 3 / Jet 4 engine).
     Mdb,
+    /// Microsoft Access `.accdb` files (ACE engine). Every code path that talks
+    /// to the database is shared with [`RemoteDbType::Mdb`].
+    Access,
     GaussDB,
 }
 
 impl RemoteDbType {
     pub(crate) fn support_rewrite_with_filters_limit(&self, source: &RemoteSource) -> bool {
         match self {
-            RemoteDbType::Mdb => matches!(source, RemoteSource::Table(_)),
+            RemoteDbType::Mdb | RemoteDbType::Access => matches!(source, RemoteSource::Table(_)),
             _ => match source {
                 RemoteSource::Table(_) => true,
                 RemoteSource::Query(query) => query.trim()[0..6].eq_ignore_ascii_case("select"),
@@ -260,7 +281,7 @@ impl RemoteDbType {
             RemoteDbType::Dm => Err(DataFusionError::NotImplemented(
                 "Dm unparser not implemented".to_string(),
             )),
-            RemoteDbType::Mdb => Ok(Unparser::new(&PostgreSqlDialect {})),
+            RemoteDbType::Mdb | RemoteDbType::Access => Ok(Unparser::new(&PostgreSqlDialect {})),
         }
     }
 
@@ -293,7 +314,7 @@ impl RemoteDbType {
                         self.select_all_query(table)
                     ))
                 }
-                RemoteDbType::Mdb => {
+                RemoteDbType::Mdb | RemoteDbType::Access => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
                     } else {
@@ -339,6 +360,7 @@ impl RemoteDbType {
                 | RemoteDbType::Sqlite
                 | RemoteDbType::Dm
                 | RemoteDbType::Mdb
+                | RemoteDbType::Access
                 | RemoteDbType::GaussDB => {
                     let where_clause = if unparsed_filters.is_empty() {
                         "".to_string()
@@ -396,7 +418,7 @@ impl RemoteDbType {
             RemoteDbType::Mysql => {
                 format!("`{identifier}`")
             }
-            RemoteDbType::Mdb => {
+            RemoteDbType::Mdb | RemoteDbType::Access => {
                 format!("[{identifier}]")
             }
         }
@@ -426,7 +448,7 @@ impl RemoteDbType {
             RemoteDbType::Oracle | RemoteDbType::Dm => {
                 format!("HEXTORAW('{}')", hex::encode(value))
             }
-            RemoteDbType::Mdb => format!("X'{}'", hex::encode(value)),
+            RemoteDbType::Mdb | RemoteDbType::Access => format!("X'{}'", hex::encode(value)),
         }
     }
 
@@ -438,6 +460,7 @@ impl RemoteDbType {
             | RemoteDbType::Sqlite
             | RemoteDbType::Dm
             | RemoteDbType::Mdb
+            | RemoteDbType::Access
             | RemoteDbType::GaussDB => {
                 format!("SELECT * FROM {}", self.sql_table_name(table_identifiers))
             }
@@ -456,7 +479,7 @@ impl RemoteDbType {
             return None;
         }
         match self {
-            RemoteDbType::Mdb => None,
+            RemoteDbType::Mdb | RemoteDbType::Access => None,
             _ => match source {
                 RemoteSource::Table(table) => Some(format!(
                     "SELECT COUNT(1) FROM {}",
@@ -471,7 +494,7 @@ impl RemoteDbType {
                         Some(format!("SELECT COUNT(1) FROM ({query}) AS __subquery"))
                     }
                     RemoteDbType::Oracle => Some(format!("SELECT COUNT(1) FROM ({query})")),
-                    RemoteDbType::Mdb => unreachable!(),
+                    RemoteDbType::Mdb | RemoteDbType::Access => unreachable!(),
                 },
                 RemoteSource::Command(_) => None,
             },
@@ -529,7 +552,7 @@ fn just_deref<T: Copy>(t: &T) -> DFResult<T> {
     Ok(*t)
 }
 
-#[cfg(any(feature = "dm", feature = "mdb"))]
+#[cfg(any(feature = "dm", feature = "mdb", feature = "access"))]
 mod odbc_utils {
     //! Shared ODBC helpers used by both the dm and mdb backends.
 
@@ -574,5 +597,5 @@ mod odbc_utils {
             .ok_or_else(|| DataFusionError::Execution(format!("Invalid timestamp: {value:?}")))
     }
 }
-#[cfg(any(feature = "dm", feature = "mdb"))]
+#[cfg(any(feature = "dm", feature = "mdb", feature = "access"))]
 pub(crate) use odbc_utils::*;

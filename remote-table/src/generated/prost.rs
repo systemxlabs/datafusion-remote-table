@@ -54,7 +54,7 @@ pub struct RemoteTableInsertExec {
 pub struct ConnectionOptions {
     #[prost(
         oneof = "connection_options::ConnectionOptions",
-        tags = "1, 2, 3, 4, 5, 6, 7"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8"
     )]
     pub connection_options: ::core::option::Option<connection_options::ConnectionOptions>,
 }
@@ -76,6 +76,9 @@ pub mod connection_options {
         Mdb(super::MdbConnectionOptions),
         #[prost(message, tag = "7")]
         Gaussdb(super::GaussDbConnectionOptions),
+        /// Microsoft Access .accdb (ACE engine).
+        #[prost(message, tag = "8")]
+        Access(super::AccessConnectionOptions),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -90,15 +93,29 @@ pub struct MdbConnectionOptions {
     pub uid: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "5")]
     pub pwd: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "6")]
-    pub extra_params: ::prost::alloc::vec::Vec<MdbExtraParam>,
+    /// ODBC connection attributes passed through verbatim. Serialized in key
+    /// order so encoded plans are byte-stable.
+    #[prost(map = "string, string", tag = "6")]
+    pub extra_params:
+        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct MdbExtraParam {
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AccessConnectionOptions {
     #[prost(string, tag = "1")]
-    pub key: ::prost::alloc::string::String,
+    pub path: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
-    pub value: ::prost::alloc::string::String,
+    pub driver: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "3")]
+    pub stream_chunk_size: u32,
+    #[prost(string, optional, tag = "4")]
+    pub uid: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub pwd: ::core::option::Option<::prost::alloc::string::String>,
+    /// ODBC connection attributes passed through verbatim. Serialized in key
+    /// order so encoded plans are byte-stable.
+    #[prost(map = "string, string", tag = "6")]
+    pub extra_params:
+        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RemoteSource {
@@ -285,7 +302,7 @@ pub struct RemoteField {
 pub struct RemoteType {
     #[prost(
         oneof = "remote_type::Type",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632"
     )]
     pub r#type: ::core::option::Option<remote_type::Type>,
 }
@@ -523,6 +540,36 @@ pub mod remote_type {
         MdbDate(super::Empty),
         #[prost(message, tag = "515")]
         MdbTime(super::Empty),
+        #[prost(message, tag = "701")]
+        AccessBit(super::Empty),
+        #[prost(message, tag = "702")]
+        AccessTinyInt(super::Empty),
+        #[prost(message, tag = "703")]
+        AccessSmallInt(super::Empty),
+        #[prost(message, tag = "704")]
+        AccessInteger(super::Empty),
+        #[prost(message, tag = "705")]
+        AccessReal(super::Empty),
+        #[prost(message, tag = "706")]
+        AccessDouble(super::Empty),
+        #[prost(message, tag = "707")]
+        AccessCurrency(super::Empty),
+        #[prost(message, tag = "708")]
+        AccessText(super::AccessText),
+        #[prost(message, tag = "709")]
+        AccessMemo(super::Empty),
+        #[prost(message, tag = "710")]
+        AccessBinary(super::AccessBinary),
+        #[prost(message, tag = "711")]
+        AccessOleObject(super::Empty),
+        #[prost(message, tag = "712")]
+        AccessGuid(super::Empty),
+        #[prost(message, tag = "713")]
+        AccessDateTime(super::Empty),
+        #[prost(message, tag = "714")]
+        AccessDate(super::Empty),
+        #[prost(message, tag = "715")]
+        AccessTime(super::Empty),
         #[prost(message, tag = "601")]
         GaussdbInt2(super::Empty),
         #[prost(message, tag = "602")]
@@ -591,6 +638,16 @@ pub mod remote_type {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MdbText {
+    #[prost(uint32, optional, tag = "1")]
+    pub length: ::core::option::Option<u32>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AccessText {
+    #[prost(uint32, optional, tag = "1")]
+    pub length: ::core::option::Option<u32>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AccessBinary {
     #[prost(uint32, optional, tag = "1")]
     pub length: ::core::option::Option<u32>,
 }

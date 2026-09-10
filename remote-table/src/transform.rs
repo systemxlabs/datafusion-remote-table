@@ -1,4 +1,4 @@
-use crate::{DFResult, MdbType, RemoteDbType, RemoteSchemaRef, RemoteType};
+use crate::{AccessType, DFResult, MdbType, RemoteDbType, RemoteSchemaRef, RemoteType};
 use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
@@ -50,8 +50,8 @@ impl dyn Transform {
 /// initial "row matches" value. Pushing such a predicate as `Exact` would drop
 /// no rows remotely and DataFusion would not filter them locally either, so the
 /// predicate is reported as `Inexact` to keep a local `FilterExec` in the plan.
-fn mdb_filter_needs_local_evaluation(filter: &Expr, args: TransformArgs) -> bool {
-    if !matches!(args.db_type, RemoteDbType::Mdb) {
+fn odbc_access_filter_needs_local_evaluation(filter: &Expr, args: TransformArgs) -> bool {
+    if !matches!(args.db_type, RemoteDbType::Mdb | RemoteDbType::Access) {
         return false;
     }
 
@@ -69,6 +69,9 @@ fn mdb_filter_needs_local_evaluation(filter: &Expr, args: TransformArgs) -> bool
                     RemoteType::Mdb(MdbType::Currency)
                         | RemoteType::Mdb(MdbType::Binary(_))
                         | RemoteType::Mdb(MdbType::OleObject)
+                        | RemoteType::Access(AccessType::Currency)
+                        | RemoteType::Access(AccessType::Binary(_))
+                        | RemoteType::Access(AccessType::OleObject)
                 )
             {
                 needs_local_evaluation = true;
@@ -112,7 +115,7 @@ impl Transform for DefaultTransform {
             .expect("won't fail");
 
         if pushdown == TableProviderFilterPushDown::Exact
-            && mdb_filter_needs_local_evaluation(filter, args)
+            && odbc_access_filter_needs_local_evaluation(filter, args)
         {
             return Ok(TableProviderFilterPushDown::Inexact);
         }
