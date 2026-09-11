@@ -3,8 +3,8 @@ name = "datafusion-remote-table"
 version = "0.26.0"
 edition = "2024"
 authors = ["lewiszlw <lewiszlw520@gmail.com>"]
-description = "A DataFusion table provider for executing SQL on remote databases (Postgres, MySQL, Oracle, SQLite, GaussDB, DM, MDB)"
-keywords = ["SQL", "database", "datafusion", "postgres", "mysql", "gaussdb", "opengauss"]
+description = "A DataFusion table provider for executing SQL on remote databases (Postgres, MySQL, Oracle, SQLite, GaussDB, DM, MDB, MongoDB)"
+keywords = ["SQL", "database", "datafusion", "postgres", "mysql", "gaussdb", "opengauss", "mongodb"]
 license = "MIT"
 repository = "https://github.com/systemxlabs/datafusion-remote-table"
 readme = "../README.md"
@@ -19,6 +19,7 @@ dm = ["dep:odbc-api"]
 mdb = ["dep:odbc-api"]
 access = ["dep:odbc-api"]
 gaussdb = ["dep:bb8", "dep:bb8-gaussdb"]
+mongodb = ["dep:mongodb", "dep:bson", "dep:parquet-variant", "dep:parquet-variant-compute"]
 
 [dependencies]
 arrow = { workspace = true }
@@ -68,6 +69,15 @@ bb8-oracle = { version = "0.3", features = ["chrono"], optional = true}
 rusqlite = { workspace = true, features = ["column_decltype", "bundled"], optional = true }
 # Dm
 odbc-api = { workspace = true, optional = true }
+# MongoDB
+mongodb = { version = "3.9", default-features = false, features = ["bson-3", "rustls-tls", "dns-resolver", "compat-3-3-0"], optional = true }
+# Only present to switch on `serde_json-1` for the `bson` crate that `mongodb`
+# re-exports; it makes `Bson::try_from(serde_json::Value)` (extended JSON) available.
+bson = { version = "3.1", default-features = false, features = ["serde_json-1"], optional = true }
+# Parquet Variant: a self-describing binary encoding for semi-structured data,
+# used to store the MongoDB document column.
+parquet-variant = { version = "59.2", optional = true }
+parquet-variant-compute = { version = "59.2", optional = true }
 
 [dev-dependencies]
 datafusion = { workspace = true }

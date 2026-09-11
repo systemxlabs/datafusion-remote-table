@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm", "mdb", "access", "gaussdb"] }
+datafusion-remote-table = { path = "../remote-table", features = ["postgres", "mysql", "oracle", "sqlite", "dm", "mdb", "access", "gaussdb", "mongodb"] }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 tokio = { workspace = true }
@@ -14,3 +14,8 @@ uuid = { version = "1.23.2", features = ["v4"] }
 rstest = "0.26"
 odbc-api = { workspace = true }
 env_logger = "0.11"
+
+[dev-dependencies]
+# Decodes a Variant column so tests can assert on the documents themselves.
+parquet-variant-compute = "59.2"
+parquet-variant = "59.2"

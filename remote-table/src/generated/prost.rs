@@ -54,7 +54,7 @@ pub struct RemoteTableInsertExec {
 pub struct ConnectionOptions {
     #[prost(
         oneof = "connection_options::ConnectionOptions",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9"
     )]
     pub connection_options: ::core::option::Option<connection_options::ConnectionOptions>,
 }
@@ -79,7 +79,32 @@ pub mod connection_options {
         /// Microsoft Access .accdb (ACE engine).
         #[prost(message, tag = "8")]
         Access(super::AccessConnectionOptions),
+        #[prost(message, tag = "9")]
+        Mongodb(super::MongoDbConnectionOptions),
     }
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MongoDbConnectionOptions {
+    #[prost(string, tag = "1")]
+    pub host: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub port: u32,
+    #[prost(string, tag = "3")]
+    pub username: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub password: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "5")]
+    pub stream_chunk_size: u32,
+    /// Optional so that "not set" survives the round trip: it means "use the
+    /// driver default", which is not the same as any explicit value.
+    #[prost(uint32, optional, tag = "6")]
+    pub pool_max_size: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "7")]
+    pub pool_min_idle: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "8")]
+    pub pool_max_connecting: ::core::option::Option<u32>,
+    #[prost(message, optional, tag = "9")]
+    pub pool_idle_timeout: ::core::option::Option<Duration>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MdbConnectionOptions {
@@ -302,7 +327,7 @@ pub struct RemoteField {
 pub struct RemoteType {
     #[prost(
         oneof = "remote_type::Type",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 301, 302, 303, 304, 305, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 801"
     )]
     pub r#type: ::core::option::Option<remote_type::Type>,
 }
@@ -634,6 +659,8 @@ pub mod remote_type {
         GaussdbXml(super::Empty),
         #[prost(message, tag = "632")]
         GaussdbUuid(super::Empty),
+        #[prost(message, tag = "801")]
+        Mongodb(super::Empty),
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]

@@ -15,6 +15,7 @@ pub enum RemoteType {
     Mdb(MdbType),
     Access(AccessType),
     GaussDB(GaussDBType),
+    MongoDB(MongoDBType),
 }
 
 impl RemoteType {
@@ -28,6 +29,7 @@ impl RemoteType {
             RemoteType::Mdb(mdb_type) => mdb_type.to_arrow_type(),
             RemoteType::Access(access_type) => access_type.to_arrow_type(),
             RemoteType::GaussDB(gdb_type) => gdb_type.to_arrow_type(),
+            RemoteType::MongoDB(mongodb_type) => mongodb_type.to_arrow_type(),
         }
     }
 
@@ -41,6 +43,7 @@ impl RemoteType {
             RemoteType::Mdb(_) => RemoteDbType::Mdb,
             RemoteType::Access(_) => RemoteDbType::Access,
             RemoteType::GaussDB(_) => RemoteDbType::GaussDB,
+            RemoteType::MongoDB(_) => RemoteDbType::MongoDB,
         }
     }
 }
@@ -681,6 +684,30 @@ impl GaussDBType {
     }
 }
 
+/// The type of a value in a MongoDB collection.
+///
+/// MongoDB has no schema, so a collection is exposed as a single column holding
+/// each document as a whole; `Document` is the only type that can appear.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MongoDBType {
+    /// A whole BSON document, surfaced as a Parquet Variant column.
+    Document,
+}
+
+impl MongoDBType {
+    pub fn to_arrow_type(&self) -> DataType {
+        match self {
+            // A Variant column is an Arrow canonical extension type over the
+            // struct the Parquet Variant encoding is made of; the extension
+            // name itself lives on the field, see `RemoteField::to_arrow_field`.
+            MongoDBType::Document => DataType::Struct(Fields::from(vec![
+                Field::new("metadata", DataType::BinaryView, false),
+                Field::new("value", DataType::BinaryView, false),
+            ])),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RemoteField {
     pub name: String,
@@ -705,11 +732,22 @@ impl RemoteField {
     }
 
     pub fn to_arrow_field(&self) -> Field {
-        Field::new(
+        let field = Field::new(
             self.name.clone(),
             self.remote_type.to_arrow_type(),
             self.nullable,
-        )
+        );
+        if matches!(&self.remote_type, RemoteType::MongoDB(_)) {
+            // Mark the column as the canonical Parquet Variant extension type.
+            let mut metadata = field.metadata().clone();
+            metadata.insert(
+                "ARROW:extension:name".to_string(),
+                "arrow.parquet.variant".to_string(),
+            );
+            metadata.insert("ARROW:extension:metadata".to_string(), String::new());
+            return field.with_metadata(metadata);
+        }
+        field
     }
 }
 

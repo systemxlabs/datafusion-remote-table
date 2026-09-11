@@ -96,6 +96,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [x] Text / Memo / Binary / OLE / Guid
   - [x] Date / Time / DateTime
   - [x] Own type enum, options, pool and connection handling; tables are listed through the `MSysObjects` catalog table
+- [x] MongoDB
+  - [x] Whole document as a Parquet Variant
 
 ## Thanks
 - [datafusion-table-providers](https://crates.io/crates/datafusion-table-providers)

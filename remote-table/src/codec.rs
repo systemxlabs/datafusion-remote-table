@@ -4,6 +4,8 @@ use crate::GaussDBConnectionOptions;
 use crate::GaussDBType;
 use crate::LazyPool;
 use crate::MdbConnectionOptions;
+use crate::MongoDBConnectionOptions;
+use crate::MongoDBType;
 use crate::MysqlConnectionOptions;
 use crate::OracleConnectionOptions;
 use crate::PostgresConnectionOptions;
@@ -461,6 +463,21 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
                 },
             )),
         },
+        ConnectionOptions::MongoDB(options) => protobuf::ConnectionOptions {
+            connection_options: Some(protobuf::connection_options::ConnectionOptions::Mongodb(
+                protobuf::MongoDbConnectionOptions {
+                    host: options.host.clone(),
+                    port: options.port as u32,
+                    username: options.username.clone(),
+                    password: options.password.clone(),
+                    stream_chunk_size: options.stream_chunk_size as u32,
+                    pool_max_size: options.pool_max_size,
+                    pool_min_idle: options.pool_min_idle,
+                    pool_max_connecting: options.pool_max_connecting,
+                    pool_idle_timeout: options.pool_idle_timeout.as_ref().map(serialize_duration),
+                },
+            )),
+        },
     }
 }
 
@@ -552,6 +569,25 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<Co
                 gdb_opts.pool_ttl_check_interval =
                     parse_duration(&options.pool_ttl_check_interval.unwrap());
                 gdb_opts
+            })
+        }
+        Some(protobuf::connection_options::ConnectionOptions::Mongodb(options)) => {
+            ConnectionOptions::MongoDB({
+                let mut mongodb_opts = MongoDBConnectionOptions::new(
+                    options.host,
+                    options.port as u16,
+                    options.username,
+                    options.password,
+                );
+                if options.stream_chunk_size > 0 {
+                    mongodb_opts.stream_chunk_size = options.stream_chunk_size as usize;
+                }
+                mongodb_opts.pool_max_size = options.pool_max_size;
+                mongodb_opts.pool_min_idle = options.pool_min_idle;
+                mongodb_opts.pool_max_connecting = options.pool_max_connecting;
+                mongodb_opts.pool_idle_timeout =
+                    options.pool_idle_timeout.as_ref().map(parse_duration);
+                mongodb_opts
             })
         }
         None => {
@@ -1329,6 +1365,10 @@ fn serialize_remote_type(remote_type: &RemoteType) -> protobuf::RemoteType {
         RemoteType::GaussDB(GaussDBType::Uuid) => protobuf::RemoteType {
             r#type: Some(protobuf::remote_type::Type::GaussdbUuid(protobuf::Empty {})),
         },
+
+        RemoteType::MongoDB(MongoDBType::Document) => protobuf::RemoteType {
+            r#type: Some(protobuf::remote_type::Type::Mongodb(protobuf::Empty {})),
+        },
     }
 }
 
@@ -1655,6 +1695,7 @@ fn parse_remote_type(remote_type: &protobuf::RemoteType) -> DFResult<RemoteType>
         }
         protobuf::remote_type::Type::GaussdbXml(_) => RemoteType::GaussDB(GaussDBType::Xml),
         protobuf::remote_type::Type::GaussdbUuid(_) => RemoteType::GaussDB(GaussDBType::Uuid),
+        protobuf::remote_type::Type::Mongodb(_) => RemoteType::MongoDB(MongoDBType::Document),
     })
 }
 
@@ -1708,6 +1749,51 @@ fn parse_remote_source(source: &protobuf::RemoteSource) -> DFResult<RemoteSource
         }
         protobuf::remote_source::Source::Command(cmd) => {
             Ok(RemoteSource::Command(parse_remote_command(cmd)?))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// Every field has to survive both directions of the plan codec, including
+    /// a zero pool setting (which is a value, not "unset") and all the unset
+    /// ones.
+    #[test]
+    fn mongodb_options_round_trip() {
+        for options in [
+            MongoDBConnectionOptions::new("localhost", 27017, "root", "password"),
+            MongoDBConnectionOptions::new("mongo.internal", 27018, "", "")
+                .with_pool_max_size(Some(0))
+                .with_pool_min_idle(Some(7))
+                .with_pool_max_connecting(Some(0))
+                .with_pool_idle_timeout(Some(Duration::from_secs(30))),
+        ] {
+            let expect_max_size = options.pool_max_size;
+            let expect_min_idle = options.pool_min_idle;
+            let expect_max_connecting = options.pool_max_connecting;
+            let expect_idle_timeout = options.pool_idle_timeout;
+            let expect_host = options.host.clone();
+            let expect_port = options.port;
+            let expect_username = options.username.clone();
+            let expect_password = options.password.clone();
+
+            let decoded =
+                parse_connection_options(serialize_connection_options(&options.into())).unwrap();
+            let ConnectionOptions::MongoDB(decoded) = decoded else {
+                panic!("expected the mongodb options back");
+            };
+            assert_eq!(decoded.host, expect_host);
+            assert_eq!(decoded.port, expect_port);
+            assert_eq!(decoded.username, expect_username);
+            assert_eq!(decoded.password, expect_password);
+            assert_eq!(decoded.stream_chunk_size, 2048);
+            assert_eq!(decoded.pool_max_size, expect_max_size);
+            assert_eq!(decoded.pool_min_idle, expect_min_idle);
+            assert_eq!(decoded.pool_max_connecting, expect_max_connecting);
+            assert_eq!(decoded.pool_idle_timeout, expect_idle_timeout);
         }
     }
 }

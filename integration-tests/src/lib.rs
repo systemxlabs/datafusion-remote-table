@@ -227,3 +227,44 @@ pub async fn setup_dm_db() {
         }
     });
 }
+
+/// MongoDB test connection. The compose file creates the root user (in `admin`,
+/// which is where the driver authenticates) and the `test` database, seeds it
+/// from `testdata/mongodb/mongodb_init.js`, and its healthcheck makes
+/// `docker compose up --wait` block until the server answers.
+pub const MONGODB_HOST: &str = "127.0.0.1";
+/// Must match the published port in `testdata/mongodb/docker-compose.yaml`.
+pub const MONGODB_PORT: u16 = 27017;
+pub const MONGODB_USERNAME: &str = "root";
+pub const MONGODB_PASSWORD: &str = "password";
+pub const MONGODB_DATABASE: &str = "test";
+const MONGODB_ADDR: &str = "127.0.0.1:27017";
+
+static MONGODB_DB: OnceLock<DockerCompose> = OnceLock::new();
+
+pub async fn setup_mongodb_db() {
+    let _ = MONGODB_DB.get_or_init(|| {
+        let compose = DockerCompose::new(
+            "mongodb",
+            format!("{}/testdata/mongodb", env!("CARGO_MANIFEST_DIR")),
+        );
+        compose.down();
+        compose.up();
+        compose
+    });
+    wait_mongodb_listening().await;
+}
+
+/// The entrypoint answers its healthcheck from a temporary server that it later
+/// replaces with the real one, so `up --wait` can return before anything is
+/// listening for the tests. Only the real server publishes the port, so wait
+/// for that instead of trusting "healthy" on its own.
+async fn wait_mongodb_listening() {
+    for _ in 0..60 {
+        if std::net::TcpStream::connect(MONGODB_ADDR).is_ok() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    panic!("mongodb never started listening on {MONGODB_ADDR}");
+}

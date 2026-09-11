@@ -17,6 +17,7 @@ pub enum ConnectionOptions {
     /// Microsoft Access `.accdb` files (ACE engine).
     Access(AccessConnectionOptions),
     GaussDB(GaussDBConnectionOptions),
+    MongoDB(MongoDBConnectionOptions),
 }
 
 impl ConnectionOptions {
@@ -30,6 +31,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mdb(options) => options.stream_chunk_size,
             ConnectionOptions::Access(options) => options.stream_chunk_size,
             ConnectionOptions::GaussDB(options) => options.stream_chunk_size,
+            ConnectionOptions::MongoDB(options) => options.stream_chunk_size,
         }
     }
 
@@ -43,6 +45,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mdb(_) => RemoteDbType::Mdb,
             ConnectionOptions::Access(_) => RemoteDbType::Access,
             ConnectionOptions::GaussDB(_) => RemoteDbType::GaussDB,
+            ConnectionOptions::MongoDB(_) => RemoteDbType::MongoDB,
         }
     }
 
@@ -62,6 +65,7 @@ impl ConnectionOptions {
             ConnectionOptions::Mdb(options) => ConnectionOptions::Mdb(options),
             ConnectionOptions::Access(options) => ConnectionOptions::Access(options),
             ConnectionOptions::GaussDB(options) => ConnectionOptions::GaussDB(options),
+            ConnectionOptions::MongoDB(options) => ConnectionOptions::MongoDB(options),
         }
     }
 }
@@ -425,5 +429,56 @@ impl GaussDBConnectionOptions {
 impl From<GaussDBConnectionOptions> for ConnectionOptions {
     fn from(options: GaussDBConnectionOptions) -> Self {
         ConnectionOptions::GaussDB(options)
+    }
+}
+
+#[derive(Debug, Clone, With, Getters)]
+pub struct MongoDBConnectionOptions {
+    /// Host of the server (or of the router of a sharded cluster).
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    /// Credentials used against the driver's default authentication database
+    /// (`admin`). An empty username connects without authentication.
+    pub(crate) username: String,
+    pub(crate) password: String,
+    pub(crate) stream_chunk_size: usize,
+    /// Maximum number of connections the driver pools per server. `None` keeps
+    /// the driver default (10).
+    pub(crate) pool_max_size: Option<u32>,
+    /// Connections the driver keeps warm per server. `None` keeps the driver
+    /// default (0).
+    pub(crate) pool_min_idle: Option<u32>,
+    /// Maximum number of connections established concurrently. `None` keeps the
+    /// driver default (2).
+    pub(crate) pool_max_connecting: Option<u32>,
+    /// How long an idle pooled connection is kept before it is closed. `None`
+    /// keeps the driver default (no timeout).
+    pub(crate) pool_idle_timeout: Option<Duration>,
+}
+
+impl MongoDBConnectionOptions {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            username: username.into(),
+            password: password.into(),
+            stream_chunk_size: 2048,
+            pool_max_size: None,
+            pool_min_idle: None,
+            pool_max_connecting: None,
+            pool_idle_timeout: None,
+        }
+    }
+}
+
+impl From<MongoDBConnectionOptions> for ConnectionOptions {
+    fn from(options: MongoDBConnectionOptions) -> Self {
+        ConnectionOptions::MongoDB(options)
     }
 }

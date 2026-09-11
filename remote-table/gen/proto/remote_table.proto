@@ -42,7 +42,22 @@ message ConnectionOptions {
     GaussDBConnectionOptions gaussdb = 7;
     // Microsoft Access .accdb (ACE engine).
     AccessConnectionOptions access = 8;
+    MongoDbConnectionOptions mongodb = 9;
   }
+}
+
+message MongoDbConnectionOptions {
+  string host = 1;
+  uint32 port = 2;
+  string username = 3;
+  string password = 4;
+  uint32 stream_chunk_size = 5;
+  // Optional so that "not set" survives the round trip: it means "use the
+  // driver default", which is not the same as any explicit value.
+  optional uint32 pool_max_size = 6;
+  optional uint32 pool_min_idle = 7;
+  optional uint32 pool_max_connecting = 8;
+  Duration pool_idle_timeout = 9;
 }
 
 message MdbConnectionOptions {
@@ -337,6 +352,7 @@ message RemoteType {
     Empty gaussdb_bool_array = 630;
     Empty gaussdb_xml = 631;
     Empty gaussdb_uuid = 632;
+    Empty mongodb = 801;
   }
 }
 

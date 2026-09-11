@@ -5,8 +5,8 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion_remote_table::{
     AccessConnectionOptions, ConnectionOptions, DmConnectionOptions, MdbConnectionOptions,
-    MysqlConnectionOptions, OracleConnectionOptions, PostgresConnectionOptions, RemoteDbType,
-    RemoteSource, RemoteTable, SqliteConnectionOptions,
+    MongoDBConnectionOptions, MysqlConnectionOptions, OracleConnectionOptions,
+    PostgresConnectionOptions, RemoteDbType, RemoteSource, RemoteTable, SqliteConnectionOptions,
 };
 use std::sync::Arc;
 
@@ -152,5 +152,11 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
                     .with_database(Some("postgres".to_string())),
             )
         }
+        RemoteDbType::MongoDB => ConnectionOptions::MongoDB(MongoDBConnectionOptions::new(
+            crate::MONGODB_HOST,
+            crate::MONGODB_PORT,
+            crate::MONGODB_USERNAME,
+            crate::MONGODB_PASSWORD,
+        )),
     }
 }
