@@ -1,14 +1,13 @@
 mod command;
 mod row;
-mod schema;
 mod variant;
 
 pub(crate) use command::rewrite_mongo_query;
 pub(crate) use command::select_all_mongo_command;
 
 use crate::{
-    Connection, ConnectionOptions, DFResult, Literalize, MongoDBConnectionOptions, Pool, PoolState,
-    RemoteSchemaRef, RemoteSource,
+    Connection, ConnectionOptions, DFResult, Literalize, MongoDBConnectionOptions, MongoDBType,
+    Pool, PoolState, RemoteField, RemoteSchema, RemoteSchemaRef, RemoteSource, RemoteType,
 };
 use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
@@ -21,8 +20,26 @@ use log::debug;
 use mongodb::bson::Document;
 use mongodb::options::{ClientOptions, Credential, ServerAddress};
 use mongodb::{Client, Cursor};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock};
+
+/// Column holding the whole BSON document.
+const DOCUMENT_COLUMN: &str = "document";
+
+/// The schema of a collection: one Variant column holding every document.
+///
+/// A MongoDB collection is schemaless and can be arbitrarily nested, so there
+/// is nothing to infer: the collection is a bag of documents and that is
+/// exactly what is exposed. The document key is inside the document itself.
+///
+/// Every collection has the same schema, so it is built once and shared.
+static REMOTE_SCHEMA: LazyLock<RemoteSchemaRef> = LazyLock::new(|| {
+    Arc::new(RemoteSchema::new(vec![RemoteField::new(
+        DOCUMENT_COLUMN,
+        RemoteType::MongoDB(MongoDBType::Document),
+        false,
+    )]))
+});
 
 #[derive(Debug)]
 pub struct MongoDBPool {
@@ -38,11 +55,10 @@ pub async fn connect_mongodb(options: &MongoDBConnectionOptions) -> DFResult<Mon
         host: options.host.clone(),
         port: Some(options.port),
     }];
-    // No database either: a client is not bound to one, every table names the
-    // database it lives in.
-    // No username means the server does not ask for one. With a username, the
-    // driver negotiates the mechanism and authenticates against `admin`, its
-    // documented default for SCRAM.
+    // Nothing more is set: a client is not bound to a database (every table
+    // names the one it lives in), and no username means the server does not ask
+    // for one. With a username, the driver negotiates the mechanism and
+    // authenticates against `admin`, its documented default for SCRAM.
     if !options.username.is_empty() {
         client_options.credential = Some(
             Credential::builder()
@@ -131,7 +147,7 @@ impl Connection for MongoDBConnection {
         // schema is the same for every collection - but building a table is
         // where an unusable source should be reported.
         resolve_table(source)?;
-        Ok(Arc::clone(&schema::REMOTE_SCHEMA))
+        Ok(Arc::clone(&REMOTE_SCHEMA))
     }
 
     async fn query(
