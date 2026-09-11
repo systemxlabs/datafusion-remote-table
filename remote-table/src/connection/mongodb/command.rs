@@ -5,10 +5,9 @@ use serde_json::{Map, Value};
 /// Resolve a MongoDB source into the `(database, collection)` to read.
 ///
 /// MongoDB is not queried with SQL and has no query string, so only whole
-/// collections are supported; the database defaults to
-/// `MongoDBConnectionOptions::database` when the table identifier is a single
-/// collection name.
-pub(crate) fn resolve_table(source: &RemoteSource) -> DFResult<(Option<String>, String)> {
+/// collections are supported. A client is not bound to a database, so the table
+/// identifier has to name one: `[database, collection]`.
+pub(crate) fn resolve_table(source: &RemoteSource) -> DFResult<(String, String)> {
     match source {
         RemoteSource::Table(identifiers) => split_identifiers(identifiers),
         RemoteSource::Query(_) => Err(DataFusionError::NotImplemented(
@@ -35,13 +34,16 @@ pub(crate) fn rewrite_mongo_query(
         ));
     }
     let (database, collection) = resolve_table(source)?;
-    Ok(find_command(database.as_deref(), &collection, limit))
+    Ok(find_command(Some(&database), &collection, limit))
 }
 
 /// `SELECT * FROM <table>` equivalent, used through `RemoteSource::query`.
+///
+/// The text form is lenient about the identifier, because it has no way to
+/// report an error; reading always goes through `resolve_table`, which is not.
 pub(crate) fn select_all_mongo_command(identifiers: &[String]) -> String {
     match split_identifiers(identifiers) {
-        Ok((database, collection)) => find_command(database.as_deref(), &collection, None),
+        Ok((database, collection)) => find_command(Some(&database), &collection, None),
         Err(_) => find_command(
             None,
             identifiers.last().map(String::as_str).unwrap_or(""),
@@ -51,12 +53,11 @@ pub(crate) fn select_all_mongo_command(identifiers: &[String]) -> String {
 }
 
 /// Split a table identifier into `(database, collection)`.
-fn split_identifiers(identifiers: &[String]) -> DFResult<(Option<String>, String)> {
+fn split_identifiers(identifiers: &[String]) -> DFResult<(String, String)> {
     match identifiers {
-        [collection] => Ok((None, collection.clone())),
-        [database, collection] => Ok((Some(database.clone()), collection.clone())),
+        [database, collection] => Ok((database.clone(), collection.clone())),
         _ => Err(DataFusionError::Plan(format!(
-            "MongoDB table source must be [collection] or [database, collection], got: {identifiers:?}"
+            "MongoDB table source must be [database, collection], got: {identifiers:?}"
         ))),
     }
 }

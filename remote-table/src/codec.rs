@@ -466,8 +466,10 @@ fn serialize_connection_options(options: &ConnectionOptions) -> protobuf::Connec
         ConnectionOptions::MongoDB(options) => protobuf::ConnectionOptions {
             connection_options: Some(protobuf::connection_options::ConnectionOptions::Mongodb(
                 protobuf::MongoDbConnectionOptions {
-                    uri: options.uri.clone(),
-                    database: options.database.clone(),
+                    host: options.host.clone(),
+                    port: options.port as u32,
+                    username: options.username.clone(),
+                    password: options.password.clone(),
                     stream_chunk_size: options.stream_chunk_size as u32,
                     pool_max_size: options.pool_max_size,
                     pool_min_idle: options.pool_min_idle,
@@ -571,7 +573,12 @@ fn parse_connection_options(options: protobuf::ConnectionOptions) -> DFResult<Co
         }
         Some(protobuf::connection_options::ConnectionOptions::Mongodb(options)) => {
             ConnectionOptions::MongoDB({
-                let mut mongodb_opts = MongoDBConnectionOptions::new(options.uri, options.database);
+                let mut mongodb_opts = MongoDBConnectionOptions::new(
+                    options.host,
+                    options.port as u16,
+                    options.username,
+                    options.password,
+                );
                 if options.stream_chunk_size > 0 {
                     mongodb_opts.stream_chunk_size = options.stream_chunk_size as usize;
                 }
@@ -1751,13 +1758,14 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    /// Every pool setting has to survive both directions of the plan codec,
-    /// including a zero (which is a value, not "unset") and all the unset ones.
+    /// Every field has to survive both directions of the plan codec, including
+    /// a zero pool setting (which is a value, not "unset") and all the unset
+    /// ones.
     #[test]
-    fn mongodb_pool_options_round_trip() {
+    fn mongodb_options_round_trip() {
         for options in [
-            MongoDBConnectionOptions::new("mongodb://localhost:27017", "test"),
-            MongoDBConnectionOptions::new("mongodb://localhost:27017", "test")
+            MongoDBConnectionOptions::new("localhost", 27017, "root", "password"),
+            MongoDBConnectionOptions::new("mongo.internal", 27018, "", "")
                 .with_pool_max_size(Some(0))
                 .with_pool_min_idle(Some(7))
                 .with_pool_max_connecting(Some(0))
@@ -1767,14 +1775,20 @@ mod tests {
             let expect_min_idle = options.pool_min_idle;
             let expect_max_connecting = options.pool_max_connecting;
             let expect_idle_timeout = options.pool_idle_timeout;
+            let expect_host = options.host.clone();
+            let expect_port = options.port;
+            let expect_username = options.username.clone();
+            let expect_password = options.password.clone();
 
             let decoded =
                 parse_connection_options(serialize_connection_options(&options.into())).unwrap();
             let ConnectionOptions::MongoDB(decoded) = decoded else {
                 panic!("expected the mongodb options back");
             };
-            assert_eq!(decoded.uri, "mongodb://localhost:27017");
-            assert_eq!(decoded.database, "test");
+            assert_eq!(decoded.host, expect_host);
+            assert_eq!(decoded.port, expect_port);
+            assert_eq!(decoded.username, expect_username);
+            assert_eq!(decoded.password, expect_password);
             assert_eq!(decoded.stream_chunk_size, 2048);
             assert_eq!(decoded.pool_max_size, expect_max_size);
             assert_eq!(decoded.pool_min_idle, expect_min_idle);

@@ -153,8 +153,10 @@ pub fn build_conn_options(database: RemoteDbType) -> ConnectionOptions {
             )
         }
         RemoteDbType::MongoDB => ConnectionOptions::MongoDB(MongoDBConnectionOptions::new(
-            crate::MONGODB_URI,
-            crate::MONGODB_DATABASE,
+            crate::MONGODB_HOST,
+            crate::MONGODB_PORT,
+            crate::MONGODB_USERNAME,
+            crate::MONGODB_PASSWORD,
         )),
     }
 }

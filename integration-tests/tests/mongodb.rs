@@ -11,7 +11,10 @@ use datafusion_remote_table::{
     connect,
 };
 use integration_tests::utils::{assert_plan_and_result, build_conn_options};
-use integration_tests::{MONGODB_DATABASE, MONGODB_URI, setup_mongodb_db};
+use integration_tests::{
+    MONGODB_DATABASE, MONGODB_HOST, MONGODB_PASSWORD, MONGODB_PORT, MONGODB_USERNAME,
+    setup_mongodb_db,
+};
 use parquet_variant::Variant;
 use parquet_variant_compute::{VariantArray, VariantArrayBuilder};
 use std::sync::Arc;
@@ -89,7 +92,7 @@ async fn plan_ref(ctx: &SessionContext, sql: &str) -> Arc<dyn ExecutionPlan> {
 
 async fn register(ctx: &SessionContext, name: &str, collection: &str) {
     let options = build_conn_options(RemoteDbType::MongoDB);
-    let table = RemoteTable::try_new(options, vec![collection])
+    let table = RemoteTable::try_new(options, vec![MONGODB_DATABASE, collection])
         .await
         .unwrap();
     ctx.register_table(name, Arc::new(table)).unwrap();
@@ -107,7 +110,7 @@ async fn schema_is_a_single_variant_column() {
         "supported_data_types",
         "empty_collection",
     ] {
-        let table = RemoteTable::try_new(options.clone(), vec![collection])
+        let table = RemoteTable::try_new(options.clone(), vec![MONGODB_DATABASE, collection])
             .await
             .unwrap();
         assert_eq!(
@@ -198,7 +201,7 @@ async fn empty_collection_is_queryable() {
     setup_mongodb_db().await;
 
     let options = build_conn_options(RemoteDbType::MongoDB);
-    let table = RemoteTable::try_new(options, vec!["empty_collection"])
+    let table = RemoteTable::try_new(options, vec![MONGODB_DATABASE, "empty_collection"])
         .await
         .unwrap();
     assert_eq!(
@@ -228,9 +231,15 @@ async fn streaming_execution() {
 
     // A chunk size of one must produce one record batch per document.
     let options = ConnectionOptions::MongoDB(
-        MongoDBConnectionOptions::new(MONGODB_URI, MONGODB_DATABASE).with_stream_chunk_size(1usize),
+        MongoDBConnectionOptions::new(
+            MONGODB_HOST,
+            MONGODB_PORT,
+            MONGODB_USERNAME,
+            MONGODB_PASSWORD,
+        )
+        .with_stream_chunk_size(1usize),
     );
-    let table = RemoteTable::try_new(options, vec!["simple_table"])
+    let table = RemoteTable::try_new(options, vec![MONGODB_DATABASE, "simple_table"])
         .await
         .unwrap();
 
@@ -255,11 +264,14 @@ async fn streaming_execution() {
 async fn pushdown_limit() {
     setup_mongodb_db().await;
 
-    let (plan, rows) =
-        plan_and_rows(vec!["simple_table"], "select * from remote_table limit 1").await;
+    let (plan, rows) = plan_and_rows(
+        vec![MONGODB_DATABASE, "simple_table"],
+        "select * from remote_table limit 1",
+    )
+    .await;
     assert_eq!(
         plan,
-        "CooperativeExec\n  RemoteTableScanExec: source=simple_table, limit=1\n"
+        "CooperativeExec\n  RemoteTableScanExec: source=test.simple_table, limit=1\n"
     );
     assert_eq!(rows, 1);
 }
@@ -271,7 +283,7 @@ async fn count_documents() {
     // `count()` uses `count_documents`, so DataFusion collapses the aggregate.
     assert_plan_and_result(
         RemoteDbType::MongoDB,
-        vec!["simple_table"],
+        vec![MONGODB_DATABASE, "simple_table"],
         "select count(*) from remote_table",
         vec!["ProjectionExec: expr=[3 as count(*)]\n  PlaceholderRowExec\n"],
         r#"+----------+
@@ -288,7 +300,7 @@ async fn empty_projection() {
     setup_mongodb_db().await;
 
     let options = build_conn_options(RemoteDbType::MongoDB);
-    let table = RemoteTable::try_new(options, vec!["simple_table"])
+    let table = RemoteTable::try_new(options, vec![MONGODB_DATABASE, "simple_table"])
         .await
         .unwrap();
 
@@ -316,7 +328,7 @@ async fn physical_plan_serialization() {
     setup_mongodb_db().await;
 
     let options = build_conn_options(RemoteDbType::MongoDB);
-    let table = RemoteTable::try_new(options, vec!["simple_table"])
+    let table = RemoteTable::try_new(options, vec![MONGODB_DATABASE, "simple_table"])
         .await
         .unwrap();
 
@@ -371,6 +383,23 @@ async fn insert_is_rejected() {
     );
 }
 
+/// A client is not bound to a database, so a collection identifier has to name
+/// one; a bare collection name has nowhere to look.
+#[tokio::test(flavor = "multi_thread")]
+async fn bare_collection_is_rejected() {
+    setup_mongodb_db().await;
+
+    let options = build_conn_options(RemoteDbType::MongoDB);
+    let err = RemoteTable::try_new(options, vec!["simple_table"])
+        .await
+        .expect_err("a collection alone does not name a database");
+    let message = err.to_string();
+    assert!(
+        message.contains("must be [database, collection]"),
+        "unexpected error: {message}"
+    );
+}
+
 /// MongoDB has no query string, so anything other than a collection is refused.
 #[tokio::test(flavor = "multi_thread")]
 async fn query_source_is_rejected() {
@@ -405,10 +434,15 @@ async fn pool_options_reach_the_driver() {
     // Inferring the schema connects, so an invalid value is rejected here.
     let err = RemoteTable::try_new(
         ConnectionOptions::MongoDB(
-            MongoDBConnectionOptions::new(MONGODB_URI, MONGODB_DATABASE)
-                .with_pool_max_size(Some(0)),
+            MongoDBConnectionOptions::new(
+                MONGODB_HOST,
+                MONGODB_PORT,
+                MONGODB_USERNAME,
+                MONGODB_PASSWORD,
+            )
+            .with_pool_max_size(Some(0)),
         ),
-        vec!["simple_table"],
+        vec![MONGODB_DATABASE, "simple_table"],
     )
     .await
     .expect_err("the driver rejects maxPoolSize=0");
@@ -424,13 +458,18 @@ async fn pool_options_are_accepted() {
     setup_mongodb_db().await;
 
     let options = ConnectionOptions::MongoDB(
-        MongoDBConnectionOptions::new(MONGODB_URI, MONGODB_DATABASE)
-            .with_pool_max_size(Some(4))
-            .with_pool_min_idle(Some(1))
-            .with_pool_max_connecting(Some(2))
-            .with_pool_idle_timeout(Some(std::time::Duration::from_secs(60))),
+        MongoDBConnectionOptions::new(
+            MONGODB_HOST,
+            MONGODB_PORT,
+            MONGODB_USERNAME,
+            MONGODB_PASSWORD,
+        )
+        .with_pool_max_size(Some(4))
+        .with_pool_min_idle(Some(1))
+        .with_pool_max_connecting(Some(2))
+        .with_pool_idle_timeout(Some(std::time::Duration::from_secs(60))),
     );
-    let table = RemoteTable::try_new(options, vec!["simple_table"])
+    let table = RemoteTable::try_new(options, vec![MONGODB_DATABASE, "simple_table"])
         .await
         .unwrap();
     let ctx = SessionContext::new();

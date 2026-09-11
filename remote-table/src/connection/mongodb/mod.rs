@@ -19,7 +19,7 @@ use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
 use futures::TryStreamExt;
 use log::debug;
 use mongodb::bson::Document;
-use mongodb::options::ClientOptions;
+use mongodb::options::{ClientOptions, Credential, ServerAddress};
 use mongodb::{Client, Cursor};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,16 +27,30 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[derive(Debug)]
 pub struct MongoDBPool {
     client: Client,
-    options: MongoDBConnectionOptions,
     connections: Arc<AtomicUsize>,
 }
 
 pub async fn connect_mongodb(options: &MongoDBConnectionOptions) -> DFResult<MongoDBPool> {
-    let mut client_options = ClientOptions::parse(&options.uri).await.map_err(|e| {
-        DataFusionError::Execution(format!("Failed to parse mongodb connection string: {e:?}"))
-    })?;
-    // Only override what was configured here, so pool settings given in the
-    // connection string keep working.
+    // The driver options are built field by field rather than parsed from a
+    // connection string, so what is configured here is exactly what is used.
+    let mut client_options = ClientOptions::default();
+    client_options.hosts = vec![ServerAddress::Tcp {
+        host: options.host.clone(),
+        port: Some(options.port),
+    }];
+    // No database either: a client is not bound to one, every table names the
+    // database it lives in.
+    // No username means the server does not ask for one. With a username, the
+    // driver negotiates the mechanism and authenticates against `admin`, its
+    // documented default for SCRAM.
+    if !options.username.is_empty() {
+        client_options.credential = Some(
+            Credential::builder()
+                .username(options.username.clone())
+                .password(options.password.clone())
+                .build(),
+        );
+    }
     if let Some(value) = options.pool_max_size {
         client_options.max_pool_size = Some(value);
     }
@@ -54,7 +68,6 @@ pub async fn connect_mongodb(options: &MongoDBConnectionOptions) -> DFResult<Mon
     })?;
     Ok(MongoDBPool {
         client,
-        options: options.clone(),
         connections: Arc::new(AtomicUsize::new(0)),
     })
 }
@@ -65,7 +78,6 @@ impl Pool for MongoDBPool {
         self.connections.fetch_add(1, Ordering::SeqCst);
         Ok(Arc::new(MongoDBConnection {
             client: self.client.clone(),
-            database: self.options.database.clone(),
             pool_connections: self.connections.clone(),
         }))
     }
@@ -81,7 +93,6 @@ impl Pool for MongoDBPool {
 #[derive(Debug)]
 pub struct MongoDBConnection {
     client: Client,
-    database: String,
     pool_connections: Arc<AtomicUsize>,
 }
 
@@ -92,17 +103,12 @@ impl Drop for MongoDBConnection {
 }
 
 impl MongoDBConnection {
-    fn database_name<'a>(&'a self, database: Option<&'a str>) -> &'a str {
-        database.unwrap_or(&self.database)
-    }
-
     async fn open_cursor(
         &self,
-        database: Option<&str>,
+        database: &str,
         collection: &str,
         limit: Option<usize>,
     ) -> DFResult<Cursor<Document>> {
-        let database = self.database_name(database);
         debug!(
             "[remote-table] executing mongodb find: database={database}, collection={collection}, limit={limit:?}"
         );
@@ -144,9 +150,7 @@ impl Connection for MongoDBConnection {
         }
 
         let (database, collection) = resolve_table(source)?;
-        let cursor = self
-            .open_cursor(database.as_deref(), &collection, limit)
-            .await?;
+        let cursor = self.open_cursor(&database, &collection, limit).await?;
 
         let projected_schema = project_schema(&table_schema, projection)?;
         let chunk_size = conn_options.stream_chunk_size().max(1);
@@ -215,10 +219,9 @@ impl Connection for MongoDBConnection {
             return Ok(None);
         }
         let (database, collection) = resolve_table(source)?;
-        let database = self.database_name(database.as_deref());
         let count = self
             .client
-            .database(database)
+            .database(&database)
             .collection::<Document>(&collection)
             .count_documents(Document::new())
             .await

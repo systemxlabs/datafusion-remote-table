@@ -13,8 +13,9 @@ cargo test --package integration-tests --test mongodb
 ```
 
 `integration-tests::setup_mongodb_db()` starts the compose project, then waits
-until the server answers `ping` on `mongodb://root:password@127.0.0.1:27017`
-(`authSource=admin`, database `test`).
+until the server accepts connections on `127.0.0.1:27017`. The tests connect as
+`root` / `password` (created in the `admin` database, which is where the driver
+authenticates) and read `test.<collection>`.
 
 The project name is `mongodb` and the published port is `27017`; make sure both
 are free before running the tests.
@@ -41,7 +42,7 @@ docker ps --filter "publish=27017"
 ```
 
 Stop the conflicting container, or change the published port in
-`docker-compose.yaml` together with `MONGODB_URI` in `integration-tests/src/lib.rs`.
+`docker-compose.yaml` together with `MONGODB_PORT` in `integration-tests/src/lib.rs`.
 
 ### Container does not become healthy
 

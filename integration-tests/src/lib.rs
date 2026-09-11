@@ -228,13 +228,16 @@ pub async fn setup_dm_db() {
     });
 }
 
-/// MongoDB test connection string. The compose file creates the root user and
-/// the `test` database, seeds it from `testdata/mongodb/mongodb_init.js`, and
-/// its healthcheck makes `docker compose up --wait` block until the server
-/// answers.
-pub const MONGODB_URI: &str = "mongodb://root:password@127.0.0.1:27017/?authSource=admin";
-pub const MONGODB_DATABASE: &str = "test";
+/// MongoDB test connection. The compose file creates the root user (in `admin`,
+/// which is where the driver authenticates) and the `test` database, seeds it
+/// from `testdata/mongodb/mongodb_init.js`, and its healthcheck makes
+/// `docker compose up --wait` block until the server answers.
+pub const MONGODB_HOST: &str = "127.0.0.1";
 /// Must match the published port in `testdata/mongodb/docker-compose.yaml`.
+pub const MONGODB_PORT: u16 = 27017;
+pub const MONGODB_USERNAME: &str = "root";
+pub const MONGODB_PASSWORD: &str = "password";
+pub const MONGODB_DATABASE: &str = "test";
 const MONGODB_ADDR: &str = "127.0.0.1:27017";
 
 static MONGODB_DB: OnceLock<DockerCompose> = OnceLock::new();

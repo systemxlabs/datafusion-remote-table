@@ -434,31 +434,40 @@ impl From<GaussDBConnectionOptions> for ConnectionOptions {
 
 #[derive(Debug, Clone, With, Getters)]
 pub struct MongoDBConnectionOptions {
-    /// Connection string, e.g. `mongodb://user:password@localhost:27017`.
-    /// All driver options understood by the official Rust driver can be passed
-    /// here (e.g. `?authSource=admin`).
-    pub(crate) uri: String,
-    /// Database the collections are read from. For `RemoteSource::Table` with a
-    /// single identifier this is the database that holds the collection; a two
-    /// part identifier (`[database, collection]`) overrides it per table.
-    pub(crate) database: String,
+    /// Host of the server (or of the router of a sharded cluster).
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    /// Credentials used against the driver's default authentication database
+    /// (`admin`). An empty username connects without authentication.
+    pub(crate) username: String,
+    pub(crate) password: String,
     pub(crate) stream_chunk_size: usize,
     /// Maximum number of connections the driver pools per server. `None` keeps
-    /// whatever the connection string (or the driver default, 10) specifies.
+    /// the driver default (10).
     pub(crate) pool_max_size: Option<u32>,
-    /// Connections the driver keeps warm per server.
+    /// Connections the driver keeps warm per server. `None` keeps the driver
+    /// default (0).
     pub(crate) pool_min_idle: Option<u32>,
-    /// Maximum number of connections established concurrently.
+    /// Maximum number of connections established concurrently. `None` keeps the
+    /// driver default (2).
     pub(crate) pool_max_connecting: Option<u32>,
-    /// How long an idle pooled connection is kept before it is closed.
+    /// How long an idle pooled connection is kept before it is closed. `None`
+    /// keeps the driver default (no timeout).
     pub(crate) pool_idle_timeout: Option<Duration>,
 }
 
 impl MongoDBConnectionOptions {
-    pub fn new(uri: impl Into<String>, database: impl Into<String>) -> Self {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
         Self {
-            uri: uri.into(),
-            database: database.into(),
+            host: host.into(),
+            port,
+            username: username.into(),
+            password: password.into(),
             stream_chunk_size: 2048,
             pool_max_size: None,
             pool_min_idle: None,

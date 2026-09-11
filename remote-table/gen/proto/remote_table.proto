@@ -47,15 +47,17 @@ message ConnectionOptions {
 }
 
 message MongoDbConnectionOptions {
-  string uri = 1;
-  string database = 2;
-  uint32 stream_chunk_size = 3;
-  // Optional so that "not set" survives the round trip: it means "keep whatever
-  // the connection string says", which is not the same as any explicit value.
-  optional uint32 pool_max_size = 4;
-  optional uint32 pool_min_idle = 5;
-  optional uint32 pool_max_connecting = 6;
-  Duration pool_idle_timeout = 7;
+  string host = 1;
+  uint32 port = 2;
+  string username = 3;
+  string password = 4;
+  uint32 stream_chunk_size = 5;
+  // Optional so that "not set" survives the round trip: it means "use the
+  // driver default", which is not the same as any explicit value.
+  optional uint32 pool_max_size = 6;
+  optional uint32 pool_min_idle = 7;
+  optional uint32 pool_max_connecting = 8;
+  Duration pool_idle_timeout = 9;
 }
 
 message MdbConnectionOptions {
