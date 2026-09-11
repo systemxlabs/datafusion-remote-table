@@ -12,7 +12,7 @@ use crate::{
 };
 use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
-use command::{resolve_table, split_identifiers};
+use command::resolve_table;
 use datafusion_common::{DataFusionError, project_schema};
 use datafusion_execution::SendableRecordBatchStream;
 use datafusion_physical_plan::stream::RecordBatchStreamAdapter;
@@ -196,25 +196,13 @@ impl Connection for MongoDBConnection {
         &self,
         _conn_options: &ConnectionOptions,
         _literalizer: Arc<dyn Literalize>,
-        table: &[String],
+        _table: &[String],
         _remote_schema: RemoteSchemaRef,
-        batch: RecordBatch,
+        _batch: RecordBatch,
     ) -> DFResult<usize> {
-        let (database, collection) = split_identifiers(table)?;
-        let database = database.unwrap_or_else(|| self.database.clone());
-        let documents = row::batch_to_documents(&batch)?;
-        let count = documents.len();
-        if count > 0 {
-            self.client
-                .database(&database)
-                .collection::<Document>(&collection)
-                .insert_many(documents)
-                .await
-                .map_err(|e| {
-                    DataFusionError::Execution(format!("Failed to insert into mongodb: {e:?}"))
-                })?;
-        }
-        Ok(count)
+        Err(DataFusionError::NotImplemented(
+            "MongoDB does not support insert".to_string(),
+        ))
     }
 
     async fn count(

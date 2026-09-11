@@ -51,7 +51,7 @@ pub(crate) fn select_all_mongo_command(identifiers: &[String]) -> String {
 }
 
 /// Split a table identifier into `(database, collection)`.
-pub(crate) fn split_identifiers(identifiers: &[String]) -> DFResult<(Option<String>, String)> {
+fn split_identifiers(identifiers: &[String]) -> DFResult<(Option<String>, String)> {
     match identifiers {
         [collection] => Ok((None, collection.clone())),
         [database, collection] => Ok((Some(database.clone()), collection.clone())),

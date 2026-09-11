@@ -16,8 +16,6 @@ odbc-api = { workspace = true }
 env_logger = "0.11"
 
 [dev-dependencies]
-# Renders a Variant column as JSON so tests can compare documents without
-# decoding BSON themselves.
+# Decodes a Variant column so tests can assert on the documents themselves.
 parquet-variant-compute = "59.2"
 parquet-variant = "59.2"
-parquet-variant-json = "59.2"

@@ -2657,7 +2657,6 @@ dependencies = [
  "odbc-api",
  "parquet-variant",
  "parquet-variant-compute",
- "parquet-variant-json",
  "rstest",
  "rusqlite",
  "tokio",

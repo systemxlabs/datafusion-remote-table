@@ -14,7 +14,6 @@ use integration_tests::utils::{assert_plan_and_result, build_conn_options};
 use integration_tests::{MONGODB_DATABASE, MONGODB_URI, setup_mongodb_db};
 use parquet_variant::Variant;
 use parquet_variant_compute::{VariantArray, VariantArrayBuilder};
-use parquet_variant_json::VariantToJson;
 use std::sync::Arc;
 
 /// The canonical Variant field, taken from the library itself: if the type the
@@ -54,16 +53,6 @@ async fn documents_of(ctx: &SessionContext, table: &str) -> VariantArray {
         .collect();
     assert_eq!(arrays.len(), 1, "expected a single batch");
     arrays.pop().unwrap()
-}
-
-/// Render documents as JSON, sorted so that two reads compare independently of
-/// the order the collection returns them in.
-fn as_json(documents: &VariantArray) -> Vec<String> {
-    let mut values: Vec<String> = (0..documents.len())
-        .map(|row| documents.value(row).to_json_string().unwrap())
-        .collect();
-    values.sort();
-    values
 }
 
 /// Run a query and report both the physical plan and the number of rows, which
@@ -134,23 +123,21 @@ async fn schema_is_a_single_variant_column() {
     }
 }
 
-/// The document column has to survive a full round trip: reading a collection
-/// and inserting it elsewhere must reproduce the same documents.
+/// BSON types are exposed as the Variant types that can hold them.
 ///
-/// The assertions also pin down the conversion: BSON types Variant cannot
-/// express stay recognisable in their canonical extended JSON form, and the
-/// ones it can are stored natively with their BSON widths.
+/// The assertions pin down the conversion: the types Variant can express are
+/// stored natively with their BSON widths, and the ones it cannot stay
+/// recognisable in their canonical extended JSON form.
 #[tokio::test(flavor = "multi_thread")]
-async fn documents_round_trip_through_variant() {
+async fn bson_types_are_exposed_as_variant() {
     setup_mongodb_db().await;
 
     let ctx = SessionContext::new();
     register(&ctx, "source", "supported_data_types").await;
-    register(&ctx, "target", "round_trip_target").await;
 
-    let before = documents_of(&ctx, "source").await;
-    assert_eq!(before.len(), 2);
-    let Variant::Object(document) = before.value(0) else {
+    let documents = documents_of(&ctx, "source").await;
+    assert_eq!(documents.len(), 2);
+    let Variant::Object(document) = documents.value(0) else {
         panic!("a document must be an object");
     };
 
@@ -203,29 +190,6 @@ async fn documents_round_trip_through_variant() {
         decimal.get("$numberDecimal"),
         Some(Variant::ShortString(_) | Variant::String(_))
     ));
-
-    let before_json = as_json(&before);
-    println!("source documents: {before_json:#?}");
-
-    // Copy through the provider: read as Variant, write back as BSON.
-    let inserted = ctx
-        .sql("insert into target select document from source")
-        .await
-        .unwrap()
-        .collect()
-        .await
-        .unwrap();
-    assert_eq!(
-        pretty_format_batches(&inserted).unwrap().to_string(),
-        r#"+-------+
-| count |
-+-------+
-| 2     |
-+-------+"#
-    );
-
-    let after = documents_of(&ctx, "target").await;
-    assert_eq!(as_json(&after), before_json);
 }
 
 /// An empty collection is queryable: the schema does not depend on the data.
@@ -379,6 +343,31 @@ async fn physical_plan_serialization() {
     assert_eq!(
         pretty_format_batches(&expected).unwrap().to_string(),
         pretty_format_batches(&actual).unwrap().to_string()
+    );
+}
+
+/// Insert is not supported: the plan is accepted, but running it reports the
+/// gap rather than writing a document that lost the BSON types Variant cannot
+/// carry.
+#[tokio::test(flavor = "multi_thread")]
+async fn insert_is_rejected() {
+    setup_mongodb_db().await;
+
+    let ctx = SessionContext::new();
+    register(&ctx, "source", "simple_table").await;
+    register(&ctx, "target", "empty_collection").await;
+
+    let error = ctx
+        .sql("insert into target select document from source")
+        .await
+        .unwrap()
+        .collect()
+        .await
+        .expect_err("MongoDB does not support insert");
+    let message = error.to_string();
+    assert!(
+        message.contains("MongoDB does not support insert"),
+        "unexpected error: {message}"
     );
 }
 

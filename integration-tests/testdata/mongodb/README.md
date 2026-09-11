@@ -28,8 +28,9 @@ first initializes. The test setup always starts from a fresh volume
 | Collection | Contents |
 |---|---|
 | `simple_table` | `_id` / `id` / `name`, 3 documents |
+| `object_id_table` | keyed by ObjectId, so the wrapper for an ObjectId is covered |
 | `supported_data_types` | one document with a value for every supported BSON type, one document that is null everywhere |
-| `insert_supported_data_types` | empty; the insert tests declare the schema explicitly |
+| `empty_collection` | empty, to check the schema does not depend on the data |
 
 ## Troubleshooting
 
