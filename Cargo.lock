@@ -1677,7 +1677,7 @@ dependencies = [
  "derive-with",
  "futures",
  "hex",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "log",
  "mysql_async",
  "num-bigint 0.4.6",
