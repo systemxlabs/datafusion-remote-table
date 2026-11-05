@@ -30,7 +30,14 @@ pub(super) fn build_remote_schema(mut cursor: CursorImpl<StatementImpl>) -> DFRe
         // from_utf8_lossy keeps the printable bytes and substitutes U+FFFD for
         // the rest, so non-ASCII names don't abort a batch.
         let col_name = String::from_utf8_lossy(&col_desc.name).into_owned();
-        let col_nullable = col_desc.nullability.could_be_nullable();
+        // mdbtools reports nullability as `!col->is_fixed`, i.e. it describes
+        // the physical storage layout, not whether the column can hold NULL.
+        // Columns it calls NOT NULL (fixed-width int/date/currency columns)
+        // routinely contain NULLs, so trusting the flag makes Arrow reject the
+        // batch with "declared as non-nullable but contains null values". The
+        // reported flag carries no usable information: treat every column of an
+        // Access file read through this driver as nullable.
+        let col_nullable = true;
 
         let remote_type = RemoteType::Access(access_type_to_remote_type(col_desc.data_type)?);
         remote_fields.push(RemoteField::new(col_name, remote_type, col_nullable));
