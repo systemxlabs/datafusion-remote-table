@@ -1,4 +1,6 @@
+use datafusion::arrow::datatypes::{Field, Schema};
 use datafusion::arrow::util::pretty::pretty_format_batches;
+use datafusion::datasource::TableProvider;
 use datafusion::physical_plan::collect;
 use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
@@ -370,4 +372,115 @@ async fn filter_on_integer_column(#[case] source: RemoteSource) {
 +---------+------------+---------+"#,
     )
     .await;
+}
+
+/// mdbtools reports nullability as `!col->is_fixed`, i.e. it describes the
+/// physical storage layout rather than whether a column can hold NULL. Fixed
+/// width columns (ints, dates, currency) therefore come back as NOT NULL even
+/// when the file stores NULLs in them: `Orders` has 21 orders that have not
+/// shipped yet, so `ShippedDate` is NULL for those rows and the whole batch was
+/// rejected with "Column 'ShippedDate' is declared as non-nullable but contains
+/// null values". The reported flag carries no usable information, so every MDB
+/// column is nullable.
+#[tokio::test(flavor = "multi_thread")]
+async fn fixed_width_columns_are_nullable() {
+    let options = build_conn_options(RemoteDbType::Mdb);
+    let source =
+        RemoteSource::Query(r#"select "OrderID", "ShippedDate", "Freight" from Orders"#.into());
+    let table = RemoteTable::try_new(options, source).await.unwrap();
+
+    let remote_schema = table.remote_schema().unwrap();
+    let not_nullable = remote_schema
+        .fields
+        .iter()
+        .filter(|field| !field.nullable)
+        .map(|field| field.name.clone())
+        .collect::<Vec<_>>();
+    assert!(
+        not_nullable.is_empty(),
+        "mdbtools' nullability flag describes the storage layout, not the data, \
+         so every MDB column must be nullable, but {not_nullable:?} were declared \
+         NOT NULL"
+    );
+
+    // Reading the rows is what trips Arrow's record batch validation, so the
+    // regression test has to materialise a column that actually contains NULLs.
+    // Those three orders are shipped last, so `desc` keeps them in the batch.
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+    let df = ctx
+        .sql(
+            r#"select "OrderID", "ShippedDate", "Freight" from remote_table order by "OrderID" desc limit 5"#,
+        )
+        .await
+        .unwrap();
+    let exec_plan = df.create_physical_plan().await.unwrap();
+    let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
+    assert_eq!(
+        pretty_format_batches(&result).unwrap().to_string(),
+        r#"+---------+-------------+---------+
+| OrderID | ShippedDate | Freight |
++---------+-------------+---------+
+| 11077   |             | 8.5300  |
+| 11076   |             | 38.2800 |
+| 11075   |             | 6.1900  |
+| 11074   |             | 18.4400 |
+| 11073   |             | 24.9500 |
++---------+-------------+---------+"#
+    );
+}
+
+/// `try_new_with_schema` keeps the caller's schema: the table schema is exactly
+/// what the scan builds its batches with, and the inferred remote schema (all
+/// columns nullable now) is only used for the field count check. So a column
+/// that is genuinely NOT NULL in the MDB file can still be declared NOT NULL by
+/// the caller, and that declaration is not overwritten by the mdb backend.
+#[tokio::test(flavor = "multi_thread")]
+async fn user_supplied_not_null_schema() {
+    let options = build_conn_options(RemoteDbType::Mdb);
+    let source = RemoteSource::Table(vec!["Orders".to_string()]);
+
+    let inferred = RemoteTable::try_new(options.clone(), source.clone())
+        .await
+        .unwrap();
+    let not_null_schema = Arc::new(Schema::new(
+        inferred
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| Field::new(field.name(), field.data_type().clone(), false))
+            .collect::<Vec<_>>(),
+    ));
+
+    let table = RemoteTable::try_new_with_schema(options, source, not_null_schema.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        table.schema(),
+        not_null_schema,
+        "the caller's schema, including its NOT NULL columns, must be used as is"
+    );
+
+    let ctx = SessionContext::new();
+    ctx.register_table("remote_table", Arc::new(table)).unwrap();
+    let df = ctx
+        .sql(
+            r#"select "OrderID", "CustomerID" from remote_table where "OrderID" > 11072 order by "OrderID""#,
+        )
+        .await
+        .unwrap();
+    let exec_plan = df.create_physical_plan().await.unwrap();
+    let result = collect(exec_plan, ctx.task_ctx()).await.unwrap();
+    assert_eq!(
+        pretty_format_batches(&result).unwrap().to_string(),
+        r#"+---------+------------+
+| OrderID | CustomerID |
++---------+------------+
+| 11073   | PERIC      |
+| 11074   | SIMOB      |
+| 11075   | RICSU      |
+| 11076   | BONAP      |
+| 11077   | RATTC      |
++---------+------------+"#
+    );
 }
